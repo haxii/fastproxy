@@ -21,6 +21,38 @@ func (b *ByteBuffer) Len() int {
 	return len(b.B)
 }
 
+// Copy copies from src to dst until either EOF is reached
+// on src or an error occurs. It returns the number of bytes
+// copied and the first error encountered while copying, if any.
+func (b *ByteBuffer) Copy(dst io.Writer, src io.Reader) (written int64, err error) {
+	b.Reset()
+	b.B = make([]byte, 32*1024)
+	for {
+		nr, er := src.Read(b.B)
+		if nr > 0 {
+			nw, ew := dst.Write(b.B[0:nr])
+			if nw > 0 {
+				written += int64(nw)
+			}
+			if ew != nil {
+				err = ew
+				break
+			}
+			if nr != nw {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if er != nil {
+			if er != io.EOF {
+				err = er
+			}
+			break
+		}
+	}
+	return written, err
+}
+
 // ReadFrom implements io.ReaderFrom.
 //
 // The function appends all the data read from r to b.

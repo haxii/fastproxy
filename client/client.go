@@ -36,7 +36,7 @@ type Request interface {
 	//specified in request's start line usually
 	IsIdempotent() bool
 	IsTLS() bool
-	Host() string
+	HostWithPort() string
 	TLSServerName() string
 }
 
@@ -108,7 +108,7 @@ func (c *Client) Do(req Request, resp Response) error {
 		return errors.New("nil buffer io pool")
 	}
 
-	host := req.Host()
+	host := req.HostWithPort()
 
 	isTLS := req.IsTLS()
 

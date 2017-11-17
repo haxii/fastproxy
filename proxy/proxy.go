@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -127,8 +128,17 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		ReleaseRequest(req)
 		p.bufioPool.ReleaseReader(reader)
 	}
-	if err := req.InitWithReader(reader, p.sniffer); err != nil {
+	if err := req.InitWithProxyReader(reader, p.sniffer); err != nil {
 		releaseReqAndReader()
+		if err == header.ErrNoHostProvided {
+			err = errors.New("client requests a non-proxy request")
+			//handle http server request
+			if e := p.writeFastError(c,
+				header.StatusBadRequest,
+				"This is a proxy server. Does not respond to non-proxy requests.\n"); e != nil {
+				err = errorWrapper("fail to response non-proxy request ", e)
+			}
+		}
 		return errorWrapper("fail to read http request header", err)
 	}
 
@@ -142,12 +152,13 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		host := strings.Repeat(reqLine.HostWithPort(), 1)
 		releaseReqAndReader()
 		//make the requests
+		var err error
 		if p.ShouldDecryptHTTPS(host) {
-			p.handler.decryptConnect(c, host)
+			err = p.handler.decryptConnect(c, &p.client, host)
 		} else {
-			p.handler.forwardConnect(&c, host)
+			err = p.handler.tunnelConnect(&c, host)
 		}
-		return nil
+		return err
 	}
 
 	//convert c into a http response
@@ -158,22 +169,13 @@ func (p *Proxy) serveConn(c net.Conn) error {
 	defer ReleaseResponse(resp)
 	if err := resp.InitWithWriter(writer, p.sniffer); err != nil {
 		releaseReqAndReader()
-		return errorWrapper("fail to read http response header", err)
+		return errorWrapper("fail to init http response header", err)
 	}
 
 	var err error
-	if reqLine.IsURIRelative() {
-		//handle http server request
-		if e := p.writeFastError(writer,
-			header.StatusBadRequest,
-			"This is a proxy server. Does not respond to non-proxy requests.\n"); e != nil {
-			err = errorWrapper("fail to response http server request ", e)
-		}
-	} else {
-		//handle http proxy request
-		if e := p.client.Do(req, resp); e != nil {
-			err = errorWrapper("fail to make client request ", e)
-		}
+	//handle http proxy request
+	if e := p.client.Do(req, resp); e != nil {
+		err = errorWrapper("fail to make client request ", e)
 	}
 
 	releaseReqAndReader()
@@ -201,15 +203,14 @@ func NewSimpleProxy() *Proxy {
 	l := &log.DefaultLogger{}
 
 	p := &Proxy{
-		handler: handler{
-			CA:     x509.DefaultMitmCA,
-			logger: l,
-		},
+		handler:            handler{CA: x509.DefaultMitmCA},
 		client:             client.Client{},
 		sniffer:            NewDefaltLogSniffer(l),
 		ShouldDecryptHTTPS: func(string) bool { return true },
 		ProxyLogger:        l,
 	}
 	p.client.BufioPool = &p.bufioPool
+	p.handler.bufioPool = &p.bufioPool
+	p.handler.sniffer = p.sniffer
 	return p
 }

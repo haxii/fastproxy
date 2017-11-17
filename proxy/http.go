@@ -30,11 +30,26 @@ type Request struct {
 
 	//sniffer, used for recording the http traffic
 	sniffer Sniffer
+
+	//TLS request settings
+	isTLS         bool
+	tlsServerName string
 }
 
-// InitWithReader init request with reader
+// InitWithProxyReader init request with reader
 // then parse the start line of the http request
-func (r *Request) InitWithReader(reader *bufio.Reader, sniffer Sniffer) error {
+func (r *Request) InitWithProxyReader(reader *bufio.Reader, sniffer Sniffer) error {
+	return r.initWithReader(reader, sniffer, false, "", "")
+}
+
+// InitWithTLSClientReader init request with reader supports TLS connections
+func (r *Request) InitWithTLSClientReader(reader *bufio.Reader,
+	sniffer Sniffer, hostWithPort, tlsServerName string) error {
+	return r.initWithReader(reader, sniffer, true, hostWithPort, tlsServerName)
+}
+
+func (r *Request) initWithReader(reader *bufio.Reader,
+	sniffer Sniffer, isTLS bool, hostWithPort, tlsServerName string) error {
 	if r.reader != nil {
 		return errors.New("request already initialized")
 	}
@@ -43,11 +58,20 @@ func (r *Request) InitWithReader(reader *bufio.Reader, sniffer Sniffer) error {
 		return errors.New("nil reader provided")
 	}
 
-	if err := r.reqLine.Parse(reader); err != nil {
+	if isTLS && len(tlsServerName) == 0 {
+		return errors.New("empty tls server name provided")
+	}
+
+	if err := r.reqLine.Parse(reader, hostWithPort); err != nil {
+		if err == header.ErrNoHostProvided {
+			return err
+		}
 		return fmt.Errorf("fail to read start line of request with error %s", err)
 	}
 	r.reader = reader
 	r.sniffer = sniffer
+	r.isTLS = isTLS
+	r.tlsServerName = tlsServerName
 	return nil
 }
 
@@ -107,17 +131,17 @@ func (r *Request) IsIdempotent() bool {
 
 //IsTLS is tls requests
 func (r *Request) IsTLS() bool {
-	return false
+	return r.isTLS
 }
 
-//Host host/addr target
-func (r *Request) Host() string {
+//HostWithPort host/addr target
+func (r *Request) HostWithPort() string {
 	return r.reqLine.HostWithPort()
 }
 
 //TLSServerName server name for handshaking
 func (r *Request) TLSServerName() string {
-	return ""
+	return r.tlsServerName
 }
 
 //Response http response implementation of http client
