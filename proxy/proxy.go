@@ -132,8 +132,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		if err == header.ErrNoHostProvided {
 			err = errors.New("client requests a non-proxy request")
 			//handle http server request
-			if e := p.writeFastError(c,
-				header.StatusBadRequest,
+			if e := p.writeFastError(c, header.StatusBadRequest,
 				"This is a proxy server. Does not respond to non-proxy requests.\n"); e != nil {
 				err = errorWrapper("fail to response non-proxy request ", e)
 			}

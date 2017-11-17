@@ -31,6 +31,11 @@ func (l *ResponseLine) GetResponseLine() []byte {
 	return l.fullLine
 }
 
+//GetStatusCode get response status code
+func (l *ResponseLine) GetStatusCode() int {
+	return l.statusCode
+}
+
 //Reset reset response line
 func (l *ResponseLine) Reset() {
 	l.statusCode = 0
@@ -86,6 +91,7 @@ type RequestLine struct {
 
 //requestURI a uri struct
 type requestURI struct {
+	rawURI []byte
 	scheme []byte
 	host   []byte
 	path   []byte
@@ -191,9 +197,9 @@ func (l *RequestLine) HostWithPort() string {
 	return l.uri.hostWithPort
 }
 
-//IsURIRelative if is the uri a relative path
-func (l *RequestLine) IsURIRelative() bool {
-	return len(l.uri.scheme) == 0
+//RawURI the raw URI separated
+func (l *RequestLine) RawURI() []byte {
+	return l.uri.rawURI
 }
 
 var (
@@ -227,6 +233,7 @@ func (l *RequestLine) RebuildRequestLine() []byte {
 //uri3.1: http://www.example.com
 //uri3.2: http://www.example.com/path/to/resource
 func (uri *requestURI) parse(isConnect bool, reqURI []byte) {
+	uri.rawURI = reqURI
 	//uri1: https proxy reqest's hosts in the request uri
 	if isConnect {
 		uri.host = reqURI
