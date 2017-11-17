@@ -21,9 +21,6 @@ type handler struct {
 
 	// buffer reader and writer pool
 	bufioPool *bufiopool.Pool
-
-	// sniffer https sniffer
-	sniffer Sniffer
 }
 
 func (h *handler) sendHTTPSProxyStatusOK(c net.Conn) (err error) {
@@ -77,7 +74,8 @@ func (h *handler) tunnelConnect(c *net.Conn, host string) error {
 }
 
 //proxy the https connetions by MITM
-func (h *handler) decryptConnect(c net.Conn, client *client.Client, hostWithPort string) error {
+func (h *handler) decryptConnect(c net.Conn, sniffer Sniffer,
+	client *client.Client, hostWithPort string) error {
 	errorWrapper := func(msg string, err error) error {
 		return fmt.Errorf("%s: %s", msg, err)
 	}
@@ -129,7 +127,8 @@ func (h *handler) decryptConnect(c net.Conn, client *client.Client, hostWithPort
 	defer h.bufioPool.ReleaseReader(reader)
 	req := AcquireRequest()
 	defer ReleaseRequest(req)
-	if err := req.InitWithTLSClientReader(reader, h.sniffer, hostWithPort, targetServerName); err != nil {
+	if err := req.InitWithTLSClientReader(reader,
+		sniffer, hostWithPort, targetServerName); err != nil {
 		return errorWrapper("fail to read MITMed https request header", err)
 	}
 	//convert fakeServerConn into a http response
@@ -138,7 +137,7 @@ func (h *handler) decryptConnect(c net.Conn, client *client.Client, hostWithPort
 	defer writer.Flush()
 	resp := AcquireResponse()
 	defer ReleaseResponse(resp)
-	if err := resp.InitWithWriter(writer, h.sniffer); err != nil {
+	if err := resp.InitWithWriter(writer, sniffer); err != nil {
 		return errorWrapper("fail to init MITMed https response header", err)
 	}
 	//handle fake https client request
