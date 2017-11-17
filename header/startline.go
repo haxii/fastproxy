@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/haxii/fastproxy/bytebufferpool"
 )
 
 func parseStartline(reader *bufio.Reader) ([]byte, error) {
@@ -31,6 +29,11 @@ type ResponseLine struct {
 //GetResponseLine get full response line
 func (l *ResponseLine) GetResponseLine() []byte {
 	return l.fullLine
+}
+
+//GetStatusCode get response status code
+func (l *ResponseLine) GetStatusCode() int {
+	return l.statusCode
 }
 
 //Reset reset response line
@@ -88,6 +91,7 @@ type RequestLine struct {
 
 //requestURI a uri struct
 type requestURI struct {
+	rawURI []byte
 	scheme []byte
 	host   []byte
 	path   []byte
@@ -193,20 +197,34 @@ func (l *RequestLine) HostWithPort() string {
 	return l.uri.hostWithPort
 }
 
-//IsURIRelative if is the uri a relative path
-func (l *RequestLine) IsURIRelative() bool {
-	return len(l.uri.scheme) == 0
+//RawURI the raw URI separated
+func (l *RequestLine) RawURI() []byte {
+	return l.uri.rawURI
 }
 
+var (
+	sp   = []byte(" ")
+	crlf = []byte("\r\n")
+)
+
 //RebuildRequestLine rebuild the request host line for direct http request
-func (l *RequestLine) RebuildRequestLine(newReqLine *bytebufferpool.ByteBuffer) {
-	newReqLine.Set(l.method)
-	newReqLine.WriteByte(' ')
-	newReqLine.Write(l.uri.path)
-	newReqLine.WriteByte(' ')
-	newReqLine.Write(l.protocol)
-	newReqLine.WriteByte('\r')
-	newReqLine.WriteByte('\n')
+func (l *RequestLine) RebuildRequestLine() []byte {
+	reqLine := make([]byte, len(l.method)+len(sp)+
+		len(l.uri.path)+len(sp)+len(l.protocol)+len(crlf))
+	copyIndex := 0
+	copy(reqLine[copyIndex:], l.method)
+	copyIndex += len(l.method)
+	copy(reqLine[copyIndex:], sp)
+	copyIndex += len(sp)
+	copy(reqLine[copyIndex:], l.uri.path)
+	copyIndex += len(l.uri.path)
+	copy(reqLine[copyIndex:], sp)
+	copyIndex += len(sp)
+	copy(reqLine[copyIndex:], l.protocol)
+	copyIndex += len(l.protocol)
+	copy(reqLine[copyIndex:], crlf)
+	copyIndex += len(crlf)
+	return reqLine
 }
 
 //parse parse the request URI
@@ -215,6 +233,7 @@ func (l *RequestLine) RebuildRequestLine(newReqLine *bytebufferpool.ByteBuffer) 
 //uri3.1: http://www.example.com
 //uri3.2: http://www.example.com/path/to/resource
 func (uri *requestURI) parse(isConnect bool, reqURI []byte) {
+	uri.rawURI = reqURI
 	//uri1: https proxy reqest's hosts in the request uri
 	if isConnect {
 		uri.host = reqURI

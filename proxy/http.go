@@ -87,27 +87,27 @@ func (r *Request) WriteTo(writer *bufio.Writer) error {
 		return errors.New("Empty request, nothing to write")
 	}
 
-	buffer := bytebufferpool.Get()
-	defer bytebufferpool.Put(buffer)
-
-	//rebuild & write the start line
-	r.reqLine.RebuildRequestLine(buffer)
-	if _, err := writer.Write(buffer.B); err != nil {
-		return fmt.Errorf("fail to write start line : %s", err)
-	}
-	r.sniffer.ReqLine(buffer.B)
+	//rebuild the start line
+	rebuiltReqLine := r.reqLine.RebuildRequestLine()
 
 	//read & write the headers
-	if err := r.header.ParseHeaderFields(r.reader, buffer); err != nil {
-		return fmt.Errorf("fail to parse http headers : %s", err)
+	var snifferWriter io.Writer
+	if err := copyStartLineAndHeader(
+		r.reader, writer,
+		rebuiltReqLine, &r.header,
+		func(rawHeader []byte) {
+			snifferWriter = r.sniffer.GetRequestWriter(r.reqLine.RawURI(), r.header)
+			if snifferWriter != nil {
+				snifferWriter.Write(rebuiltReqLine)
+				snifferWriter.Write(rawHeader)
+			}
+		},
+	); err != nil {
+		return err
 	}
-	if _, err := writer.Write(buffer.B); err != nil {
-		return fmt.Errorf("fail to write headers : %s", err)
-	}
-	r.sniffer.Header(buffer.B)
 
 	//write the request body (if any)
-	return copyBody(r.reader, writer, r.header, r.sniffer)
+	return copyBody(r.reader, writer, snifferWriter, r.header)
 }
 
 // ConnectionClose if the request's "Connection" header value is set as "Close".
@@ -178,26 +178,28 @@ func (r *Response) ReadFrom(reader *bufio.Reader) error {
 	if err := r.respLine.Parse(reader); err != nil {
 		return fmt.Errorf("fail to read start line of response with error %s", err)
 	}
-	respLineBytes := r.respLine.GetResponseLine()
-	if _, err := r.writer.Write(respLineBytes); err != nil {
-		return fmt.Errorf("fail to write start line : %s", err)
-	}
-	r.sniffer.RespLine(respLineBytes)
 
-	buffer := bytebufferpool.Get()
-	defer bytebufferpool.Put(buffer)
+	//rebuild  the start line
+	respLineBytes := r.respLine.GetResponseLine()
 
 	//read & write the headers
-	if err := r.header.ParseHeaderFields(reader, buffer); err != nil {
-		return fmt.Errorf("fail to parse http headers : %s", err)
+	var snifferWriter io.Writer
+	if err := copyStartLineAndHeader(
+		reader, r.writer,
+		respLineBytes, &r.header,
+		func(rawHeader []byte) {
+			snifferWriter = r.sniffer.GetResponseWriter(r.respLine.GetStatusCode(), r.header)
+			if snifferWriter != nil {
+				snifferWriter.Write(respLineBytes)
+				snifferWriter.Write(rawHeader)
+			}
+		},
+	); err != nil {
+		return err
 	}
-	if _, err := r.writer.Write(buffer.B); err != nil {
-		return fmt.Errorf("fail to write headers : %s", err)
-	}
-	r.sniffer.Header(buffer.B)
 
 	//write the request body (if any)
-	return copyBody(reader, r.writer, r.header, r.sniffer)
+	return copyBody(reader, r.writer, snifferWriter, r.header)
 }
 
 //Reset reset response
@@ -263,24 +265,54 @@ func ReleaseResponse(resp *Response) {
 	responsePool.Put(resp)
 }
 
-func copyBody(src *bufio.Reader, dst *bufio.Writer, header header.Header, sniffer Sniffer) error {
+func copyStartLineAndHeader(src *bufio.Reader, dst *bufio.Writer,
+	startLine []byte, header *header.Header,
+	parsedHeaderHandler func(headers []byte)) error {
+	//write start line
+	nw, err := dst.Write(startLine)
+	if err != nil {
+		return fmt.Errorf("fail to write start line : %s", err)
+	}
+	if nw != len(startLine) {
+		return errors.New("fail to write start line : short write")
+	}
+
+	//read and write header
+	buffer := bytebufferpool.Get()
+	defer bytebufferpool.Put(buffer)
+	if err := header.ParseHeaderFields(src, buffer); err != nil {
+		return fmt.Errorf("fail to parse http headers : %s", err)
+	}
+	nw, err = dst.Write(buffer.B)
+	if err != nil {
+		return fmt.Errorf("fail to write headers : %s", err)
+	}
+	if nw != len(buffer.B) {
+		return errors.New("fail to write headers : short write")
+	}
+
+	parsedHeaderHandler(buffer.B)
+	return nil
+}
+
+func copyBody(src *bufio.Reader, dst *bufio.Writer, snifferWriter io.Writer, header header.Header) error {
 	if header.ContentLength() > 0 {
 		//read contentLength data more from reader
-		return copyBodyFixedSize(src, dst, header.ContentLength(), sniffer)
+		return copyBodyFixedSize(src, dst, snifferWriter, header.ContentLength())
 	} else if header.IsBodyChunked() {
 		//read data chunked
 		buffer := bytebufferpool.Get()
 		defer bytebufferpool.Put(buffer)
-		return copyBodyChunked(src, dst, buffer, sniffer)
+		return copyBodyChunked(src, dst, snifferWriter, buffer)
 	} else if header.IsBodyIdentity() {
 		//read till eof
-		return copyBodyIdentity(src, dst, sniffer)
+		return copyBodyIdentity(src, dst, snifferWriter)
 	}
 	return nil
 }
 
 func copyBodyFixedSize(src *bufio.Reader, dst *bufio.Writer,
-	contentLength int64, sniffer Sniffer) error {
+	snifferWriter io.Writer, contentLength int64) error {
 	byteStillNeeded := contentLength
 	for {
 		//read one more bytes
@@ -309,7 +341,9 @@ func copyBodyFixedSize(src *bufio.Reader, dst *bufio.Writer,
 		if bytesShouldWrite != bytesShouldRead {
 			return io.ErrShortWrite
 		}
-		sniffer.Body(b[:bytesShouldRead])
+		if snifferWriter != nil {
+			snifferWriter.Write(b[:bytesShouldRead])
+		}
 
 		//must discard wrote bytes
 		if _, err := src.Discard(bytesShouldWrite); err != nil {
@@ -326,7 +360,7 @@ func copyBodyFixedSize(src *bufio.Reader, dst *bufio.Writer,
 var strCRLF = []byte("\r\n")
 
 func copyBodyChunked(src *bufio.Reader, dst *bufio.Writer,
-	buffer *bytebufferpool.ByteBuffer, sniffer Sniffer) error {
+	snifferWriter io.Writer, buffer *bytebufferpool.ByteBuffer) error {
 	strCRLFLen := len(strCRLF)
 
 	for {
@@ -339,11 +373,14 @@ func copyBodyChunked(src *bufio.Reader, dst *bufio.Writer,
 		if _, err := dst.Write(buffer.B); err != nil {
 			return err
 		}
-		sniffer.Body(buffer.B)
+
+		if snifferWriter != nil {
+			snifferWriter.Write(buffer.B)
+		}
 
 		//copy the chunk
-		if err := copyBodyFixedSize(src, dst,
-			int64(chunkSize+strCRLFLen), sniffer); err != nil {
+		if err := copyBodyFixedSize(src, dst, snifferWriter,
+			int64(chunkSize+strCRLFLen)); err != nil {
 			return err
 		}
 		if chunkSize == 0 {
@@ -376,8 +413,8 @@ func parseChunkSize(r *bufio.Reader, buffer *bytebufferpool.ByteBuffer) (int, er
 	}
 	return n, nil
 }
-func copyBodyIdentity(src *bufio.Reader, dst *bufio.Writer, sniffer Sniffer) error {
-	if err := copyBodyFixedSize(src, dst, math.MaxInt64, sniffer); err != nil {
+func copyBodyIdentity(src *bufio.Reader, dst *bufio.Writer, snifferWriter io.Writer) error {
+	if err := copyBodyFixedSize(src, dst, snifferWriter, math.MaxInt64); err != nil {
 		if err == io.EOF {
 			return nil
 		}

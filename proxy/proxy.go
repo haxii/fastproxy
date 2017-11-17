@@ -40,9 +40,6 @@ type Proxy struct {
 	//proxy handler
 	handler handler
 
-	//proxy sniffer
-	sniffer Sniffer
-
 	//buffer reader and writer pool
 	bufioPool bufiopool.Pool
 }
@@ -128,13 +125,14 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		ReleaseRequest(req)
 		p.bufioPool.ReleaseReader(reader)
 	}
-	if err := req.InitWithProxyReader(reader, p.sniffer); err != nil {
+	sniffer := NewDefaltBasicSniffer()
+	sniffer.InitWithClientAddress(c.RemoteAddr())
+	if err := req.InitWithProxyReader(reader, sniffer); err != nil {
 		releaseReqAndReader()
 		if err == header.ErrNoHostProvided {
 			err = errors.New("client requests a non-proxy request")
 			//handle http server request
-			if e := p.writeFastError(c,
-				header.StatusBadRequest,
+			if e := p.writeFastError(c, header.StatusBadRequest,
 				"This is a proxy server. Does not respond to non-proxy requests.\n"); e != nil {
 				err = errorWrapper("fail to response non-proxy request ", e)
 			}
@@ -154,7 +152,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		//make the requests
 		var err error
 		if p.ShouldDecryptHTTPS(host) {
-			err = p.handler.decryptConnect(c, &p.client, host)
+			err = p.handler.decryptConnect(c, sniffer, &p.client, host)
 		} else {
 			err = p.handler.tunnelConnect(&c, host)
 		}
@@ -167,7 +165,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 	defer writer.Flush()
 	resp := AcquireResponse()
 	defer ReleaseResponse(resp)
-	if err := resp.InitWithWriter(writer, p.sniffer); err != nil {
+	if err := resp.InitWithWriter(writer, sniffer); err != nil {
 		releaseReqAndReader()
 		return errorWrapper("fail to init http response header", err)
 	}
@@ -205,12 +203,10 @@ func NewSimpleProxy() *Proxy {
 	p := &Proxy{
 		handler:            handler{CA: x509.DefaultMitmCA},
 		client:             client.Client{},
-		sniffer:            NewDefaltLogSniffer(l),
 		ShouldDecryptHTTPS: func(string) bool { return true },
 		ProxyLogger:        l,
 	}
 	p.client.BufioPool = &p.bufioPool
 	p.handler.bufioPool = &p.bufioPool
-	p.handler.sniffer = p.sniffer
 	return p
 }
