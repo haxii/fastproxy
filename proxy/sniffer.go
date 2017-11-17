@@ -1,52 +1,41 @@
 package proxy
 
-import "github.com/haxii/fastproxy/log"
-import "net"
+import (
+	"io"
+	"net"
+	"os"
+
+	"github.com/haxii/fastproxy/header"
+)
 
 //Sniffer http sniffer
 type Sniffer interface {
-	//InitWithClientAddress init with client address
+	// InitWithClientAddress init with client address
 	InitWithClientAddress(clientAddress net.Addr)
-	//ReqLine request line sniffer
-	ReqLine([]byte)
-	//RespLine response line sniffer
-	RespLine([]byte)
-	//Header header sniffer
-	Header([]byte)
-	//Body body Sniffer
-	Body([]byte)
+	// GetRequestWriter return a request writer based on uri & header
+	GetRequestWriter(uri string, header header.Header) io.Writer
+	// GetResponseWriter return a response writer based on status code & header
+	GetResponseWriter(statusCode int, header header.Header) io.Writer
 }
 
-//NewDefaltLogSniffer default log based sniffer
-func NewDefaltLogSniffer(log log.Logger) Sniffer {
-	return &logSniffer{log: log}
+//NewDefaltBasicSniffer default std out based sniffer
+func NewDefaltBasicSniffer() Sniffer {
+	return &basicSniffer{}
 }
 
-type logSniffer struct {
+type basicSniffer struct {
 	clientAddr string
-	log        log.Logger
 }
 
-func (s *logSniffer) InitWithClientAddress(clientAddress net.Addr) {
+//InitWithClientAddress init with client address
+func (s *basicSniffer) InitWithClientAddress(clientAddress net.Addr) {
 	s.clientAddr = clientAddress.String()
 }
 
-//ReqLine request line sniffer
-func (s *logSniffer) ReqLine(l []byte) {
-	s.log.Info("[%s]request line: %s", s.clientAddr, l)
+func (s *basicSniffer) GetRequestWriter(uri string, header header.Header) io.Writer {
+	return os.Stdout
 }
 
-//RespLine response line sniffer
-func (s *logSniffer) RespLine(l []byte) {
-	s.log.Info("[%s]response line: %s", s.clientAddr, l)
-}
-
-//Header header sniffer
-func (s *logSniffer) Header(h []byte) {
-	s.log.Info("[%s]http header: %s", s.clientAddr, h)
-}
-
-//Body body Sniffer
-func (s *logSniffer) Body(b []byte) {
-	s.log.Info("[%s]http body part: %s", s.clientAddr, b)
+func (s *basicSniffer) GetResponseWriter(statusCode int, header header.Header) io.Writer {
+	return os.Stdout
 }

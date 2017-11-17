@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/haxii/fastproxy/bytebufferpool"
 )
 
 func parseStartline(reader *bufio.Reader) ([]byte, error) {
@@ -198,15 +196,29 @@ func (l *RequestLine) IsURIRelative() bool {
 	return len(l.uri.scheme) == 0
 }
 
+var (
+	sp   = []byte(" ")
+	crlf = []byte("\r\n")
+)
+
 //RebuildRequestLine rebuild the request host line for direct http request
-func (l *RequestLine) RebuildRequestLine(newReqLine *bytebufferpool.ByteBuffer) {
-	newReqLine.Set(l.method)
-	newReqLine.WriteByte(' ')
-	newReqLine.Write(l.uri.path)
-	newReqLine.WriteByte(' ')
-	newReqLine.Write(l.protocol)
-	newReqLine.WriteByte('\r')
-	newReqLine.WriteByte('\n')
+func (l *RequestLine) RebuildRequestLine() []byte {
+	reqLine := make([]byte, len(l.method)+len(sp)+
+		len(l.uri.path)+len(sp)+len(l.protocol)+len(crlf))
+	copyIndex := 0
+	copy(reqLine[copyIndex:], l.method)
+	copyIndex += len(l.method)
+	copy(reqLine[copyIndex:], sp)
+	copyIndex += len(sp)
+	copy(reqLine[copyIndex:], l.uri.path)
+	copyIndex += len(l.uri.path)
+	copy(reqLine[copyIndex:], sp)
+	copyIndex += len(sp)
+	copy(reqLine[copyIndex:], l.protocol)
+	copyIndex += len(l.protocol)
+	copy(reqLine[copyIndex:], crlf)
+	copyIndex += len(crlf)
+	return reqLine
 }
 
 //parse parse the request URI

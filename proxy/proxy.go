@@ -125,7 +125,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		ReleaseRequest(req)
 		p.bufioPool.ReleaseReader(reader)
 	}
-	sniffer := NewDefaltLogSniffer(p.ProxyLogger)
+	sniffer := NewDefaltBasicSniffer()
 	sniffer.InitWithClientAddress(c.RemoteAddr())
 	if err := req.InitWithProxyReader(reader, sniffer); err != nil {
 		releaseReqAndReader()

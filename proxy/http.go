@@ -87,24 +87,13 @@ func (r *Request) WriteTo(writer *bufio.Writer) error {
 		return errors.New("Empty request, nothing to write")
 	}
 
-	buffer := bytebufferpool.Get()
-	defer bytebufferpool.Put(buffer)
-
-	//rebuild & write the start line
-	r.reqLine.RebuildRequestLine(buffer)
-	if _, err := writer.Write(buffer.B); err != nil {
-		return fmt.Errorf("fail to write start line : %s", err)
-	}
-	r.sniffer.ReqLine(buffer.B)
+	//rebuild the start line
+	rebuiltReqLine := r.reqLine.RebuildRequestLine()
 
 	//read & write the headers
-	if err := r.header.ParseHeaderFields(r.reader, buffer); err != nil {
-		return fmt.Errorf("fail to parse http headers : %s", err)
+	if err := copyHeader(r.reader, writer, rebuiltReqLine, &r.header); err != nil {
+		return err
 	}
-	if _, err := writer.Write(buffer.B); err != nil {
-		return fmt.Errorf("fail to write headers : %s", err)
-	}
-	r.sniffer.Header(buffer.B)
 
 	//write the request body (if any)
 	return copyBody(r.reader, writer, r.header, r.sniffer)
@@ -178,23 +167,14 @@ func (r *Response) ReadFrom(reader *bufio.Reader) error {
 	if err := r.respLine.Parse(reader); err != nil {
 		return fmt.Errorf("fail to read start line of response with error %s", err)
 	}
-	respLineBytes := r.respLine.GetResponseLine()
-	if _, err := r.writer.Write(respLineBytes); err != nil {
-		return fmt.Errorf("fail to write start line : %s", err)
-	}
-	r.sniffer.RespLine(respLineBytes)
 
-	buffer := bytebufferpool.Get()
-	defer bytebufferpool.Put(buffer)
+	//rebuild  the start line
+	respLineBytes := r.respLine.GetResponseLine()
 
 	//read & write the headers
-	if err := r.header.ParseHeaderFields(reader, buffer); err != nil {
-		return fmt.Errorf("fail to parse http headers : %s", err)
+	if err := copyHeader(reader, r.writer, respLineBytes, &r.header); err != nil {
+		return err
 	}
-	if _, err := r.writer.Write(buffer.B); err != nil {
-		return fmt.Errorf("fail to write headers : %s", err)
-	}
-	r.sniffer.Header(buffer.B)
 
 	//write the request body (if any)
 	return copyBody(reader, r.writer, r.header, r.sniffer)
@@ -263,6 +243,35 @@ func ReleaseResponse(resp *Response) {
 	responsePool.Put(resp)
 }
 
+func copyHeader(src *bufio.Reader, dst *bufio.Writer,
+	startLine []byte, header *header.Header) error {
+	//write start line
+	nw, err := dst.Write(startLine)
+	if err != nil {
+		return fmt.Errorf("fail to write start line : %s", err)
+	}
+	if nw != len(startLine) {
+		return errors.New("fail to write start line : short write")
+	}
+
+	//read and write header
+	buffer := bytebufferpool.Get()
+	defer bytebufferpool.Put(buffer)
+	if err := header.ParseHeaderFields(src, buffer); err != nil {
+		return fmt.Errorf("fail to parse http headers : %s", err)
+	}
+	nw, err = dst.Write(buffer.B)
+	if err != nil {
+		return fmt.Errorf("fail to write headers : %s", err)
+	}
+	if nw != len(buffer.B) {
+		return errors.New("fail to write headers : short write")
+	}
+
+	//TODO: handle header sniffers
+	return nil
+}
+
 func copyBody(src *bufio.Reader, dst *bufio.Writer, header header.Header, sniffer Sniffer) error {
 	if header.ContentLength() > 0 {
 		//read contentLength data more from reader
@@ -309,7 +318,7 @@ func copyBodyFixedSize(src *bufio.Reader, dst *bufio.Writer,
 		if bytesShouldWrite != bytesShouldRead {
 			return io.ErrShortWrite
 		}
-		sniffer.Body(b[:bytesShouldRead])
+		//TODO:sniffer.Body(b[:bytesShouldRead])
 
 		//must discard wrote bytes
 		if _, err := src.Discard(bytesShouldWrite); err != nil {
@@ -339,7 +348,7 @@ func copyBodyChunked(src *bufio.Reader, dst *bufio.Writer,
 		if _, err := dst.Write(buffer.B); err != nil {
 			return err
 		}
-		sniffer.Body(buffer.B)
+		//TODO:sniffer.Body(buffer.B)
 
 		//copy the chunk
 		if err := copyBodyFixedSize(src, dst,
