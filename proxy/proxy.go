@@ -1,10 +1,10 @@
 package proxy
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
-	"net/url"
 	"strings"
 	"time"
 
@@ -17,33 +17,24 @@ import (
 	"github.com/haxii/fastproxy/x509"
 )
 
-//HostFilter host analysis
-type HostFilter func(host string) bool
-
-//URLFilter URL analysis
-type URLFilter func(uri url.URL) bool
-
 // Proxy is a forward proxy that substitutes its own certificate
 // for incoming TLS connections in place of the upstream server's
 // certificate.
 type Proxy struct {
-	//ShouldDecryptHTTPS test if host's https connection should be decrypted
-	ShouldDecryptHTTPS HostFilter
+	//BufioPool buffer reader and writer pool
+	BufioPool *bufiopool.Pool
+
+	//Client proxy uses a http client to dial a remote host for incoming requests
+	Client client.Client
 
 	//proxy logger
 	ProxyLogger log.Logger
 
-	//client
-	client client.Client
+	//sniffer pool
+	SnifferPool SnifferPool
 
 	//proxy handler
-	handler handler
-
-	//proxy sniffer
-	sniffer Sniffer
-
-	//buffer reader and writer pool
-	bufioPool bufiopool.Pool
+	Handler Handler
 }
 
 // DefaultConcurrency is the maximum number of concurrent connections
@@ -53,6 +44,10 @@ const DefaultConcurrency = 256 * 1024
 //
 // Serve blocks until the given listener returns permanent error.
 func (p *Proxy) Serve(ln net.Listener) error {
+	if e := p.init(); e != nil {
+		return e
+	}
+
 	var lastOverflowErrorTime time.Time
 	var lastPerIPErrorTime time.Time
 	var c net.Conn
@@ -90,6 +85,31 @@ func (p *Proxy) Serve(ln net.Listener) error {
 	}
 }
 
+func (p *Proxy) init() error {
+	if p.ProxyLogger == nil {
+		return errors.New("nil ProxyLogger provided")
+	}
+	if p.BufioPool == nil {
+		return errors.New("nil bufio pool provided")
+	}
+	if p.SnifferPool == nil {
+		return errors.New("nil sniffer pool provided")
+	}
+	if p.Handler.ShouldDecryptHost == nil {
+		p.Handler.ShouldDecryptHost = func(host string) bool {
+			return true
+		}
+	}
+	if p.Handler.MitmCACert == nil {
+		p.Handler.MitmCACert = x509.DefaultMitmCA
+	}
+	if p.Client.BufioPool == nil {
+		p.Client.BufioPool = p.BufioPool
+	}
+
+	return nil
+}
+
 func (p *Proxy) acceptConn(ln net.Listener, lastPerIPErrorTime *time.Time) (net.Conn, error) {
 	for {
 		c, err := ln.Accept()
@@ -121,63 +141,47 @@ func (p *Proxy) serveConn(c net.Conn) error {
 	}
 
 	//convert c into a http request
-	reader := p.bufioPool.AcquireReader(c)
+	reader := p.BufioPool.AcquireReader(c)
 	req := AcquireRequest()
 	releaseReqAndReader := func() {
 		ReleaseRequest(req)
-		p.bufioPool.ReleaseReader(reader)
+		p.BufioPool.ReleaseReader(reader)
 	}
-	if err := req.InitWithReader(reader, p.sniffer); err != nil {
+
+	//make a http sniffer
+	sniffer := p.SnifferPool.Get(c.RemoteAddr())
+	defer p.SnifferPool.Put(sniffer)
+
+	if err := req.InitWithProxyReader(reader, sniffer); err != nil {
 		releaseReqAndReader()
 		return errorWrapper("fail to read http request header", err)
 	}
-
-	//get the start line of the http request
-	reqLine := req.GetStartLine()
-
-	//handle https proxy request
-	if reqLine.IsConnect() {
-		//here I make a copy of the host
-		//then release the request immediately
-		host := strings.Repeat(reqLine.HostWithPort(), 1)
-		releaseReqAndReader()
-		//make the requests
-		if p.ShouldDecryptHTTPS(host) {
-			p.handler.decryptConnect(c, host)
-		} else {
-			p.handler.forwardConnect(&c, host)
+	if len(req.HostWithPort()) == 0 {
+		if e := p.writeFastError(c, header.StatusBadRequest,
+			"This is a proxy server. Does not respond to non-proxy requests.\n"); e != nil {
+			return errorWrapper("fail to response non-proxy request ", e)
 		}
+		releaseReqAndReader()
 		return nil
 	}
 
-	//convert c into a http response
-	writer := p.bufioPool.AcquireWriter(c)
-	defer p.bufioPool.ReleaseWriter(writer)
-	defer writer.Flush()
-	resp := AcquireResponse()
-	defer ReleaseResponse(resp)
-	if err := resp.InitWithWriter(writer, p.sniffer); err != nil {
+	//handle http requests
+	reqLine := req.GetStartLine()
+	if !reqLine.IsConnect() {
+		err := p.Handler.handleHTTPConns(c, req,
+			p.BufioPool, sniffer, &p.Client)
 		releaseReqAndReader()
-		return errorWrapper("fail to read http response header", err)
+		return err
 	}
 
-	var err error
-	if reqLine.IsURIRelative() {
-		//handle http server request
-		if e := p.writeFastError(writer,
-			header.StatusBadRequest,
-			"This is a proxy server. Does not respond to non-proxy requests.\n"); e != nil {
-			err = errorWrapper("fail to response http server request ", e)
-		}
-	} else {
-		//handle http proxy request
-		if e := p.client.Do(req, resp); e != nil {
-			err = errorWrapper("fail to make client request ", e)
-		}
-	}
-
+	//handle https proxy request
+	//here I make a copy of the host
+	//then release the request immediately
+	host := strings.Repeat(reqLine.HostWithPort(), 1)
 	releaseReqAndReader()
-	return err
+	//make the requests
+	return p.Handler.handleHTTPSConns(c, host,
+		p.BufioPool, sniffer, &p.Client)
 }
 
 func (p *Proxy) writeFastError(w io.Writer, statusCode int, msg string) error {
@@ -194,22 +198,4 @@ func (p *Proxy) writeFastError(w io.Writer, statusCode int, msg string) error {
 		"%s",
 		servertime.ServerDate(), len(msg), msg)
 	return err
-}
-
-//NewSimpleProxy make a simple proxy
-func NewSimpleProxy() *Proxy {
-	l := &log.DefaultLogger{}
-
-	p := &Proxy{
-		handler: handler{
-			CA:     x509.DefaultMitmCA,
-			logger: l,
-		},
-		client:             client.Client{},
-		sniffer:            NewDefaltLogSniffer(l),
-		ShouldDecryptHTTPS: func(string) bool { return true },
-		ProxyLogger:        l,
-	}
-	p.client.BufioPool = &p.bufioPool
-	return p
 }

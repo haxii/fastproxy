@@ -1,14 +1,12 @@
 package transport
 
 import (
-	"bufio"
 	"crypto/tls"
 	"io"
 	"net"
 	"strings"
-	"sync"
 
-	"github.com/haxii/fastproxy/log"
+	"github.com/haxii/fastproxy/bytebufferpool"
 )
 
 //DialTLS dial tls without pool
@@ -22,36 +20,19 @@ func Dial(addr string) (net.Conn, error) {
 }
 
 //Forward forward remote and local connection
-func Forward(dst io.Writer, src io.Reader, l log.Logger, wg *sync.WaitGroup) {
-	/*
-		buffer := bytebufferpool.Get()
-		defer bytebufferpool.Put(buffer)
-		if _, err := buffer.Copy(dst, src); err != nil {
-			errStr := err.Error()
-			if !(strings.Contains(errStr, "broken pipe") ||
-				strings.Contains(errStr, "reset by peer") ||
-				strings.Contains(errStr, "i/o timeout")) {
-
-			}
-			l.Error(err, "Error copying to client")
-		}
-		fmt.Printf("%s\n", buffer.B)
-		wg.Done()
-	*/
-}
-
-//Forward2 forward remote and local connection
-func Forward2(dst io.Writer, src bufio.Reader, l log.Logger, wg *sync.WaitGroup) {
-	if _, err := src.WriteTo(dst); err != nil {
-		errStr := err.Error()
+func Forward(dst io.Writer, src io.Reader) error {
+	buffer := bytebufferpool.Get()
+	defer bytebufferpool.Put(buffer)
+	var err error
+	if _, e := buffer.Copy(dst, src); e != nil {
+		errStr := e.Error()
 		if !(strings.Contains(errStr, "broken pipe") ||
 			strings.Contains(errStr, "reset by peer") ||
 			strings.Contains(errStr, "i/o timeout")) {
-
+			err = e
 		}
-		l.Error(err, "Error copying to client")
 	}
-	wg.Done()
+	return err
 }
 
 /*

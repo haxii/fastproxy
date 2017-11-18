@@ -36,7 +36,7 @@ type Request interface {
 	//specified in request's start line usually
 	IsIdempotent() bool
 	IsTLS() bool
-	Host() string
+	HostWithPort() string
 	TLSServerName() string
 }
 
@@ -58,11 +58,6 @@ type Response interface {
 //
 // It is safe calling Client methods from concurrently running goroutines.
 type Client struct {
-	// TLS config for https connections.
-	//
-	// Default TLS config is used if not set.
-	TLSConfig *tls.Config
-
 	// Maximum number of connections per each host which may be established.
 	//
 	// DefaultMaxConnsPerHost is used if not set.
@@ -108,7 +103,7 @@ func (c *Client) Do(req Request, resp Response) error {
 		return errors.New("nil buffer io pool")
 	}
 
-	host := req.Host()
+	host := req.HostWithPort()
 
 	isTLS := req.IsTLS()
 
@@ -132,7 +127,6 @@ func (c *Client) Do(req Request, resp Response) error {
 		hc = &HostClient{
 			Addr:                host,
 			IsTLS:               isTLS,
-			TLSConfig:           c.TLSConfig,
 			TLSServerName:       req.TLSServerName(),
 			MaxConns:            c.MaxConnsPerHost,
 			MaxIdleConnDuration: c.MaxIdleConnDuration,
@@ -211,7 +205,6 @@ type HostClient struct {
 	IsTLS bool
 
 	// Optional TLS config.
-	TLSConfig     *tls.Config
 	TLSServerName string
 
 	// Maximum number of connections which may be established to all hosts
