@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 )
 
 func parseStartline(reader *bufio.Reader) ([]byte, error) {
@@ -109,23 +108,21 @@ var (
 )
 
 // ParseRequestLine parse request line in stand-alone mode
-func ParseRequestLine(reader *bufio.Reader, hostWithPort string) (*RequestLine, error) {
+func ParseRequestLine(reader *bufio.Reader) (*RequestLine, error) {
 	reqLine := &RequestLine{}
 
-	if err := reqLine.Parse(reader, hostWithPort); err != nil {
+	if err := reqLine.Parse(reader); err != nil {
 		return nil, err
 	}
 	return reqLine, nil
 }
 
-// Parse parse request line,
-// hostWithPort can be nil if the startline contains the host,
-// i.e. the proxy request, otherwise it will return a `ErrNoHostProvided` error
+// Parse parse request line
 //
 // A request-line begins with a method token, followed by a single space
 // (SP), the request-target, another single space (SP), the protocol
 // version, and ends with CRLF.
-func (l *RequestLine) Parse(reader *bufio.Reader, hostWithPort string) error {
+func (l *RequestLine) Parse(reader *bufio.Reader) error {
 	reqLineWithCRLF, err := parseStartline(reader)
 	if err != nil {
 		return err
@@ -155,10 +152,7 @@ func (l *RequestLine) Parse(reader *bufio.Reader, hostWithPort string) error {
 	reqURI := reqLine[reqURIStartIndex:reqURIEndIndex]
 	isConnect := bytes.Equal(methodConnect, method)
 	l.uri.parse(isConnect, reqURI)
-	if err := l.uri.fillHostWithPort(hostWithPort, isConnect); err != nil {
-		l.uri.Reset()
-		return ErrNoHostProvided
-	}
+	l.uri.fillHostWithPort(isConnect)
 
 	//protocol
 	protocolStartIndex := reqURIEndIndex + 1
@@ -270,27 +264,13 @@ func (uri *requestURI) Reset() {
 	uri.scheme = uri.scheme[:0]
 }
 
-//ErrNoHostProvided no host provided in the incoming request
-var ErrNoHostProvided = errors.New("no host provided")
-
-func (uri *requestURI) fillHostWithPort(hostWithPort string, isConnect bool) error {
+func (uri *requestURI) fillHostWithPort(isConnect bool) {
 	hasPortFuncByte := func(host []byte) bool {
 		return bytes.LastIndexByte(host, ':') >
 			bytes.LastIndexByte(host, ']')
 	}
-	hasPortFuncStr := func(host string) bool {
-		return strings.LastIndexByte(host, ':') >
-			strings.LastIndexByte(host, ']')
-	}
-	if len(hostWithPort) > 0 {
-		if hasPortFuncStr(hostWithPort) {
-			uri.hostWithPort = strings.Repeat(hostWithPort, 1)
-			return nil
-		}
-		return ErrNoHostProvided
-	}
 	if len(uri.host) == 0 {
-		return ErrNoHostProvided
+		return
 	}
 	uri.hostWithPort = string(uri.host)
 	if !hasPortFuncByte(uri.host) {
@@ -300,5 +280,4 @@ func (uri *requestURI) fillHostWithPort(hostWithPort string, isConnect bool) err
 			uri.hostWithPort += ":80"
 		}
 	}
-	return nil
 }
