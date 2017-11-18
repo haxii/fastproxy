@@ -7,7 +7,10 @@ import (
 	"os"
 	"sync"
 
+	"github.com/haxii/fastproxy/bufiopool"
+	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/header"
+	"github.com/haxii/fastproxy/log"
 	"github.com/haxii/fastproxy/proxy"
 )
 
@@ -16,8 +19,16 @@ func main() {
 	if err != nil {
 		return
 	}
-	proxy := proxy.Proxy{}
-	proxy.Serve(ln)
+	proxy := proxy.Proxy{
+		BufioPool:   &bufiopool.Pool{},
+		Client:      client.Client{},
+		ProxyLogger: &log.DefaultLogger{},
+		SnifferPool: &SimpleSnifferPool{},
+		Handler:     proxy.Handler{},
+	}
+	if err := proxy.Serve(ln); err != nil {
+		panic(err)
+	}
 }
 
 //SimpleSnifferPool implements the SnifferPool based on simpleSniffer & sync.Pool

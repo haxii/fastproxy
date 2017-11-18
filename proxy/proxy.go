@@ -31,7 +31,7 @@ type Proxy struct {
 	ProxyLogger log.Logger
 
 	//sniffer pool
-	snifferPool SnifferPool
+	SnifferPool SnifferPool
 
 	//proxy handler
 	Handler Handler
@@ -92,8 +92,13 @@ func (p *Proxy) init() error {
 	if p.BufioPool == nil {
 		return errors.New("nil bufio pool provided")
 	}
-	if p.snifferPool == nil {
+	if p.SnifferPool == nil {
 		return errors.New("nil sniffer pool provided")
+	}
+	if p.Handler.ShouldDecryptHost == nil {
+		p.Handler.ShouldDecryptHost = func(host string) bool {
+			return true
+		}
 	}
 	if p.Handler.MitmCACert == nil {
 		p.Handler.MitmCACert = x509.DefaultMitmCA
@@ -142,7 +147,11 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		ReleaseRequest(req)
 		p.BufioPool.ReleaseReader(reader)
 	}
-	sniffer := p.snifferPool.Get(c.RemoteAddr())
+
+	//make a http sniffer
+	sniffer := p.SnifferPool.Get(c.RemoteAddr())
+	defer p.SnifferPool.Put(sniffer)
+
 	if err := req.InitWithProxyReader(reader, sniffer); err != nil {
 		releaseReqAndReader()
 		if err == header.ErrNoHostProvided {
@@ -190,20 +199,3 @@ func (p *Proxy) writeFastError(w io.Writer, statusCode int, msg string) error {
 		servertime.ServerDate(), len(msg), msg)
 	return err
 }
-
-//NewSimpleProxy make a simple proxy
-/*
-func NewSimpleProxy() *Proxy {
-	l := &log.DefaultLogger{}
-
-	p := &Proxy{
-		handler:            handler{CA: x509.DefaultMitmCA},
-		client:             client.Client{},
-		HTTPSDecryptEnable: func(string) bool { return true },
-		ProxyLogger:        l,
-	}
-	p.client.BufioPool = &p.bufioPool
-	p.handler.bufioPool = &p.bufioPool
-	return p
-}
-*/
