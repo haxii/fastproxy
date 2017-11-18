@@ -34,22 +34,23 @@ type Request struct {
 	//TLS request settings
 	isTLS         bool
 	tlsServerName string
+	hostWithPort  string
 }
 
 // InitWithProxyReader init request with reader
 // then parse the start line of the http request
 func (r *Request) InitWithProxyReader(reader *bufio.Reader, sniffer Sniffer) error {
-	return r.initWithReader(reader, sniffer, false, "", "")
+	return r.initWithReader(reader, sniffer, false, "")
 }
 
 // InitWithTLSClientReader init request with reader supports TLS connections
 func (r *Request) InitWithTLSClientReader(reader *bufio.Reader,
-	sniffer Sniffer, hostWithPort, tlsServerName string) error {
-	return r.initWithReader(reader, sniffer, true, hostWithPort, tlsServerName)
+	sniffer Sniffer, tlsServerName string) error {
+	return r.initWithReader(reader, sniffer, true, tlsServerName)
 }
 
 func (r *Request) initWithReader(reader *bufio.Reader,
-	sniffer Sniffer, isTLS bool, hostWithPort, tlsServerName string) error {
+	sniffer Sniffer, isTLS bool, tlsServerName string) error {
 	if r.reader != nil {
 		return errors.New("request already initialized")
 	}
@@ -62,16 +63,14 @@ func (r *Request) initWithReader(reader *bufio.Reader,
 		return errors.New("empty tls server name provided")
 	}
 
-	if err := r.reqLine.Parse(reader, hostWithPort); err != nil {
-		if err == header.ErrNoHostProvided {
-			return err
-		}
+	if err := r.reqLine.Parse(reader); err != nil {
 		return fmt.Errorf("fail to read start line of request with error %s", err)
 	}
 	r.reader = reader
 	r.sniffer = sniffer
 	r.isTLS = isTLS
 	r.tlsServerName = tlsServerName
+	r.hostWithPort = r.reqLine.HostWithPort()
 	return nil
 }
 
@@ -136,7 +135,12 @@ func (r *Request) IsTLS() bool {
 
 //HostWithPort host/addr target
 func (r *Request) HostWithPort() string {
-	return r.reqLine.HostWithPort()
+	return r.hostWithPort
+}
+
+//SetHostWithPort set host with port hardly
+func (r *Request) SetHostWithPort(hostWithPort string) {
+	r.hostWithPort = hostWithPort
 }
 
 //TLSServerName server name for handshaking

@@ -157,9 +157,11 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	req := AcquireRequest()
 	defer ReleaseRequest(req)
 	if err := req.InitWithTLSClientReader(reader,
-		sniffer, hostWithPort, targetServerName); err != nil {
+		sniffer, targetServerName); err != nil {
 		return errorWrapper("fail to read MITMed https request header", err)
 	}
+	//mandatory for tls request cause non hosts provided in request header
+	req.SetHostWithPort(hostWithPort)
 	//convert fakeServerConn into a http response
 	writer := bufioPool.AcquireWriter(fakeServerConn)
 	defer bufioPool.ReleaseWriter(writer)

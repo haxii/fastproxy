@@ -154,15 +154,15 @@ func (p *Proxy) serveConn(c net.Conn) error {
 
 	if err := req.InitWithProxyReader(reader, sniffer); err != nil {
 		releaseReqAndReader()
-		if err == header.ErrNoHostProvided {
-			err = errors.New("client requests a non-proxy request")
-			//handle http server request
-			if e := p.writeFastError(c, header.StatusBadRequest,
-				"This is a proxy server. Does not respond to non-proxy requests.\n"); e != nil {
-				err = errorWrapper("fail to response non-proxy request ", e)
-			}
-		}
 		return errorWrapper("fail to read http request header", err)
+	}
+	if len(req.HostWithPort()) == 0 {
+		if e := p.writeFastError(c, header.StatusBadRequest,
+			"This is a proxy server. Does not respond to non-proxy requests.\n"); e != nil {
+			return errorWrapper("fail to response non-proxy request ", e)
+		}
+		releaseReqAndReader()
+		return nil
 	}
 
 	//handle http requests
