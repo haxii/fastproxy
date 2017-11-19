@@ -19,12 +19,18 @@ func main() {
 	if err != nil {
 		return
 	}
+	superProxy, _ := proxy.NewSuperProxy("zproxy.luminati.io",
+		22225, false, "lum-customer-bowang-zone-static", "uy2kopvtthos")
 	proxy := proxy.Proxy{
 		BufioPool:   &bufiopool.Pool{},
 		Client:      client.Client{},
 		ProxyLogger: &log.DefaultLogger{},
 		SnifferPool: &SimpleSnifferPool{},
-		Handler:     proxy.Handler{},
+		Handler: proxy.Handler{
+			URLProxy: func(uri []byte) *proxy.SuperProxy {
+				return superProxy
+			},
+		},
 	}
 	if err := proxy.Serve(ln); err != nil {
 		panic(err)
@@ -44,7 +50,7 @@ func (p *SimpleSnifferPool) Get(addr net.Addr) proxy.Sniffer {
 		return sniffer
 	}
 	sniffer := v.(*simpleSniffer)
-	sniffer.clientAddr = ""
+	sniffer.clientAddr = addr.String()
 	return sniffer
 }
 

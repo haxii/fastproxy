@@ -2,34 +2,64 @@ package proxy
 
 import (
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
-	"net/url"
 	"sync"
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/cert"
 	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/transport"
+	"github.com/haxii/fastproxy/util"
 )
 
-//HostFilter host control
-type HostFilter func(host string) bool
+//SuperProxy chaining proxy
+type SuperProxy struct {
+	hostWithPort string
+	proxyHeader  string
+	secure       bool
+}
 
-//URLFilter URL control
-type URLFilter func(uri url.URL) bool
+//NewSuperProxy new a super proxy
+func NewSuperProxy(host string, port uint16, ssl bool,
+	user string, pass string) (*SuperProxy, error) {
+	basicAuth := func(username, password string) string {
+		auth := username + ":" + password
+		return base64.StdEncoding.EncodeToString([]byte(auth))
+	}
+	if len(host) == 0 {
+		return nil, errors.New("nil host provided")
+	}
+	if port == 0 {
+		return nil, errors.New("nil port provided")
+	}
+	s := &SuperProxy{secure: ssl}
+	s.hostWithPort = fmt.Sprintf("%s:%d", host, port)
+	if len(user) > 0 && len(pass) > 0 {
+		s.proxyHeader = "Proxy-Authorization: Basic " +
+			basicAuth(user, pass) + "\r\n"
+	} else {
+		s.proxyHeader = ""
+	}
+	return s, nil
+}
 
 //Handler proxy handler
 type Handler struct {
 	//HTTPSDecryptEnable test if host's https connection should be decrypted
-	ShouldDecryptHost HostFilter
-	//HTTPSDecryptCACert ca.cer used for https decryption
+	ShouldDecryptHost func(host string) bool
+	//URLProxy url specified proxy
+	URLProxy func(uri []byte) *SuperProxy
+	//MitmCACert HTTPSDecryptCACert ca.cer used for https decryption
 	MitmCACert *tls.Certificate
 }
 
 func (h *Handler) handleHTTPConns(c net.Conn, req *Request,
 	bufioPool *bufiopool.Pool, sniffer Sniffer, client *client.Client) error {
+	//set requests proxy
+	req.SetProxy(h.URLProxy(req.reqLine.RawURI()))
 	//convert c into a http response
 	writer := bufioPool.AcquireWriter(c)
 	defer bufioPool.ReleaseWriter(writer)
@@ -39,6 +69,7 @@ func (h *Handler) handleHTTPConns(c net.Conn, req *Request,
 	if err := resp.InitWithWriter(writer, sniffer); err != nil {
 		return err
 	}
+
 	//handle http proxy request
 	if err := client.Do(req, resp); err != nil {
 		return err
@@ -55,13 +86,11 @@ func (h *Handler) handleHTTPSConns(c net.Conn, hostWithPort string,
 }
 
 func (h *Handler) sendHTTPSProxyStatusOK(c net.Conn) (err error) {
-	_, err = c.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
-	return
+	return util.WriteWithValidation(c, []byte("HTTP/1.1 200 OK\r\n\r\n"))
 }
 
 func (h *Handler) sendHTTPSProxyStatusBadGateway(c net.Conn) (err error) {
-	_, err = c.Write([]byte("HTTP/1.1 501 Bad Gateway\r\n\r\n"))
-	return
+	return util.WriteWithValidation(c, []byte("HTTP/1.1 501 Bad Gateway\r\n\r\n"))
 }
 
 //proxy https traffic directly

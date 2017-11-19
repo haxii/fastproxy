@@ -158,7 +158,7 @@ func (l *RequestLine) Parse(reader *bufio.Reader) error {
 	protocolStartIndex := reqURIEndIndex + 1
 	protocol := reqLine[protocolStartIndex:]
 
-	l.fullLine = reqLine
+	l.fullLine = reqLineWithCRLF
 	l.method = method
 	l.protocol = protocol
 
@@ -200,6 +200,11 @@ var (
 	sp   = []byte(" ")
 	crlf = []byte("\r\n")
 )
+
+//RawRequestLine raw request line the proxy got
+func (l *RequestLine) RawRequestLine() []byte {
+	return l.fullLine
+}
 
 //RebuildRequestLine rebuild the request host line for direct http request
 func (l *RequestLine) RebuildRequestLine() []byte {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/haxii/fastproxy/bytebufferpool"
 	"github.com/haxii/fastproxy/header"
+	"github.com/haxii/fastproxy/util"
 )
 
 /*
@@ -30,6 +31,9 @@ type Request struct {
 
 	//sniffer, used for recording the http traffic
 	sniffer Sniffer
+
+	//proxy super proxy used for target connection
+	proxy *SuperProxy
 
 	//TLS request settings
 	isTLS         bool
@@ -74,9 +78,9 @@ func (r *Request) initWithReader(reader *bufio.Reader,
 	return nil
 }
 
-//GetStartLine return the start line of request
-func (r *Request) GetStartLine() header.RequestLine {
-	return r.reqLine
+//SetProxy set super proxy for this request
+func (r *Request) SetProxy(p *SuperProxy) {
+	r.proxy = p
 }
 
 //WriteTo write raw http request body to http client
@@ -87,17 +91,26 @@ func (r *Request) WriteTo(writer *bufio.Writer) error {
 	}
 
 	//rebuild the start line
-	rebuiltReqLine := r.reqLine.RebuildRequestLine()
+	var newReqLine, proxyAuthHeader []byte
+	if r.proxy != nil {
+		newReqLine = r.reqLine.RawRequestLine()
+		if len(r.proxy.proxyHeader) > 0 {
+			//TODO: use []byte array instead
+			proxyAuthHeader = []byte(r.proxy.proxyHeader)
+		}
+	} else {
+		newReqLine = r.reqLine.RebuildRequestLine()
+	}
 
 	//read & write the headers
 	var snifferWriter io.Writer
 	if err := copyStartLineAndHeader(
 		r.reader, writer,
-		rebuiltReqLine, &r.header,
+		newReqLine, proxyAuthHeader, &r.header,
 		func(rawHeader []byte) {
 			snifferWriter = r.sniffer.GetRequestWriter(r.reqLine.RawURI(), r.header)
 			if snifferWriter != nil {
-				snifferWriter.Write(rebuiltReqLine)
+				snifferWriter.Write(newReqLine)
 				snifferWriter.Write(rawHeader)
 			}
 		},
@@ -135,6 +148,9 @@ func (r *Request) IsTLS() bool {
 
 //HostWithPort host/addr target
 func (r *Request) HostWithPort() string {
+	if r.proxy != nil {
+		return r.proxy.hostWithPort
+	}
 	return r.hostWithPort
 }
 
@@ -190,7 +206,7 @@ func (r *Response) ReadFrom(reader *bufio.Reader) error {
 	var snifferWriter io.Writer
 	if err := copyStartLineAndHeader(
 		reader, r.writer,
-		respLineBytes, &r.header,
+		respLineBytes, nil, &r.header,
 		func(rawHeader []byte) {
 			snifferWriter = r.sniffer.GetResponseWriter(r.respLine.GetStatusCode(), r.header)
 			if snifferWriter != nil {
@@ -270,29 +286,24 @@ func ReleaseResponse(resp *Response) {
 }
 
 func copyStartLineAndHeader(src *bufio.Reader, dst *bufio.Writer,
-	startLine []byte, header *header.Header,
+	startLine []byte, extraHeader []byte, header *header.Header,
 	parsedHeaderHandler func(headers []byte)) error {
 	//write start line
-	nw, err := dst.Write(startLine)
-	if err != nil {
+	if err := util.WriteWithValidation(dst, startLine); err != nil {
 		return fmt.Errorf("fail to write start line : %s", err)
-	}
-	if nw != len(startLine) {
-		return errors.New("fail to write start line : short write")
 	}
 
 	//read and write header
 	buffer := bytebufferpool.Get()
 	defer bytebufferpool.Put(buffer)
+	if err := util.WriteWithValidation(buffer, extraHeader); err != nil {
+		return fmt.Errorf("fail to parse extraHeader : %s", err)
+	}
 	if err := header.ParseHeaderFields(src, buffer); err != nil {
 		return fmt.Errorf("fail to parse http headers : %s", err)
 	}
-	nw, err = dst.Write(buffer.B)
-	if err != nil {
+	if err := util.WriteWithValidation(dst, buffer.B); err != nil {
 		return fmt.Errorf("fail to write headers : %s", err)
-	}
-	if nw != len(buffer.B) {
-		return errors.New("fail to write headers : short write")
 	}
 
 	parsedHeaderHandler(buffer.B)
@@ -338,20 +349,17 @@ func copyBodyFixedSize(src *bufio.Reader, dst *bufio.Writer,
 		byteStillNeeded -= _bytesShouldRead
 		bytesShouldRead := int(_bytesShouldRead)
 
-		bytesShouldWrite, err := dst.Write(b[:bytesShouldRead])
-		if err != nil {
+		if err := util.WriteWithValidation(dst, b[:bytesShouldRead]); err != nil {
 			return fmt.Errorf("fail to write request body : %s", err)
 		}
-		if bytesShouldWrite != bytesShouldRead {
-			return io.ErrShortWrite
-		}
+
 		if snifferWriter != nil {
 			snifferWriter.Write(b[:bytesShouldRead])
 		}
 
 		//must discard wrote bytes
-		if _, err := src.Discard(bytesShouldWrite); err != nil {
-			panic(fmt.Sprintf("bufio.Reader.Discard(%d) failed: %s", bytesShouldWrite, err))
+		if _, err := src.Discard(bytesShouldRead); err != nil {
+			panic(fmt.Sprintf("bufio.Reader.Discard(%d) failed: %s", bytesShouldRead, err))
 		}
 
 		//test if still read more bytes
@@ -374,7 +382,7 @@ func copyBodyChunked(src *bufio.Reader, dst *bufio.Writer,
 		if err != nil {
 			return err
 		}
-		if _, err := dst.Write(buffer.B); err != nil {
+		if err := util.WriteWithValidation(dst, buffer.B); err != nil {
 			return err
 		}
 
