@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"crypto/tls"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -15,43 +14,12 @@ import (
 	"github.com/haxii/fastproxy/util"
 )
 
-//SuperProxy chaining proxy
-type SuperProxy struct {
-	hostWithPort string
-	proxyHeader  string
-	secure       bool
-}
-
-//NewSuperProxy new a super proxy
-func NewSuperProxy(host string, port uint16, ssl bool,
-	user string, pass string) (*SuperProxy, error) {
-	basicAuth := func(username, password string) string {
-		auth := username + ":" + password
-		return base64.StdEncoding.EncodeToString([]byte(auth))
-	}
-	if len(host) == 0 {
-		return nil, errors.New("nil host provided")
-	}
-	if port == 0 {
-		return nil, errors.New("nil port provided")
-	}
-	s := &SuperProxy{secure: ssl}
-	s.hostWithPort = fmt.Sprintf("%s:%d", host, port)
-	if len(user) > 0 && len(pass) > 0 {
-		s.proxyHeader = "Proxy-Authorization: Basic " +
-			basicAuth(user, pass) + "\r\n"
-	} else {
-		s.proxyHeader = ""
-	}
-	return s, nil
-}
-
 //Handler proxy handler
 type Handler struct {
 	//HTTPSDecryptEnable test if host's https connection should be decrypted
 	ShouldDecryptHost func(host string) bool
 	//URLProxy url specified proxy
-	URLProxy func(uri []byte) *SuperProxy
+	URLProxy func(uri []byte) *client.SuperProxy
 	//MitmCACert HTTPSDecryptCACert ca.cer used for https decryption
 	MitmCACert *tls.Certificate
 }

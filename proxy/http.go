@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/haxii/fastproxy/bytebufferpool"
+	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/header"
 	"github.com/haxii/fastproxy/util"
 )
@@ -33,7 +34,7 @@ type Request struct {
 	sniffer Sniffer
 
 	//proxy super proxy used for target connection
-	proxy *SuperProxy
+	proxy *client.SuperProxy
 
 	//TLS request settings
 	isTLS         bool
@@ -79,7 +80,7 @@ func (r *Request) initWithReader(reader *bufio.Reader,
 }
 
 //SetProxy set super proxy for this request
-func (r *Request) SetProxy(p *SuperProxy) {
+func (r *Request) SetProxy(p *client.SuperProxy) {
 	r.proxy = p
 }
 

@@ -101,7 +101,7 @@ func (p *Proxy) init() error {
 		}
 	}
 	if p.Handler.URLProxy == nil {
-		p.Handler.URLProxy = func(uri []byte) *SuperProxy {
+		p.Handler.URLProxy = func(uri []byte) *client.SuperProxy {
 			return nil
 		}
 	}
