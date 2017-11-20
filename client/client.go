@@ -27,6 +27,10 @@ type Request interface {
 	//StartLine 1st line of request
 	StartLine() []byte
 
+	//StartLineWithFullURI 1st line of request with full uri,
+	//useful for proxy request
+	StartLineWithFullURI() []byte
+
 	//WriteHeaderTo read header from request, then Write To buffer IO writer
 	WriteHeaderTo(w *bufio.Writer) error
 
@@ -134,14 +138,16 @@ func (c *Client) Do(req Request, resp Response) error {
 	hc := m[string(host)]
 	if hc == nil {
 		hc = &HostClient{
-			Addr:                host,
-			IsTLS:               isTLS,
-			TLSServerName:       req.TLSServerName(),
-			MaxConns:            c.MaxConnsPerHost,
-			MaxIdleConnDuration: c.MaxIdleConnDuration,
-			BufioPool:           c.BufioPool,
-			ReadTimeout:         c.ReadTimeout,
-			WriteTimeout:        c.WriteTimeout,
+			Addr:          host,
+			IsTLS:         isTLS,
+			TLSServerName: req.TLSServerName(),
+			BufioPool:     c.BufioPool,
+			ReadTimeout:   c.ReadTimeout,
+			WriteTimeout:  c.WriteTimeout,
+			ConnManager: HostConnManager{
+				MaxConns:            c.MaxConnsPerHost,
+				MaxIdleConnDuration: c.MaxIdleConnDuration,
+			},
 		}
 		m[string(host)] = hc
 		if len(m) == 1 {
@@ -216,23 +222,6 @@ type HostClient struct {
 	// Optional TLS config.
 	TLSServerName string
 
-	// Maximum number of connections which may be established to all hosts
-	// listed in Addr.
-	//
-	// DefaultMaxConnsPerHost is used if not set.
-	MaxConns int
-
-	// Keep-alive connections are closed after this duration.
-	//
-	// By default connection duration is unlimited.
-	MaxConnDuration time.Duration
-
-	// Idle keep-alive connections are closed after this duration.
-	//
-	// By default idle connections are closed
-	// after DefaultMaxIdleConnDuration.
-	MaxIdleConnDuration time.Duration
-
 	BufioPool *bufiopool.Pool
 
 	// Maximum duration for full response reading (including body).
@@ -245,11 +234,10 @@ type HostClient struct {
 	// By default request write timeout is unlimited.
 	WriteTimeout time.Duration
 
-	lastUseTime uint32
+	//ConnManager manager of the connections
+	ConnManager HostConnManager
 
-	connsLock  sync.Mutex
-	connsCount int
-	conns      []*clientConn
+	lastUseTime uint32
 
 	addrsLock sync.Mutex
 	addrs     []string
@@ -259,8 +247,6 @@ type HostClient struct {
 	tlsConfigMapLock sync.Mutex
 
 	pendingRequests uint64
-
-	connsCleanerRun bool
 }
 
 type clientConn struct {
@@ -346,7 +332,7 @@ func (c *HostClient) PendingRequests() int {
 func (c *HostClient) do(req Request, resp Response) (bool, error) {
 	atomic.StoreUint32(&c.lastUseTime, uint32(servertime.CoarseTimeNow().Unix()-startTimeUnix))
 
-	cc, err := c.acquireConn()
+	cc, err := c.ConnManager.acquireConn(c.dialHostHard)
 	if err != nil {
 		return false, err
 	}
@@ -359,7 +345,7 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 		currentTime := servertime.CoarseTimeNow()
 		if currentTime.Sub(cc.lastWriteDeadlineTime) > (c.WriteTimeout >> 2) {
 			if err = conn.SetWriteDeadline(currentTime.Add(c.WriteTimeout)); err != nil {
-				c.closeConn(cc)
+				c.ConnManager.closeConn(cc)
 				return true, err
 			}
 			cc.lastWriteDeadlineTime = currentTime
@@ -367,7 +353,9 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 	}
 
 	resetConnection := false
-	if c.MaxConnDuration > 0 && time.Since(cc.createdTime) > c.MaxConnDuration && !req.ConnectionClose() {
+	if c.ConnManager.MaxConnDuration > 0 &&
+		time.Since(cc.createdTime) > c.ConnManager.MaxConnDuration &&
+		!req.ConnectionClose() {
 		resetConnection = true
 	}
 
@@ -386,7 +374,7 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 	}
 	if e := writeRequest(); e != nil {
 		c.BufioPool.ReleaseWriter(bw)
-		c.closeConn(cc)
+		c.ConnManager.closeConn(cc)
 		return true, e
 	}
 	err = bw.Flush()
@@ -399,7 +387,7 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 		currentTime := servertime.CoarseTimeNow()
 		if currentTime.Sub(cc.lastReadDeadlineTime) > (c.ReadTimeout >> 2) {
 			if err = conn.SetReadDeadline(currentTime.Add(c.ReadTimeout)); err != nil {
-				c.closeConn(cc)
+				c.ConnManager.closeConn(cc)
 				return true, err
 			}
 			cc.lastReadDeadlineTime = currentTime
@@ -409,18 +397,44 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 	br := c.BufioPool.AcquireReader(conn)
 	if err = resp.ReadFrom(br); err != nil {
 		c.BufioPool.ReleaseReader(br)
-		c.closeConn(cc)
+		c.ConnManager.closeConn(cc)
 		return true, err
 	}
 	c.BufioPool.ReleaseReader(br)
 
 	if resetConnection || req.ConnectionClose() || resp.ConnectionClose() {
-		c.closeConn(cc)
+		c.ConnManager.closeConn(cc)
 	} else {
-		c.releaseConn(cc)
+		c.ConnManager.releaseConn(cc)
 	}
 
 	return false, err
+}
+
+//HostConnManager connection manager for host
+type HostConnManager struct {
+	// Maximum number of connections which may be established to all hosts
+	// listed in Addr.
+	//
+	// DefaultMaxConnsPerHost is used if not set.
+	MaxConns int
+
+	// Keep-alive connections are closed after this duration.
+	//
+	// By default connection duration is unlimited.
+	MaxConnDuration time.Duration
+
+	// Idle keep-alive connections are closed after this duration.
+	//
+	// By default idle connections are closed
+	// after DefaultMaxIdleConnDuration.
+	MaxIdleConnDuration time.Duration
+
+	connsLock  sync.Mutex
+	connsCount int
+	conns      []*clientConn
+
+	connsCleanerRun bool
 }
 
 var (
@@ -445,7 +459,7 @@ var (
 		"Make sure the server returns 'Connection: close' response header before closing the connection")
 )
 
-func (c *HostClient) acquireConn() (*clientConn, error) {
+func (c *HostConnManager) acquireConn(dialer func() (net.Conn, error)) (*clientConn, error) {
 	var cc *clientConn
 	createConn := false
 	startCleaner := false
@@ -485,7 +499,7 @@ func (c *HostClient) acquireConn() (*clientConn, error) {
 		go c.connsCleaner()
 	}
 
-	conn, err := c.dialHostHard()
+	conn, err := dialer()
 	if err != nil {
 		c.decConnsCount()
 		return nil, err
@@ -495,7 +509,7 @@ func (c *HostClient) acquireConn() (*clientConn, error) {
 	return cc, nil
 }
 
-func (c *HostClient) connsCleaner() {
+func (c *HostConnManager) connsCleaner() {
 	var (
 		scratch             []*clientConn
 		maxIdleConnDuration = c.MaxIdleConnDuration
@@ -545,17 +559,19 @@ func (c *HostClient) connsCleaner() {
 	}
 }
 
-func (c *HostClient) closeConn(cc *clientConn) {
+func (c *HostConnManager) closeConn(cc *clientConn) {
 	c.decConnsCount()
 	cc.c.Close()
 	releaseClientConn(cc)
 }
 
-func (c *HostClient) decConnsCount() {
+func (c *HostConnManager) decConnsCount() {
 	c.connsLock.Lock()
 	c.connsCount--
 	c.connsLock.Unlock()
 }
+
+var clientConnPool sync.Pool
 
 func acquireClientConn(conn net.Conn) *clientConn {
 	v := clientConnPool.Get()
@@ -573,24 +589,28 @@ func releaseClientConn(cc *clientConn) {
 	clientConnPool.Put(cc)
 }
 
-var clientConnPool sync.Pool
-
-func (c *HostClient) releaseConn(cc *clientConn) {
-	cc.lastUseTime = servertime.CoarseTimeNow()
-	c.connsLock.Lock()
-	c.conns = append(c.conns, cc)
-	c.connsLock.Unlock()
+func (c *HostConnManager) isConnClosedByRemote(conn net.Conn, delay time.Duration) bool {
+	one := []byte{'1'}
+	conn.SetReadDeadline(time.Now().Add(delay))
+	if _, err := conn.Read(one); err == io.EOF {
+		return true
+	}
+	var zero time.Time
+	conn.SetReadDeadline(zero)
+	return false
 }
 
-func tlsServerName(addr string) string {
-	if !strings.Contains(addr, ":") {
-		return addr
-	}
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return "*"
-	}
-	return host
+func (c *HostConnManager) releaseConn(cc *clientConn) {
+	go func() { //release the connection in new go routine cause of the delay
+		if c.isConnClosedByRemote(cc.c, 10*time.Microsecond) {
+			c.closeConn(cc)
+			return
+		}
+		cc.lastUseTime = servertime.CoarseTimeNow()
+		c.connsLock.Lock()
+		c.conns = append(c.conns, cc)
+		c.connsLock.Unlock()
+	}()
 }
 
 func (c *HostClient) nextAddr() string {

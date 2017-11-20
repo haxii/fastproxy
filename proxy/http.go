@@ -108,6 +108,12 @@ func (r *Request) StartLine() []byte {
 	return r.reqLine.RebuildRequestLine()
 }
 
+//StartLineWithFullURI startline of the http request with full uri
+//implemented client's request interface
+func (r *Request) StartLineWithFullURI() []byte {
+	return r.reqLine.RawRequestLine()
+}
+
 //WriteHeaderTo write raw http request header to http client
 //implemented client's request interface
 func (r *Request) WriteHeaderTo(writer *bufio.Writer) error {
