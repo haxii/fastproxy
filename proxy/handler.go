@@ -3,33 +3,30 @@ package proxy
 import (
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"net"
-	"net/url"
 	"sync"
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/cert"
 	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/transport"
+	"github.com/haxii/fastproxy/util"
 )
-
-//HostFilter host control
-type HostFilter func(host string) bool
-
-//URLFilter URL control
-type URLFilter func(uri url.URL) bool
 
 //Handler proxy handler
 type Handler struct {
 	//HTTPSDecryptEnable test if host's https connection should be decrypted
-	ShouldDecryptHost HostFilter
-	//HTTPSDecryptCACert ca.cer used for https decryption
+	ShouldDecryptHost func(host string) bool
+	//URLProxy url specified proxy
+	URLProxy func(uri []byte) *client.SuperProxy
+	//MitmCACert HTTPSDecryptCACert ca.cer used for https decryption
 	MitmCACert *tls.Certificate
 }
 
 func (h *Handler) handleHTTPConns(c net.Conn, req *Request,
 	bufioPool *bufiopool.Pool, sniffer Sniffer, client *client.Client) error {
+	//set requests proxy
+	req.SetProxy(h.URLProxy(req.reqLine.RawURI()))
 	//convert c into a http response
 	writer := bufioPool.AcquireWriter(c)
 	defer bufioPool.ReleaseWriter(writer)
@@ -39,6 +36,7 @@ func (h *Handler) handleHTTPConns(c net.Conn, req *Request,
 	if err := resp.InitWithWriter(writer, sniffer); err != nil {
 		return err
 	}
+
 	//handle http proxy request
 	if err := client.Do(req, resp); err != nil {
 		return err
@@ -55,31 +53,26 @@ func (h *Handler) handleHTTPSConns(c net.Conn, hostWithPort string,
 }
 
 func (h *Handler) sendHTTPSProxyStatusOK(c net.Conn) (err error) {
-	_, err = c.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
-	return
+	return util.WriteWithValidation(c, []byte("HTTP/1.1 200 OK\r\n\r\n"))
 }
 
 func (h *Handler) sendHTTPSProxyStatusBadGateway(c net.Conn) (err error) {
-	_, err = c.Write([]byte("HTTP/1.1 501 Bad Gateway\r\n\r\n"))
-	return
+	return util.WriteWithValidation(c, []byte("HTTP/1.1 501 Bad Gateway\r\n\r\n"))
 }
 
 //proxy https traffic directly
 func (h *Handler) tunnelConnect(conn net.Conn, host string) error {
-	errorWrapper := func(msg string, err error) error {
-		return fmt.Errorf("%s: %s", msg, err)
-	}
 	//acquire server conn to target host
 	tunnelConn, err := transport.Dial(host)
 	if err != nil {
 		h.sendHTTPSProxyStatusBadGateway(conn)
-		return errorWrapper("error occurred when dialing to host"+host, err)
+		return util.ErrWrapper(err, "error occurred when dialing to host "+host)
 	}
 	defer tunnelConn.Close()
 
 	//handshake with client
 	if err := h.sendHTTPSProxyStatusOK(conn); err != nil {
-		return errorWrapper("error occurred when handshaking with client", err)
+		return util.ErrWrapper(err, "error occurred when handshaking with client")
 	}
 	var wg sync.WaitGroup
 	var err1, err2 error
@@ -94,10 +87,10 @@ func (h *Handler) tunnelConnect(conn net.Conn, host string) error {
 	}(err2)
 	wg.Wait()
 	if err1 != nil {
-		return errorWrapper("error occurred when tunneling client request to client", err1)
+		return util.ErrWrapper(err1, "error occurred when tunneling client request to client")
 	}
 	if err2 != nil {
-		return errorWrapper("error occurred when tunneling client response to client", err2)
+		return util.ErrWrapper(err2, "error occurred when tunneling client response to client")
 	}
 	return nil
 }
@@ -105,9 +98,6 @@ func (h *Handler) tunnelConnect(conn net.Conn, host string) error {
 //proxy the https connetions by MITM
 func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	bufioPool *bufiopool.Pool, sniffer Sniffer, client *client.Client) error {
-	errorWrapper := func(msg string, err error) error {
-		return fmt.Errorf("%s: %s", msg, err)
-	}
 	//fakeTargetServer means a fake target server for remote client
 	//make a connection with client by creating a fake target server
 	//
@@ -115,7 +105,7 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	fakeTargetServerCert, err := h.signFakeCert(h.MitmCACert, hostWithPort)
 	if err != nil {
 		h.sendHTTPSProxyStatusBadGateway(c)
-		return errorWrapper("error occurred when signing fake certificate for client", err)
+		return util.ErrWrapper(err, "fail to sign fake certificate for client")
 	}
 	//make the target server's config with this fake certificate
 	targetServerName := ""
@@ -130,13 +120,13 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	handShake := func() (*tls.Conn, error) {
 		//make the proxy handshake
 		if err := h.sendHTTPSProxyStatusOK(c); err != nil {
-			return nil, fmt.Errorf("proxy handshaking error: %s", err)
+			return nil, util.ErrWrapper(err, "proxy fails to handshake with client")
 		}
 		//make the tls handshake in https
 		conn := tls.Server(c, fakeTargetServerTLSConfig)
 		if err := conn.Handshake(); err != nil {
 			conn.Close()
-			return nil, fmt.Errorf("fake server tls handshaking error: %s", err)
+			return nil, util.ErrWrapper(err, "fake tls server fails to handshake with client")
 		}
 		return conn, nil
 	}
@@ -145,7 +135,7 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 		err = errors.New("client didn't provide a target server name")
 	}
 	if err != nil {
-		return errorWrapper("error occurred when handshaking with client", err)
+		return err
 	}
 	defer fakeServerConn.Close()
 
@@ -158,10 +148,13 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	defer ReleaseRequest(req)
 	if err := req.InitWithTLSClientReader(reader,
 		sniffer, targetServerName); err != nil {
-		return errorWrapper("fail to read MITMed https request header", err)
+		return util.ErrWrapper(err, "fail to read fake tls server request header")
 	}
 	//mandatory for tls request cause non hosts provided in request header
 	req.SetHostWithPort(hostWithPort)
+	//set requests proxy
+	req.SetProxy(h.URLProxy(req.reqLine.RawURI()))
+
 	//convert fakeServerConn into a http response
 	writer := bufioPool.AcquireWriter(fakeServerConn)
 	defer bufioPool.ReleaseWriter(writer)
@@ -169,11 +162,11 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	resp := AcquireResponse()
 	defer ReleaseResponse(resp)
 	if err := resp.InitWithWriter(writer, sniffer); err != nil {
-		return errorWrapper("fail to init MITMed https response header", err)
+		return util.ErrWrapper(err, "fail to int fake tls client")
 	}
 	//handle fake https client request
 	if e := client.Do(req, resp); e != nil {
-		return errorWrapper("fail to make MITMed https client request ", e)
+		return util.ErrWrapper(e, "fail to make fake tls client request")
 	}
 	return nil
 }
@@ -181,11 +174,11 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 func (h *Handler) signFakeCert(mitmCACert *tls.Certificate, host string) (*tls.Certificate, error) {
 	domain, _, err := net.SplitHostPort(host)
 	if err != nil {
-		return nil, fmt.Errorf("get host's %s domain with error %s", host, err)
+		return nil, err
 	}
 	cert, err2 := cert.GenCert(mitmCACert, []string{domain})
 	if err2 != nil {
-		return nil, fmt.Errorf("sign %s fake cert with error %s", domain, err2)
+		return nil, err2
 	}
 	return cert, nil
 }

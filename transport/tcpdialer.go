@@ -12,7 +12,7 @@ import (
 	"github.com/haxii/fastproxy/servertime"
 )
 
-// dialFunc must establish connection to addr.
+// DialFunc must establish connection to addr.
 //
 //
 // TCP address passed to dialFunc always contains host and port.
@@ -21,7 +21,7 @@ import (
 //   - foobar.com:80
 //   - foobar.com:443
 //   - foobar.com:8080
-type dialFunc func(addr string) (net.Conn, error)
+type DialFunc func(addr string) (net.Conn, error)
 
 // dial dials the given TCP addr using tcp4.
 //
@@ -60,7 +60,7 @@ func dial(addr string, isTLS bool, tlsConfig *tls.Config) (net.Conn, error) {
 	return conn, nil
 }
 
-func getDialer(timeout time.Duration, dualStack bool) dialFunc {
+func getDialer(timeout time.Duration, dualStack bool) DialFunc {
 	if timeout <= 0 {
 		timeout = DefaultDialTimeout
 	}
@@ -89,8 +89,8 @@ var (
 	dialerStd       = &tcpDialer{}
 	dialerDualStack = &tcpDialer{DualStack: true}
 
-	dialMap          = make(map[int]dialFunc)
-	dialDualStackMap = make(map[int]dialFunc)
+	dialMap          = make(map[int]DialFunc)
+	dialDualStackMap = make(map[int]DialFunc)
 	dialMapLock      sync.Mutex
 )
 
@@ -114,7 +114,7 @@ var ErrDialTimeout = errors.New("dialing to the given TCP address timed out")
 // for establishing TCP connections.
 const DefaultDialTimeout = 5 * time.Second
 
-func (d *tcpDialer) newDial(timeout time.Duration) dialFunc {
+func (d *tcpDialer) newDial(timeout time.Duration) DialFunc {
 	d.once.Do(func() {
 		d.concurrencyCh = make(chan struct{}, maxDialConcurrency)
 		d.tcpAddrsMap = make(map[string]*tcpAddrEntry)
