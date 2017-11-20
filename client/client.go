@@ -16,12 +16,6 @@ import (
 	"github.com/haxii/fastproxy/transport"
 )
 
-//TODO: should I give each HostClient a bufio pool rather than share one?
-
-// DefaultDialTimeout is timeout used by Dial and DialDualStack
-// for establishing TCP connections.
-const DefaultDialTimeout = 3 * time.Second
-
 // ErrConnectionClosed may be returned from client methods if the server
 // closes connection before returning the first response byte.
 //
@@ -104,10 +98,43 @@ type Client struct {
 	// By default request write timeout is unlimited.
 	WriteTimeout time.Duration
 
-	mLock sync.Mutex
-	m     map[string]*HostClient
-	ms    map[string]*HostClient
+	hostClientsLock sync.Mutex
+	//refers to all possibilities of requestType i.e. isTLS x isProxy
+	hostClientsList [4]hostClients
 }
+
+type hostClients map[string]*HostClient
+
+type requestType int
+
+func (r *requestType) Value() int {
+	return int(*r)
+}
+
+func parseRequestType(viaProxy, isTLS bool) requestType {
+	var rt requestType
+	if !viaProxy {
+		if !isTLS {
+			rt = requestDirectHTTP
+		} else {
+			rt = requestDirectHTTPS
+		}
+	} else {
+		if !isTLS {
+			rt = requestProxyHTTP
+		} else {
+			rt = requestProxyHTTPS
+		}
+	}
+	return rt
+}
+
+const (
+	requestDirectHTTP requestType = iota
+	requestDirectHTTPS
+	requestProxyHTTP
+	requestProxyHTTPS
+)
 
 // Do performs the given http request and fills the given http response.
 //
@@ -125,49 +152,53 @@ func (c *Client) Do(req Request, resp Response) error {
 	if c.BufioPool == nil {
 		return errors.New("nil buffer io pool")
 	}
+	//fetch request type
+	viaProxy := (req.GetProxy() != nil)
+	reqType := parseRequestType(viaProxy, req.IsTLS())
 
-	host := req.HostWithPort()
-
-	isTLS := req.IsTLS()
+	//get target dialing host with port
+	hostWithPort := ""
+	if viaProxy {
+		hostWithPort = req.GetProxy().hostWithPort
+		if len(hostWithPort) == 0 {
+			return errors.New("nil superproxy proxy host provided")
+		}
+	} else {
+		hostWithPort = req.HostWithPort()
+		if len(hostWithPort) == 0 {
+			return errors.New("nil target host provided")
+		}
+	}
 
 	startCleaner := false
 
-	c.mLock.Lock()
-	m := c.m
-	if isTLS {
-		m = c.ms
+	//add or get a host client
+	c.hostClientsLock.Lock()
+	if c.hostClientsList[reqType.Value()] == nil {
+		c.hostClientsList[reqType.Value()] =
+			make(map[string]*HostClient)
 	}
-	if m == nil {
-		m = make(map[string]*HostClient)
-		if isTLS {
-			c.ms = m
-		} else {
-			c.m = m
-		}
-	}
-	hc := m[string(host)]
+	hostClients := c.hostClientsList[reqType.Value()]
+	hc := c.hostClientsList[reqType.Value()][hostWithPort]
 	if hc == nil {
 		hc = &HostClient{
-			Addr:          host,
-			IsTLS:         isTLS,
-			TLSServerName: req.TLSServerName(),
-			BufioPool:     c.BufioPool,
-			ReadTimeout:   c.ReadTimeout,
-			WriteTimeout:  c.WriteTimeout,
+			BufioPool:    c.BufioPool,
+			ReadTimeout:  c.ReadTimeout,
+			WriteTimeout: c.WriteTimeout,
 			ConnManager: transport.ConnManager{
 				MaxConns:            c.MaxConnsPerHost,
 				MaxIdleConnDuration: c.MaxIdleConnDuration,
 			},
 		}
-		m[string(host)] = hc
-		if len(m) == 1 {
+		hostClients[hostWithPort] = hc
+		if len(hostClients) == 1 {
 			startCleaner = true
 		}
 	}
-	c.mLock.Unlock()
+	c.hostClientsLock.Unlock()
 
 	if startCleaner {
-		go c.mCleaner(m)
+		go c.mCleaner(hostClients)
 	}
 
 	return hc.Do(req, resp)
@@ -177,7 +208,7 @@ func (c *Client) mCleaner(m map[string]*HostClient) {
 	mustStop := false
 	for {
 		t := time.Now()
-		c.mLock.Lock()
+		c.hostClientsLock.Lock()
 		for k, v := range m {
 			if t.Sub(v.LastUseTime()) > time.Minute {
 				delete(m, k)
@@ -186,7 +217,7 @@ func (c *Client) mCleaner(m map[string]*HostClient) {
 		if len(m) == 0 {
 			mustStop = true
 		}
-		c.mLock.Unlock()
+		c.hostClientsLock.Unlock()
 
 		if mustStop {
 			break
@@ -206,23 +237,11 @@ func (c *Client) mCleaner(m map[string]*HostClient) {
 //
 // It is safe calling HostClient methods from concurrently running goroutines.
 type HostClient struct {
-	// Comma-separated list of upstream HTTP server host addresses,
-	// which are passed to Dial in a round-robin manner.
-	//
-	// Each address may contain port if default dialer is used.
-	// For example,
-	//
-	//    - foobar.com:80
-	//    - foobar.com:443
-	//    - foobar.com:8080
-	Addr string
+	// cached TLS server config
+	tlsServerConfig *tls.Config
 
-	// Whether to use TLS (aka SSL or HTTPS) for host connections.
-	IsTLS bool
-
-	// Optional TLS config.
-	TLSServerName string
-
+	//TODO: should I give each HostClient a bufio pool rather than share one?
+	// BufioPool buffer connection reader & writer pool
 	BufioPool *bufiopool.Pool
 
 	// Maximum duration for full response reading (including body).
@@ -239,13 +258,6 @@ type HostClient struct {
 	ConnManager transport.ConnManager
 
 	lastUseTime uint32
-
-	addrsLock sync.Mutex
-	addrs     []string
-	addrIdx   uint32
-
-	tlsConfigMap     map[string]*tls.Config
-	tlsConfigMapLock sync.Mutex
 
 	pendingRequests uint64
 }
@@ -321,14 +333,51 @@ func (c *HostClient) PendingRequests() int {
 }
 
 func (c *HostClient) do(req Request, resp Response) (bool, error) {
+	//set hostclient's last used time
 	atomic.StoreUint32(&c.lastUseTime, uint32(servertime.CoarseTimeNow().Unix()-startTimeUnix))
 
-	cc, err := c.ConnManager.AcquireConn(c.dialHostHard)
+	//analysis request type
+	viaProxy := (req.GetProxy() != nil)
+	reqType := parseRequestType(viaProxy, req.IsTLS())
+
+	//set https tls config
+	if c.tlsServerConfig == nil {
+		if reqType == requestDirectHTTPS {
+			c.tlsServerConfig = newClientTLSConfig(req.HostWithPort(), req.TLSServerName())
+		} else if reqType == requestProxyHTTPS {
+			c.tlsServerConfig = &tls.Config{
+				ClientSessionCache: tls.NewLRUClientSessionCache(0),
+				InsecureSkipVerify: true, //TODO: cache every host config in more safe way in a concurrent map
+			}
+		}
+	}
+
+	//get the connection
+	dialer := func() (net.Conn, error) {
+		switch reqType {
+		case requestDirectHTTP:
+			return transport.Dial(req.HostWithPort())
+		case requestDirectHTTPS:
+			return transport.DialTLS(req.HostWithPort(), c.tlsServerConfig)
+		case requestProxyHTTP:
+			return transport.Dial(req.GetProxy().hostWithPort)
+		case requestProxyHTTPS:
+			tunnelConn, err := req.GetProxy().MakeHTTPTunnel(c.BufioPool, req.HostWithPort())
+			if err != nil {
+				return nil, err
+			}
+			conn := tls.Client(tunnelConn, c.tlsServerConfig)
+			return conn, nil
+		}
+		return nil, errors.New("request type not implemented")
+	}
+	cc, err := c.ConnManager.AcquireConn(dialer)
 	if err != nil {
 		return false, err
 	}
 	conn := cc.Get()
 
+	//pre-setup
 	if c.WriteTimeout > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
@@ -342,7 +391,6 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 			cc.LastWriteDeadlineTime = currentTime
 		}
 	}
-
 	resetConnection := false
 	if c.ConnManager.MaxConnDuration > 0 &&
 		time.Since(cc.CreatedTime()) > c.ConnManager.MaxConnDuration &&
@@ -350,17 +398,36 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 		resetConnection = true
 	}
 
+	//write request
 	bw := c.BufioPool.AcquireWriter(conn)
 	writeRequest := func() error {
-		reqLine := req.StartLine()
+		//start line
+		var reqLine []byte
+		if reqType == requestProxyHTTP {
+			reqLine = req.StartLineWithFullURI()
+		} else {
+			reqLine = req.StartLine()
+		}
 		if nw, err := bw.Write(reqLine); err != nil {
 			return err
 		} else if nw != len(reqLine) {
 			return io.ErrShortWrite
 		}
+		//auth header if needed
+		if reqType == requestProxyHTTP {
+			if authHeader := req.GetProxy().authHeaderWithCRLF; authHeader != nil {
+				if nw, err := bw.Write(authHeader); err != nil {
+					return err
+				} else if nw != len(authHeader) {
+					return io.ErrShortWrite
+				}
+			}
+		}
+		//other request headers
 		if err := req.WriteHeaderTo(bw); err != nil {
 			return err
 		}
+		//request body
 		return req.WriteBodyTo(bw)
 	}
 	if e := writeRequest(); e != nil {
@@ -371,6 +438,7 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 	err = bw.Flush()
 	c.BufioPool.ReleaseWriter(bw)
 
+	//get response
 	if c.ReadTimeout > 0 {
 		// Optimization: update read deadline only if more than 25%
 		// of the last read deadline exceeded.
@@ -384,7 +452,6 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 			cc.LastReadDeadlineTime = currentTime
 		}
 	}
-
 	br := c.BufioPool.AcquireReader(conn)
 	if err = resp.ReadFrom(br); err != nil {
 		c.BufioPool.ReleaseReader(br)
@@ -393,81 +460,14 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 	}
 	c.BufioPool.ReleaseReader(br)
 
-	if resetConnection || req.ConnectionClose() || resp.ConnectionClose() {
+	//release or close connection
+	if viaProxy || resetConnection || req.ConnectionClose() || resp.ConnectionClose() {
 		c.ConnManager.CloseConn(cc)
 	} else {
 		c.ConnManager.ReleaseConn(cc)
 	}
 
 	return false, err
-}
-
-func (c *HostClient) nextAddr() string {
-	c.addrsLock.Lock()
-	if c.addrs == nil {
-		c.addrs = strings.Split(c.Addr, ",")
-	}
-	addr := c.addrs[0]
-	if len(c.addrs) > 1 {
-		addr = c.addrs[c.addrIdx%uint32(len(c.addrs))]
-		c.addrIdx++
-	}
-	c.addrsLock.Unlock()
-	return addr
-}
-
-func (c *HostClient) dialHostHard() (conn net.Conn, err error) {
-	// attempt to dial all the available hosts before giving up.
-	c.addrsLock.Lock()
-	n := len(c.addrs)
-	c.addrsLock.Unlock()
-
-	if n == 0 {
-		// It looks like c.addrs isn't initialized yet.
-		n = 1
-	}
-
-	timeout := c.ReadTimeout + c.WriteTimeout
-	if timeout <= 0 {
-		timeout = DefaultDialTimeout
-	}
-	deadline := time.Now().Add(timeout)
-	for n > 0 {
-		addr := c.nextAddr()
-		tlsConfig := c.cachedTLSConfig(addr)
-		if c.IsTLS {
-			conn, err = transport.DialTLS(addr, tlsConfig)
-		} else {
-			conn, err = transport.Dial(addr)
-		}
-		if err == nil {
-			return conn, nil
-		}
-		if time.Since(deadline) >= 0 {
-			break
-		}
-		n--
-	}
-	return nil, err
-}
-
-func (c *HostClient) cachedTLSConfig(addr string) *tls.Config {
-	if !c.IsTLS {
-		return nil
-	}
-
-	c.tlsConfigMapLock.Lock()
-	if c.tlsConfigMap == nil {
-		c.tlsConfigMap = make(map[string]*tls.Config)
-	}
-	cfg := c.tlsConfigMap[addr]
-	if cfg == nil {
-		cfg = newClientTLSConfig(addr, c.TLSServerName)
-		c.tlsConfigMap[addr] = cfg
-	}
-	c.tlsConfigMapLock.Unlock()
-
-	return cfg
 }
 
 func newClientTLSConfig(host, serverName string) *tls.Config {

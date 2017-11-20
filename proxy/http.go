@@ -82,7 +82,7 @@ func (r *Request) initWithReader(reader *bufio.Reader,
 	}
 
 	if err := r.reqLine.Parse(reader); err != nil {
-		return fmt.Errorf("fail to read start line of request with error %s", err)
+		return util.ErrWrapper(err, "fail to read start line of request")
 	}
 	r.reader = reader
 	r.sniffer = sniffer
@@ -217,14 +217,14 @@ func (r *Response) InitWithWriter(writer *bufio.Writer, sniffer Sniffer) error {
 func (r *Response) ReadFrom(reader *bufio.Reader) error {
 	//write back the start line to writer(i.e. net/connection)
 	if err := r.respLine.Parse(reader); err != nil {
-		return fmt.Errorf("fail to read start line of response with error %s", err)
+		return util.ErrWrapper(err, "fail to read start line of response")
 	}
 
 	//rebuild  the start line
 	respLineBytes := r.respLine.GetResponseLine()
 	//write start line
 	if err := util.WriteWithValidation(r.writer, respLineBytes); err != nil {
-		return fmt.Errorf("fail to write start line : %s", err)
+		return util.ErrWrapper(err, "fail to write start line of response")
 	}
 
 	//read & write the headers
@@ -308,10 +308,10 @@ func copyHeader(src *bufio.Reader, dst *bufio.Writer,
 	buffer := bytebufferpool.Get()
 	defer bytebufferpool.Put(buffer)
 	if err := header.ParseHeaderFields(src, buffer); err != nil {
-		return fmt.Errorf("fail to parse http headers : %s", err)
+		return util.ErrWrapper(err, "fail to parse http headers")
 	}
 	if err := util.WriteWithValidation(dst, buffer.B); err != nil {
-		return fmt.Errorf("fail to write headers : %s", err)
+		return util.ErrWrapper(err, "fail to write http headers")
 	}
 
 	parsedHeaderHandler(buffer.B)
@@ -344,10 +344,7 @@ func copyBodyFixedSize(src *bufio.Reader, dst *bufio.Writer,
 		}
 
 		//must read buffed bytes
-		b, err := src.Peek(src.Buffered())
-		if len(b) == 0 || err != nil {
-			panic(fmt.Sprintf("bufio.Reader.Peek() returned unexpected data (%q, %v)", b, err))
-		}
+		b := util.PeekBuffered(src)
 
 		//write read bytes into dst
 		_bytesShouldRead := int64(len(b))
@@ -358,16 +355,16 @@ func copyBodyFixedSize(src *bufio.Reader, dst *bufio.Writer,
 		bytesShouldRead := int(_bytesShouldRead)
 
 		if err := util.WriteWithValidation(dst, b[:bytesShouldRead]); err != nil {
-			return fmt.Errorf("fail to write request body : %s", err)
+			return util.ErrWrapper(err, "fail to write request body")
 		}
 
 		if snifferWriter != nil {
 			snifferWriter.Write(b[:bytesShouldRead])
 		}
 
-		//must discard wrote bytes
+		//discard wrote bytes
 		if _, err := src.Discard(bytesShouldRead); err != nil {
-			panic(fmt.Sprintf("bufio.Reader.Discard(%d) failed: %s", bytesShouldRead, err))
+			return util.ErrWrapper(err, "fail to write request body")
 		}
 
 		//test if still read more bytes

@@ -10,41 +10,16 @@ import (
 	"github.com/haxii/fastproxy/servertime"
 )
 
-// DefaultMaxConnsPerHost is the maximum number of concurrent connections
-// http client may establish per host by default (i.e. if
-// Client.MaxConnsPerHost isn't set).
-const DefaultMaxConnsPerHost = 512
+const (
+	// DefaultMaxConnsPerHost is the maximum number of concurrent connections
+	// http client may establish per host by default (i.e. if
+	// Client.MaxConnsPerHost isn't set).
+	DefaultMaxConnsPerHost = 512
 
-// DefaultMaxIdleConnDuration is the default duration before idle keep-alive
-// connection is closed.
-const DefaultMaxIdleConnDuration = 10 * time.Second
-
-//Conn wrapper of net.conn as a manager
-type Conn struct {
-	c net.Conn
-
-	createdTime time.Time
-	lastUseTime time.Time
-
-	//last read and write deadline time
-	LastReadDeadlineTime  time.Time
-	LastWriteDeadlineTime time.Time
-}
-
-//Get get the net conn in cc
-func (cc *Conn) Get() net.Conn {
-	return cc.c
-}
-
-//CreatedTime get the net conn created time
-func (cc *Conn) CreatedTime() time.Time {
-	return cc.createdTime
-}
-
-//LastUseTime get the net conn last use time
-func (cc *Conn) LastUseTime() time.Time {
-	return cc.lastUseTime
-}
+	// DefaultMaxIdleConnDuration is the default duration before idle keep-alive
+	// connection is closed.
+	DefaultMaxIdleConnDuration = 10 * time.Second
+)
 
 //ConnManager manages a poll of connections
 type ConnManager struct {
@@ -239,4 +214,31 @@ func acquireClientConn(conn net.Conn) *Conn {
 func releaseClientConn(cc *Conn) {
 	cc.c = nil
 	connPool.Put(cc)
+}
+
+//Conn wrapper of net.conn as a manager
+type Conn struct {
+	c net.Conn
+
+	createdTime time.Time
+	lastUseTime time.Time
+
+	//last read and write deadline time
+	LastReadDeadlineTime  time.Time
+	LastWriteDeadlineTime time.Time
+}
+
+//Get get the net conn in cc
+func (cc *Conn) Get() net.Conn {
+	return cc.c
+}
+
+//CreatedTime get the net conn created time
+func (cc *Conn) CreatedTime() time.Time {
+	return cc.createdTime
+}
+
+//LastUseTime get the net conn last use time
+func (cc *Conn) LastUseTime() time.Time {
+	return cc.lastUseTime
 }

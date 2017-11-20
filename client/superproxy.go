@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/bytebufferpool"
@@ -22,6 +23,7 @@ type SuperProxy struct {
 	authHeaderWithCRLF []byte
 	secure             bool
 	tlsConfig          *tls.Config
+	connManager        transport.ConnManager
 }
 
 //NewSuperProxy new a super proxy
@@ -37,7 +39,13 @@ func NewSuperProxy(host string, port uint16, ssl bool,
 	if port == 0 {
 		return nil, errors.New("nil port provided")
 	}
-	s := &SuperProxy{secure: ssl}
+	s := &SuperProxy{
+		secure: ssl,
+		connManager: transport.ConnManager{
+			MaxConns:            1024,
+			MaxIdleConnDuration: 10 * time.Second,
+		},
+	}
 	if ssl {
 		s.tlsConfig = newClientTLSConfig(host, "")
 	}
@@ -54,32 +62,31 @@ func NewSuperProxy(host string, port uint16, ssl bool,
 	return s, nil
 }
 
-//DialFunc return a dial func using super proxy
-func (p *SuperProxy) DialFunc(pool *bufiopool.Pool) transport.DialFunc {
-	return func(hostWithPort string) (net.Conn, error) {
-		var (
-			c   net.Conn
-			err error
-		)
-		if p.secure {
-			c, err = transport.Dial(p.hostWithPort)
-		} else {
-			c, err = transport.DialTLS(p.hostWithPort, p.tlsConfig)
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		if err := p.writeProxyReq(c, []byte(hostWithPort)); err != nil {
-			c.Close()
-			return nil, err
-		}
-		if err = p.readProxyResp(c, pool); err != nil {
-			c.Close()
-			return nil, err
-		}
-		return c, nil
+//MakeHTTPTunnel make a http tunnel by making a connect request to proxy
+func (p *SuperProxy) MakeHTTPTunnel(pool *bufiopool.Pool,
+	hostWithPort string) (net.Conn, error) {
+	var (
+		c   net.Conn
+		err error
+	)
+	if p.secure {
+		c, err = transport.DialTLS(p.hostWithPort, p.tlsConfig)
+	} else {
+		c, err = transport.Dial(p.hostWithPort)
 	}
+	if err != nil {
+		return nil, err
+	}
+
+	if err := p.writeProxyReq(c, []byte(hostWithPort)); err != nil {
+		c.Close()
+		return nil, err
+	}
+	if err = p.readProxyResp(c, pool); err != nil {
+		c.Close()
+		return nil, err
+	}
+	return c, nil
 }
 
 var (
@@ -140,10 +147,7 @@ func (p *SuperProxy) readProxyResp(c net.Conn, pool *bufiopool.Pool) error {
 			return io.EOF
 		}
 		//must read buffed bytes
-		b, err := r.Peek(r.Buffered())
-		if len(b) == 0 || err != nil {
-			return fmt.Errorf("bufio.Reader.Peek() returned unexpected data (%q, %v)", b, err)
-		}
+		b := util.PeekBuffered(r)
 		//read and discard every header line
 		m := 0
 		for !headerParsed {
@@ -167,7 +171,7 @@ func (p *SuperProxy) readProxyResp(c net.Conn, pool *bufiopool.Pool) error {
 				}
 			}
 			if _, err := r.Discard(lineLen); err != nil {
-				return fmt.Errorf("bufio.Reader.Discard(%d) failed: %s", lineLen, err)
+				return util.ErrWrapper(err, "fail to read proxy connect response")
 			}
 		}
 		if headerParsed {

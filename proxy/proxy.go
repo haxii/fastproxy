@@ -14,6 +14,7 @@ import (
 	"github.com/haxii/fastproxy/log"
 	"github.com/haxii/fastproxy/server"
 	"github.com/haxii/fastproxy/servertime"
+	"github.com/haxii/fastproxy/util"
 	"github.com/haxii/fastproxy/x509"
 )
 
@@ -141,10 +142,6 @@ func (p *Proxy) acceptConn(ln net.Listener, lastPerIPErrorTime *time.Time) (net.
 }
 
 func (p *Proxy) serveConn(c net.Conn) error {
-	errorWrapper := func(msg string, err error) error {
-		return fmt.Errorf("%s: %s", msg, err)
-	}
-
 	//convert c into a http request
 	reader := p.BufioPool.AcquireReader(c)
 	req := AcquireRequest()
@@ -159,12 +156,12 @@ func (p *Proxy) serveConn(c net.Conn) error {
 
 	if err := req.InitWithProxyReader(reader, sniffer); err != nil {
 		releaseReqAndReader()
-		return errorWrapper("fail to read http request header", err)
+		return util.ErrWrapper(err, "fail to read http request header")
 	}
 	if len(req.HostWithPort()) == 0 {
 		if e := p.writeFastError(c, header.StatusBadRequest,
 			"This is a proxy server. Does not respond to non-proxy requests.\n"); e != nil {
-			return errorWrapper("fail to response non-proxy request ", e)
+			return util.ErrWrapper(e, "fail to response non-proxy request")
 		}
 		releaseReqAndReader()
 		return nil

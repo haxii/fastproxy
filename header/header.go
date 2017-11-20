@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -76,32 +75,26 @@ var errNeedMore = errors.New("need more data: cannot find trailing lf")
 
 func (header *Header) tryRead(reader *bufio.Reader,
 	buffer *bytebufferpool.ByteBuffer, n int) error {
-	errWrapper := func(err error) error {
-		return fmt.Errorf("error when reading http headers: %s", err)
-	}
 	//do NOT use reader.ReadBytes here
 	//which would allocate extra byte memory
 	if b, err := reader.Peek(n); err != nil {
-		return errWrapper(err)
+		return err
 	} else if len(b) == 0 {
-		return fmt.Errorf("error when reading http headers: %s", io.EOF)
+		return io.EOF
 	}
 	//must read buffed bytes
-	b, err := reader.Peek(reader.Buffered())
-	if len(b) == 0 || err != nil {
-		panic(fmt.Sprintf("bufio.Reader.Peek() returned unexpected data (%q, %v)", b, err))
-	}
+	b := util.PeekBuffered(reader)
 	//try to read it into buffer
 	headersLen, errParse := header.readHeaders(b, buffer)
 	if errParse != nil {
 		if errParse == errNeedMore {
 			return errNeedMore
 		}
-		return errWrapper(errParse)
+		return errParse
 	}
 	//jump over the header fields
 	if _, err := reader.Discard(headersLen); err != nil {
-		panic(fmt.Sprintf("bufio.Reader.Discard(%d) failed: %s", headersLen, err))
+		return err
 	}
 	return nil
 }
