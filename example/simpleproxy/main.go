@@ -19,7 +19,7 @@ func main() {
 	if err != nil {
 		return
 	}
-	superProxy, _ := proxy.NewSuperProxy("zproxy.luminati.io",
+	superProxy, _ := client.NewSuperProxy("zproxy.luminati.io",
 		22225, false, "lum-customer-bowang-zone-static", "uy2kopvtthos")
 	proxy := proxy.Proxy{
 		BufioPool:   &bufiopool.Pool{},
@@ -27,7 +27,7 @@ func main() {
 		ProxyLogger: &log.DefaultLogger{},
 		SnifferPool: &SimpleSnifferPool{},
 		Handler: proxy.Handler{
-			URLProxy: func(uri []byte) *proxy.SuperProxy {
+			URLProxy: func(uri []byte) *client.SuperProxy {
 				return superProxy
 			},
 		},

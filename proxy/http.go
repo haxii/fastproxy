@@ -31,7 +31,8 @@ type Request struct {
 	header header.Header
 
 	//sniffer, used for recording the http traffic
-	sniffer Sniffer
+	sniffer       Sniffer
+	snifferWriter io.Writer
 
 	//proxy super proxy used for target connection
 	proxy *client.SuperProxy
@@ -40,6 +41,18 @@ type Request struct {
 	isTLS         bool
 	tlsServerName string
 	hostWithPort  string
+}
+
+//Reset reset request
+func (r *Request) Reset() {
+	r.reader = nil
+	r.reqLine.Reset()
+	r.header.Reset()
+	r.sniffer = nil
+	r.proxy = nil
+	r.isTLS = false
+	r.tlsServerName = ""
+	r.hostWithPort = ""
 }
 
 // InitWithProxyReader init request with reader
@@ -84,43 +97,47 @@ func (r *Request) SetProxy(p *client.SuperProxy) {
 	r.proxy = p
 }
 
-//WriteTo write raw http request body to http client
+//GetProxy get super proxy for this request
+func (r *Request) GetProxy() *client.SuperProxy {
+	return r.proxy
+}
+
+//StartLine startline of the http request
 //implemented client's request interface
-func (r *Request) WriteTo(writer *bufio.Writer) error {
+func (r *Request) StartLine() []byte {
+	return r.reqLine.RebuildRequestLine()
+}
+
+//WriteHeaderTo write raw http request header to http client
+//implemented client's request interface
+func (r *Request) WriteHeaderTo(writer *bufio.Writer) error {
 	if r.reader == nil {
 		return errors.New("Empty request, nothing to write")
 	}
-
-	//rebuild the start line
-	var newReqLine, proxyAuthHeader []byte
-	if r.proxy != nil {
-		newReqLine = r.reqLine.RawRequestLine()
-		if len(r.proxy.proxyHeader) > 0 {
-			//TODO: use []byte array instead
-			proxyAuthHeader = []byte(r.proxy.proxyHeader)
-		}
-	} else {
-		newReqLine = r.reqLine.RebuildRequestLine()
-	}
-
 	//read & write the headers
-	var snifferWriter io.Writer
-	if err := copyStartLineAndHeader(
-		r.reader, writer,
-		newReqLine, proxyAuthHeader, &r.header,
+	if err := copyHeader(
+		r.reader, writer, &r.header,
 		func(rawHeader []byte) {
-			snifferWriter = r.sniffer.GetRequestWriter(r.reqLine.RawURI(), r.header)
-			if snifferWriter != nil {
-				snifferWriter.Write(newReqLine)
-				snifferWriter.Write(rawHeader)
+			r.snifferWriter = r.sniffer.GetRequestWriter(r.reqLine.RawURI(), r.header)
+			if r.snifferWriter != nil {
+				r.snifferWriter.Write(r.reqLine.RawRequestLine())
+				r.snifferWriter.Write(rawHeader)
 			}
 		},
 	); err != nil {
 		return err
 	}
+	return nil
+}
 
+//WriteBodyTo write raw http request body to http client
+//implemented client's request interface
+func (r *Request) WriteBodyTo(writer *bufio.Writer) error {
+	if r.reader == nil {
+		return errors.New("Empty request, nothing to write")
+	}
 	//write the request body (if any)
-	return copyBody(r.reader, writer, snifferWriter, r.header)
+	return copyBody(r.reader, writer, r.snifferWriter, r.header)
 }
 
 // ConnectionClose if the request's "Connection" header value is set as "Close".
@@ -128,13 +145,6 @@ func (r *Request) WriteTo(writer *bufio.Writer) error {
 // this func. result is only valid after `WriteTo` method is called
 func (r *Request) ConnectionClose() bool {
 	return r.header.IsConnectionClose()
-}
-
-//Reset reset request
-func (r *Request) Reset() {
-	r.reader = nil
-	r.reqLine.Reset()
-	r.header.Reset()
 }
 
 //IsIdempotent specified in request's start line usually
@@ -149,9 +159,6 @@ func (r *Request) IsTLS() bool {
 
 //HostWithPort host/addr target
 func (r *Request) HostWithPort() string {
-	if r.proxy != nil {
-		return r.proxy.hostWithPort
-	}
 	return r.hostWithPort
 }
 
@@ -178,6 +185,13 @@ type Response struct {
 	header header.Header
 }
 
+//Reset reset response
+func (r *Response) Reset() {
+	r.writer = nil
+	r.respLine.Reset()
+	r.header.Reset()
+}
+
 // InitWithWriter init response with writer
 func (r *Response) InitWithWriter(writer *bufio.Writer, sniffer Sniffer) error {
 	if r.writer != nil {
@@ -202,12 +216,15 @@ func (r *Response) ReadFrom(reader *bufio.Reader) error {
 
 	//rebuild  the start line
 	respLineBytes := r.respLine.GetResponseLine()
+	//write start line
+	if err := util.WriteWithValidation(r.writer, respLineBytes); err != nil {
+		return fmt.Errorf("fail to write start line : %s", err)
+	}
 
 	//read & write the headers
 	var snifferWriter io.Writer
-	if err := copyStartLineAndHeader(
-		reader, r.writer,
-		respLineBytes, nil, &r.header,
+	if err := copyHeader(
+		reader, r.writer, &r.header,
 		func(rawHeader []byte) {
 			snifferWriter = r.sniffer.GetResponseWriter(r.respLine.GetStatusCode(), r.header)
 			if snifferWriter != nil {
@@ -221,13 +238,6 @@ func (r *Response) ReadFrom(reader *bufio.Reader) error {
 
 	//write the request body (if any)
 	return copyBody(reader, r.writer, snifferWriter, r.header)
-}
-
-//Reset reset response
-func (r *Response) Reset() {
-	r.writer = nil
-	r.respLine.Reset()
-	r.header.Reset()
 }
 
 //ConnectionClose if the request's "Connection" header value is set as "Close"
@@ -286,20 +296,11 @@ func ReleaseResponse(resp *Response) {
 	responsePool.Put(resp)
 }
 
-func copyStartLineAndHeader(src *bufio.Reader, dst *bufio.Writer,
-	startLine []byte, extraHeader []byte, header *header.Header,
-	parsedHeaderHandler func(headers []byte)) error {
-	//write start line
-	if err := util.WriteWithValidation(dst, startLine); err != nil {
-		return fmt.Errorf("fail to write start line : %s", err)
-	}
-
+func copyHeader(src *bufio.Reader, dst *bufio.Writer,
+	header *header.Header, parsedHeaderHandler func(headers []byte)) error {
 	//read and write header
 	buffer := bytebufferpool.Get()
 	defer bytebufferpool.Put(buffer)
-	if err := util.WriteWithValidation(buffer, extraHeader); err != nil {
-		return fmt.Errorf("fail to parse extraHeader : %s", err)
-	}
 	if err := header.ParseHeaderFields(src, buffer); err != nil {
 		return fmt.Errorf("fail to parse http headers : %s", err)
 	}

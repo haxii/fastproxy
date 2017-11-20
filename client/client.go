@@ -24,8 +24,14 @@ const DefaultDialTimeout = 3 * time.Second
 
 //Request http request for request
 type Request interface {
-	//WriteTo read raw data from request then Write To buffer IO writer
-	WriteTo(w *bufio.Writer) error
+	//StartLine 1st line of request
+	StartLine() []byte
+
+	//WriteHeaderTo read header from request, then Write To buffer IO writer
+	WriteHeaderTo(w *bufio.Writer) error
+
+	//WriteBodyTo read body from request, then Write To buffer IO writer
+	WriteBodyTo(w *bufio.Writer) error
 
 	// ConnectionClose if the request's "Connection" header value is
 	// set as `Close`
@@ -38,6 +44,9 @@ type Request interface {
 	IsTLS() bool
 	HostWithPort() string
 	TLSServerName() string
+
+	//super proxy
+	GetProxy() *SuperProxy
 }
 
 //Response http response for response
@@ -363,16 +372,24 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 	}
 
 	bw := c.BufioPool.AcquireWriter(conn)
-	err = req.WriteTo(bw)
-
-	if err == nil {
-		err = bw.Flush()
+	writeRequest := func() error {
+		reqLine := req.StartLine()
+		if nw, err := bw.Write(reqLine); err != nil {
+			return err
+		} else if nw != len(reqLine) {
+			return io.ErrShortWrite
+		}
+		if err := req.WriteHeaderTo(bw); err != nil {
+			return err
+		}
+		return req.WriteBodyTo(bw)
 	}
-	if err != nil {
+	if e := writeRequest(); e != nil {
 		c.BufioPool.ReleaseWriter(bw)
 		c.closeConn(cc)
-		return true, err
+		return true, e
 	}
+	err = bw.Flush()
 	c.BufioPool.ReleaseWriter(bw)
 
 	if c.ReadTimeout > 0 {
