@@ -4,14 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"fmt"
 	"strconv"
+
+	"github.com/haxii/fastproxy/util"
 )
 
 func parseStartline(reader *bufio.Reader) ([]byte, error) {
 	startLineWithCRLF, err := reader.ReadBytes('\n')
 	if err != nil {
-		return nil, fmt.Errorf("fail to read start line with error %s", err)
+		return nil, util.ErrWrapper(err, "fail to read start line")
 	}
 	if len(startLineWithCRLF) <= 2 {
 		return nil, errors.New("not a http start line")
@@ -74,7 +75,7 @@ func (l *ResponseLine) Parse(reader *bufio.Reader) error {
 		l.statusCode = code
 		l.fullLine = respLineWithCRLF
 	} else {
-		return fmt.Errorf("fail to parse status code %s with error %s", statusCode, err)
+		return util.ErrWrapper(err, "fail to parse status code %s", statusCode)
 	}
 
 	return nil
@@ -158,7 +159,7 @@ func (l *RequestLine) Parse(reader *bufio.Reader) error {
 	protocolStartIndex := reqURIEndIndex + 1
 	protocol := reqLine[protocolStartIndex:]
 
-	l.fullLine = reqLine
+	l.fullLine = reqLineWithCRLF
 	l.method = method
 	l.protocol = protocol
 
@@ -200,6 +201,11 @@ var (
 	sp   = []byte(" ")
 	crlf = []byte("\r\n")
 )
+
+//RawRequestLine raw request line the proxy got
+func (l *RequestLine) RawRequestLine() []byte {
+	return l.fullLine
+}
 
 //RebuildRequestLine rebuild the request host line for direct http request
 func (l *RequestLine) RebuildRequestLine() []byte {

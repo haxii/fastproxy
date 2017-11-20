@@ -4,12 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 	"strings"
 
 	"github.com/haxii/fastproxy/bytebufferpool"
+	"github.com/haxii/fastproxy/util"
 )
 
 //Header header part of http request & respose
@@ -56,14 +56,15 @@ func (header *Header) IsBodyIdentity() bool {
 // optional trailing whitespace.
 func (header *Header) ParseHeaderFields(reader *bufio.Reader,
 	buffer *bytebufferpool.ByteBuffer) error {
+	originalLen := buffer.Len()
 	n := 1
 	for {
 		err := header.tryRead(reader, buffer, n)
 		if err == nil {
 			return nil
 		}
+		buffer.B = buffer.B[:originalLen]
 		if err != errNeedMore {
-			buffer.Reset()
 			return err
 		}
 		n = reader.Buffered() + 1
@@ -74,34 +75,26 @@ var errNeedMore = errors.New("need more data: cannot find trailing lf")
 
 func (header *Header) tryRead(reader *bufio.Reader,
 	buffer *bytebufferpool.ByteBuffer, n int) error {
-	errWrapper := func(err error) error {
-		return fmt.Errorf("error when reading http headers: %s", err)
-	}
 	//do NOT use reader.ReadBytes here
 	//which would allocate extra byte memory
-	if b, err := reader.Peek(n); len(b) == 0 {
-		// treat all errors on the first byte read as EOF
-		if n == 1 || err == io.EOF {
-			return fmt.Errorf("error when reading http headers: %s", io.EOF)
-		}
-		return errWrapper(err)
+	if b, err := reader.Peek(n); err != nil {
+		return err
+	} else if len(b) == 0 {
+		return io.EOF
 	}
 	//must read buffed bytes
-	b, err := reader.Peek(reader.Buffered())
-	if len(b) == 0 || err != nil {
-		panic(fmt.Sprintf("bufio.Reader.Peek() returned unexpected data (%q, %v)", b, err))
-	}
+	b := util.PeekBuffered(reader)
 	//try to read it into buffer
 	headersLen, errParse := header.readHeaders(b, buffer)
 	if errParse != nil {
 		if errParse == errNeedMore {
 			return errNeedMore
 		}
-		return errWrapper(errParse)
+		return errParse
 	}
 	//jump over the header fields
 	if _, err := reader.Discard(headersLen); err != nil {
-		panic(fmt.Sprintf("bufio.Reader.Discard(%d) failed: %s", headersLen, err))
+		return err
 	}
 	return nil
 }
@@ -147,9 +140,7 @@ func (header *Header) readHeaders(buf []byte,
 
 		//remove proxy header
 		if !isProxyHeader(rawHeaderLine) {
-			if _, e := buffer.Write(rawHeaderLine); e != nil {
-				return e
-			}
+			return util.WriteWithValidation(buffer, rawHeaderLine)
 		}
 		return nil
 	}
@@ -164,9 +155,7 @@ func (header *Header) readHeaders(buf []byte,
 		return n + 1, nil
 	}
 	n++
-	buffer.Reset()
 	if e := parseThenWriteBuffer(buf[:n]); e != nil {
-		buffer.Reset()
 		return 0, e
 	}
 
@@ -177,12 +166,10 @@ func (header *Header) readHeaders(buf []byte,
 		b = b[m:]
 		m = bytes.IndexByte(b, '\n')
 		if m < 0 {
-			buffer.Reset()
 			return 0, errNeedMore
 		}
 		m++
 		if e := parseThenWriteBuffer(b[:m]); e != nil {
-			buffer.Reset()
 			return 0, e
 		}
 		n += m

@@ -9,7 +9,9 @@ import (
 	"sync"
 
 	"github.com/haxii/fastproxy/bytebufferpool"
+	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/header"
+	"github.com/haxii/fastproxy/util"
 )
 
 /*
@@ -29,12 +31,28 @@ type Request struct {
 	header header.Header
 
 	//sniffer, used for recording the http traffic
-	sniffer Sniffer
+	sniffer       Sniffer
+	snifferWriter io.Writer
+
+	//proxy super proxy used for target connection
+	proxy *client.SuperProxy
 
 	//TLS request settings
 	isTLS         bool
 	tlsServerName string
 	hostWithPort  string
+}
+
+//Reset reset request
+func (r *Request) Reset() {
+	r.reader = nil
+	r.reqLine.Reset()
+	r.header.Reset()
+	r.sniffer = nil
+	r.proxy = nil
+	r.isTLS = false
+	r.tlsServerName = ""
+	r.hostWithPort = ""
 }
 
 // InitWithProxyReader init request with reader
@@ -64,7 +82,7 @@ func (r *Request) initWithReader(reader *bufio.Reader,
 	}
 
 	if err := r.reqLine.Parse(reader); err != nil {
-		return fmt.Errorf("fail to read start line of request with error %s", err)
+		return util.ErrWrapper(err, "fail to read start line of request")
 	}
 	r.reader = reader
 	r.sniffer = sniffer
@@ -74,39 +92,58 @@ func (r *Request) initWithReader(reader *bufio.Reader,
 	return nil
 }
 
-//GetStartLine return the start line of request
-func (r *Request) GetStartLine() header.RequestLine {
-	return r.reqLine
+//SetProxy set super proxy for this request
+func (r *Request) SetProxy(p *client.SuperProxy) {
+	r.proxy = p
 }
 
-//WriteTo write raw http request body to http client
+//GetProxy get super proxy for this request
+func (r *Request) GetProxy() *client.SuperProxy {
+	return r.proxy
+}
+
+//StartLine startline of the http request
 //implemented client's request interface
-func (r *Request) WriteTo(writer *bufio.Writer) error {
+func (r *Request) StartLine() []byte {
+	return r.reqLine.RebuildRequestLine()
+}
+
+//StartLineWithFullURI startline of the http request with full uri
+//implemented client's request interface
+func (r *Request) StartLineWithFullURI() []byte {
+	return r.reqLine.RawRequestLine()
+}
+
+//WriteHeaderTo write raw http request header to http client
+//implemented client's request interface
+func (r *Request) WriteHeaderTo(writer *bufio.Writer) error {
 	if r.reader == nil {
 		return errors.New("Empty request, nothing to write")
 	}
-
-	//rebuild the start line
-	rebuiltReqLine := r.reqLine.RebuildRequestLine()
-
 	//read & write the headers
-	var snifferWriter io.Writer
-	if err := copyStartLineAndHeader(
-		r.reader, writer,
-		rebuiltReqLine, &r.header,
+	if err := copyHeader(
+		r.reader, writer, &r.header,
 		func(rawHeader []byte) {
-			snifferWriter = r.sniffer.GetRequestWriter(r.reqLine.RawURI(), r.header)
-			if snifferWriter != nil {
-				snifferWriter.Write(rebuiltReqLine)
-				snifferWriter.Write(rawHeader)
+			r.snifferWriter = r.sniffer.GetRequestWriter(r.reqLine.RawURI(), r.header)
+			if r.snifferWriter != nil {
+				r.snifferWriter.Write(r.reqLine.RawRequestLine())
+				r.snifferWriter.Write(rawHeader)
 			}
 		},
 	); err != nil {
 		return err
 	}
+	return nil
+}
 
+//WriteBodyTo write raw http request body to http client
+//implemented client's request interface
+func (r *Request) WriteBodyTo(writer *bufio.Writer) error {
+	if r.reader == nil {
+		return errors.New("Empty request, nothing to write")
+	}
 	//write the request body (if any)
-	return copyBody(r.reader, writer, snifferWriter, r.header)
+	return copyBody(r.reader, writer, r.snifferWriter, r.header)
 }
 
 // ConnectionClose if the request's "Connection" header value is set as "Close".
@@ -114,13 +151,6 @@ func (r *Request) WriteTo(writer *bufio.Writer) error {
 // this func. result is only valid after `WriteTo` method is called
 func (r *Request) ConnectionClose() bool {
 	return r.header.IsConnectionClose()
-}
-
-//Reset reset request
-func (r *Request) Reset() {
-	r.reader = nil
-	r.reqLine.Reset()
-	r.header.Reset()
 }
 
 //IsIdempotent specified in request's start line usually
@@ -161,6 +191,13 @@ type Response struct {
 	header header.Header
 }
 
+//Reset reset response
+func (r *Response) Reset() {
+	r.writer = nil
+	r.respLine.Reset()
+	r.header.Reset()
+}
+
 // InitWithWriter init response with writer
 func (r *Response) InitWithWriter(writer *bufio.Writer, sniffer Sniffer) error {
 	if r.writer != nil {
@@ -180,17 +217,20 @@ func (r *Response) InitWithWriter(writer *bufio.Writer, sniffer Sniffer) error {
 func (r *Response) ReadFrom(reader *bufio.Reader) error {
 	//write back the start line to writer(i.e. net/connection)
 	if err := r.respLine.Parse(reader); err != nil {
-		return fmt.Errorf("fail to read start line of response with error %s", err)
+		return util.ErrWrapper(err, "fail to read start line of response")
 	}
 
 	//rebuild  the start line
 	respLineBytes := r.respLine.GetResponseLine()
+	//write start line
+	if err := util.WriteWithValidation(r.writer, respLineBytes); err != nil {
+		return util.ErrWrapper(err, "fail to write start line of response")
+	}
 
 	//read & write the headers
 	var snifferWriter io.Writer
-	if err := copyStartLineAndHeader(
-		reader, r.writer,
-		respLineBytes, &r.header,
+	if err := copyHeader(
+		reader, r.writer, &r.header,
 		func(rawHeader []byte) {
 			snifferWriter = r.sniffer.GetResponseWriter(r.respLine.GetStatusCode(), r.header)
 			if snifferWriter != nil {
@@ -204,13 +244,6 @@ func (r *Response) ReadFrom(reader *bufio.Reader) error {
 
 	//write the request body (if any)
 	return copyBody(reader, r.writer, snifferWriter, r.header)
-}
-
-//Reset reset response
-func (r *Response) Reset() {
-	r.writer = nil
-	r.respLine.Reset()
-	r.header.Reset()
 }
 
 //ConnectionClose if the request's "Connection" header value is set as "Close"
@@ -269,30 +302,16 @@ func ReleaseResponse(resp *Response) {
 	responsePool.Put(resp)
 }
 
-func copyStartLineAndHeader(src *bufio.Reader, dst *bufio.Writer,
-	startLine []byte, header *header.Header,
-	parsedHeaderHandler func(headers []byte)) error {
-	//write start line
-	nw, err := dst.Write(startLine)
-	if err != nil {
-		return fmt.Errorf("fail to write start line : %s", err)
-	}
-	if nw != len(startLine) {
-		return errors.New("fail to write start line : short write")
-	}
-
+func copyHeader(src *bufio.Reader, dst *bufio.Writer,
+	header *header.Header, parsedHeaderHandler func(headers []byte)) error {
 	//read and write header
 	buffer := bytebufferpool.Get()
 	defer bytebufferpool.Put(buffer)
 	if err := header.ParseHeaderFields(src, buffer); err != nil {
-		return fmt.Errorf("fail to parse http headers : %s", err)
+		return util.ErrWrapper(err, "fail to parse http headers")
 	}
-	nw, err = dst.Write(buffer.B)
-	if err != nil {
-		return fmt.Errorf("fail to write headers : %s", err)
-	}
-	if nw != len(buffer.B) {
-		return errors.New("fail to write headers : short write")
+	if err := util.WriteWithValidation(dst, buffer.B); err != nil {
+		return util.ErrWrapper(err, "fail to write http headers")
 	}
 
 	parsedHeaderHandler(buffer.B)
@@ -325,10 +344,7 @@ func copyBodyFixedSize(src *bufio.Reader, dst *bufio.Writer,
 		}
 
 		//must read buffed bytes
-		b, err := src.Peek(src.Buffered())
-		if len(b) == 0 || err != nil {
-			panic(fmt.Sprintf("bufio.Reader.Peek() returned unexpected data (%q, %v)", b, err))
-		}
+		b := util.PeekBuffered(src)
 
 		//write read bytes into dst
 		_bytesShouldRead := int64(len(b))
@@ -338,20 +354,17 @@ func copyBodyFixedSize(src *bufio.Reader, dst *bufio.Writer,
 		byteStillNeeded -= _bytesShouldRead
 		bytesShouldRead := int(_bytesShouldRead)
 
-		bytesShouldWrite, err := dst.Write(b[:bytesShouldRead])
-		if err != nil {
-			return fmt.Errorf("fail to write request body : %s", err)
+		if err := util.WriteWithValidation(dst, b[:bytesShouldRead]); err != nil {
+			return util.ErrWrapper(err, "fail to write request body")
 		}
-		if bytesShouldWrite != bytesShouldRead {
-			return io.ErrShortWrite
-		}
+
 		if snifferWriter != nil {
 			snifferWriter.Write(b[:bytesShouldRead])
 		}
 
-		//must discard wrote bytes
-		if _, err := src.Discard(bytesShouldWrite); err != nil {
-			panic(fmt.Sprintf("bufio.Reader.Discard(%d) failed: %s", bytesShouldWrite, err))
+		//discard wrote bytes
+		if _, err := src.Discard(bytesShouldRead); err != nil {
+			return util.ErrWrapper(err, "fail to write request body")
 		}
 
 		//test if still read more bytes
@@ -374,7 +387,7 @@ func copyBodyChunked(src *bufio.Reader, dst *bufio.Writer,
 		if err != nil {
 			return err
 		}
-		if _, err := dst.Write(buffer.B); err != nil {
+		if err := util.WriteWithValidation(dst, buffer.B); err != nil {
 			return err
 		}
 
