@@ -10,9 +10,12 @@ import (
 //Sniffer http sniffer
 type Sniffer interface {
 	// GetRequestWriter return a request writer based on uri & header
-	GetRequestWriter(uri []byte, header header.Header) io.Writer
+	GetRequestWriter(
+		host string, method, path []byte,
+		header header.Header, rawHeader []byte) io.Writer
 	// GetResponseWriter return a response writer based on status code & header
-	GetResponseWriter(statusCode int, header header.Header) io.Writer
+	GetResponseWriter(statusCode int,
+		header header.Header, rawHeader []byte) io.Writer
 }
 
 //SnifferPool pooling sniffer instances
