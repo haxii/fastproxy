@@ -226,24 +226,20 @@ func (r *Response) ReadFrom(reader *bufio.Reader) error {
 	}
 
 	//read & write the headers
-	var snifferWriter io.Writer
+	var snifferBodyWriter io.Writer
 	if err := copyHeader(
 		reader, r.writer, &r.header,
 		func(rawHeader []byte) {
-			snifferWriter = r.sniffer.GetResponseWriter(
+			snifferBodyWriter = r.sniffer.GetResponseWriter(
 				r.respLine.GetStatusCode(),
 				r.header, rawHeader)
-			if snifferWriter != nil {
-				snifferWriter.Write(respLineBytes)
-				snifferWriter.Write(rawHeader)
-			}
 		},
 	); err != nil {
 		return err
 	}
 
 	//write the request body (if any)
-	return copyBody(reader, r.writer, snifferWriter, r.header)
+	return copyBody(reader, r.writer, snifferBodyWriter, r.header)
 }
 
 //ConnectionClose if the request's "Connection" header value is set as "Close"
