@@ -37,6 +37,19 @@ func (header *Header) ContentLength() int64 {
 	return 0
 }
 
+//BodyType return body type parsed from header
+func (header *Header) BodyType() BodyType {
+	// negative means transfer encoding: -1 means chunked;  -2 means identity
+	switch header.contentLength {
+	case -1:
+		return BodyTypeChunked
+	case -2:
+		return BodyTypeIdentity
+	}
+	return BodyTypeFixedSize
+}
+
+/*
 //IsBodyChunked if body is set `chunked`
 func (header *Header) IsBodyChunked() bool {
 	// negative means transfer encoding: -1 means chunked;  -2 means identity
@@ -48,6 +61,7 @@ func (header *Header) IsBodyIdentity() bool {
 	// negative means transfer encoding: -1 means chunked;  -2 means identity
 	return header.contentLength == -2
 }
+*/
 
 // ParseHeaderFields parse http header fields from reader and write it into buffer,
 //

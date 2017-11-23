@@ -3,9 +3,7 @@ package proxy
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"io"
-	"math"
 	"sync"
 
 	"github.com/haxii/fastproxy/bytebufferpool"
@@ -30,6 +28,9 @@ type Request struct {
 
 	//headers info, includes conn close and content length
 	header http.Header
+
+	//body body parser
+	body http.Body
 
 	//hijacker, used for recording the http traffic
 	hijacker           hijack.Hijacker
@@ -142,7 +143,7 @@ func (r *Request) WriteBodyTo(writer *bufio.Writer) error {
 		return errors.New("Empty request, nothing to write")
 	}
 	//write the request body (if any)
-	return copyBody(r.reader, writer, r.hijackerBodyWriter, r.header)
+	return copyBody(&r.body, r.reader, writer, r.hijackerBodyWriter, r.header)
 }
 
 // ConnectionClose if the request's "Connection" header value is set as "Close".
@@ -188,6 +189,9 @@ type Response struct {
 
 	//headers info, includes conn close and content length
 	header http.Header
+
+	//body http body parser
+	body http.Body
 }
 
 //Reset reset response
@@ -240,7 +244,7 @@ func (r *Response) ReadFrom(reader *bufio.Reader) error {
 	}
 
 	//write the request body (if any)
-	return copyBody(reader, r.writer, hijackerBodyWriter, r.header)
+	return copyBody(&r.body, reader, r.writer, hijackerBodyWriter, r.header)
 }
 
 //ConnectionClose if the request's "Connection" header value is set as "Close"
@@ -315,124 +319,22 @@ func copyHeader(src *bufio.Reader, dst *bufio.Writer,
 	return nil
 }
 
-func copyBody(src *bufio.Reader, dst *bufio.Writer, hijackerWriter io.Writer, header http.Header) error {
-	if header.ContentLength() > 0 {
-		//read contentLength data more from reader
-		return copyBodyFixedSize(src, dst, hijackerWriter, header.ContentLength())
-	} else if header.IsBodyChunked() {
-		//read data chunked
-		buffer := bytebufferpool.Get()
-		defer bytebufferpool.Put(buffer)
-		return copyBodyChunked(src, dst, hijackerWriter, buffer)
-	} else if header.IsBodyIdentity() {
-		//read till eof
-		return copyBodyIdentity(src, dst, hijackerWriter)
+func copyBody(body *http.Body, src *bufio.Reader, dst *bufio.Writer,
+	hijackerWriter io.Writer, header http.Header) error {
+	isDstSet := dst == nil
+	isHijackSet := hijackerWriter == nil
+	w := func(isChunkHeader bool, data []byte) error {
+		if isDstSet {
+			if err := util.WriteWithValidation(dst, data); err != nil {
+				return err
+			}
+		}
+		if isHijackSet {
+			if err := util.WriteWithValidation(hijackerWriter, data); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
-	return nil
-}
-
-func copyBodyFixedSize(src *bufio.Reader, dst *bufio.Writer,
-	hijackerWriter io.Writer, contentLength int64) error {
-	byteStillNeeded := contentLength
-	for {
-		//read one more bytes
-		if b, _ := src.Peek(1); len(b) == 0 {
-			return io.EOF
-		}
-
-		//must read buffed bytes
-		b := util.PeekBuffered(src)
-
-		//write read bytes into dst
-		_bytesShouldRead := int64(len(b))
-		if byteStillNeeded <= _bytesShouldRead {
-			_bytesShouldRead = byteStillNeeded
-		}
-		byteStillNeeded -= _bytesShouldRead
-		bytesShouldRead := int(_bytesShouldRead)
-
-		if err := util.WriteWithValidation(dst, b[:bytesShouldRead]); err != nil {
-			return util.ErrWrapper(err, "fail to write request body")
-		}
-
-		if hijackerWriter != nil {
-			hijackerWriter.Write(b[:bytesShouldRead])
-		}
-
-		//discard wrote bytes
-		if _, err := src.Discard(bytesShouldRead); err != nil {
-			return util.ErrWrapper(err, "fail to write request body")
-		}
-
-		//test if still read more bytes
-		if byteStillNeeded == 0 {
-			return nil
-		}
-	}
-}
-
-var strCRLF = []byte("\r\n")
-
-func copyBodyChunked(src *bufio.Reader, dst *bufio.Writer,
-	hijackerWriter io.Writer, buffer *bytebufferpool.ByteBuffer) error {
-	strCRLFLen := len(strCRLF)
-
-	for {
-		//read and calculate chunk size
-		buffer.Reset()
-		chunkSize, err := parseChunkSize(src, buffer)
-		if err != nil {
-			return err
-		}
-		if err := util.WriteWithValidation(dst, buffer.B); err != nil {
-			return err
-		}
-
-		if hijackerWriter != nil {
-			hijackerWriter.Write(buffer.B)
-		}
-
-		//copy the chunk
-		if err := copyBodyFixedSize(src, dst, hijackerWriter,
-			int64(chunkSize+strCRLFLen)); err != nil {
-			return err
-		}
-		if chunkSize == 0 {
-			return nil
-		}
-	}
-}
-
-func parseChunkSize(r *bufio.Reader, buffer *bytebufferpool.ByteBuffer) (int, error) {
-	n, err := util.ReadHexInt(r, buffer)
-	if err != nil {
-		return -1, err
-	}
-	c, err := r.ReadByte()
-	if err != nil {
-		return -1, fmt.Errorf("cannot read '\r' char at the end of chunk size: %s", err)
-	}
-	if c != '\r' {
-		return -1, fmt.Errorf("unexpected char %q at the end of chunk size. Expected %q", c, '\r')
-	}
-	c, err = r.ReadByte()
-	if err != nil {
-		return -1, fmt.Errorf("cannot read '\n' char at the end of chunk size: %s", err)
-	}
-	if c != '\n' {
-		return -1, fmt.Errorf("unexpected char %q at the end of chunk size. Expected %q", c, '\n')
-	}
-	if _, e := buffer.Write([]byte("\r\n")); e != nil {
-		return -1, e
-	}
-	return n, nil
-}
-func copyBodyIdentity(src *bufio.Reader, dst *bufio.Writer, hijackerWriter io.Writer) error {
-	if err := copyBodyFixedSize(src, dst, hijackerWriter, math.MaxInt64); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-	return nil
+	return body.Parse(src, header.BodyType(), header.ContentLength(), w)
 }

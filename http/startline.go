@@ -9,17 +9,6 @@ import (
 	"github.com/haxii/fastproxy/util"
 )
 
-func parseStartline(reader *bufio.Reader) ([]byte, error) {
-	startLineWithCRLF, err := reader.ReadBytes('\n')
-	if err != nil {
-		return nil, util.ErrWrapper(err, "fail to read start line")
-	}
-	if len(startLineWithCRLF) <= 2 {
-		return nil, errors.New("not a http start line")
-	}
-	return startLineWithCRLF, nil
-}
-
 //ResponseLine start line of a http response
 type ResponseLine struct {
 	fullLine   []byte
@@ -296,4 +285,15 @@ func (uri *requestURI) fillHostWithPort(isConnect bool) {
 			uri.hostWithPort += ":80"
 		}
 	}
+}
+
+func parseStartline(reader *bufio.Reader) ([]byte, error) {
+	startLineWithCRLF, err := reader.ReadBytes('\n')
+	if err != nil {
+		return nil, util.ErrWrapper(err, "fail to read start line")
+	}
+	if len(startLineWithCRLF) <= 2 {
+		return nil, errors.New("not a http start line")
+	}
+	return startLineWithCRLF, nil
 }
