@@ -26,7 +26,7 @@ type Handler struct {
 }
 
 func (h *Handler) handleHTTPConns(c net.Conn, req *Request,
-	bufioPool *bufiopool.Pool, sniffer hijack.Sniffer, client *client.Client) error {
+	bufioPool *bufiopool.Pool, hijacker hijack.Hijacker, client *client.Client) error {
 	//set requests proxy
 	req.SetProxy(h.URLProxy(req.HostWithPort(), req.reqLine.Path()))
 	//convert c into a http response
@@ -35,7 +35,7 @@ func (h *Handler) handleHTTPConns(c net.Conn, req *Request,
 	defer writer.Flush()
 	resp := AcquireResponse()
 	defer ReleaseResponse(resp)
-	if err := resp.InitWithWriter(writer, sniffer); err != nil {
+	if err := resp.InitWithWriter(writer, hijacker); err != nil {
 		return err
 	}
 
@@ -47,9 +47,9 @@ func (h *Handler) handleHTTPConns(c net.Conn, req *Request,
 }
 
 func (h *Handler) handleHTTPSConns(c net.Conn, hostWithPort string,
-	bufioPool *bufiopool.Pool, sniffer hijack.Sniffer, client *client.Client) error {
+	bufioPool *bufiopool.Pool, hijacker hijack.Hijacker, client *client.Client) error {
 	if h.ShouldDecryptHost(hostWithPort) {
-		return h.decryptConnect(c, hostWithPort, bufioPool, sniffer, client)
+		return h.decryptConnect(c, hostWithPort, bufioPool, hijacker, client)
 	}
 	return h.tunnelConnect(c, bufioPool, hostWithPort)
 }
@@ -111,7 +111,7 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 
 //proxy the https connetions by MITM
 func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
-	bufioPool *bufiopool.Pool, sniffer hijack.Sniffer, client *client.Client) error {
+	bufioPool *bufiopool.Pool, hijacker hijack.Hijacker, client *client.Client) error {
 	//fakeTargetServer means a fake target server for remote client
 	//make a connection with client by creating a fake target server
 	//
@@ -161,7 +161,7 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	req := AcquireRequest()
 	defer ReleaseRequest(req)
 	if err := req.InitWithTLSClientReader(reader,
-		sniffer, targetServerName); err != nil {
+		hijacker, targetServerName); err != nil {
 		return util.ErrWrapper(err, "fail to read fake tls server request header")
 	}
 	//mandatory for tls request cause non hosts provided in request header
@@ -175,7 +175,7 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	defer writer.Flush()
 	resp := AcquireResponse()
 	defer ReleaseResponse(resp)
-	if err := resp.InitWithWriter(writer, sniffer); err != nil {
+	if err := resp.InitWithWriter(writer, hijacker); err != nil {
 		return util.ErrWrapper(err, "fail to int fake tls client")
 	}
 	//handle fake https client request

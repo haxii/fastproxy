@@ -26,7 +26,7 @@ func main() {
 		BufioPool:   &bufiopool.Pool{},
 		Client:      client.Client{},
 		ProxyLogger: &log.DefaultLogger{},
-		SnifferPool: &SimpleSnifferPool{},
+		HijackerPool: &SimpleHijackerPool{},
 		Handler: proxy.Handler{
 			ShouldDecryptHost: func(hostWithPort string) bool {
 				return false
@@ -45,34 +45,34 @@ func main() {
 	}
 }
 
-//SimpleSnifferPool implements the SnifferPool based on simpleSniffer & sync.Pool
-type SimpleSnifferPool struct {
+//SimpleHijackerPool implements the HijackerPool based on simpleHijacker & sync.Pool
+type SimpleHijackerPool struct {
 	pool sync.Pool
 }
 
-//Get get a simple sniffer from pool
-func (p *SimpleSnifferPool) Get(addr net.Addr) hijack.Sniffer {
+//Get get a simple hijacker from pool
+func (p *SimpleHijackerPool) Get(addr net.Addr) hijack.Hijacker {
 	v := p.pool.Get()
 	if v == nil {
-		sniffer := &simpleSniffer{clientAddr: addr.String()}
-		return sniffer
+		hijacker := &simpleHijacker{clientAddr: addr.String()}
+		return hijacker
 	}
-	sniffer := v.(*simpleSniffer)
-	sniffer.clientAddr = addr.String()
-	return sniffer
+	hijacker := v.(*simpleHijacker)
+	hijacker.clientAddr = addr.String()
+	return hijacker
 }
 
-//Put puts a simple sniffer back to pool
-func (p *SimpleSnifferPool) Put(s hijack.Sniffer) {
+//Put puts a simple hijacker back to pool
+func (p *SimpleHijackerPool) Put(s hijack.Hijacker) {
 	p.pool.Put(s)
 }
 
-type simpleSniffer struct {
+type simpleHijacker struct {
 	clientAddr string
 	host       string
 }
 
-func (s *simpleSniffer) GetRequestWriter(host string, method, path []byte,
+func (s *simpleHijacker) GetRequestWriter(host string, method, path []byte,
 	header header.Header, rawHeader []byte) io.Writer {
 	s.host = host
 	fmt.Printf(`
@@ -90,7 +90,11 @@ content length:%d
 	return os.Stdout
 }
 
-func (s *simpleSniffer) GetResponseWriter(statusCode int,
+func (s *simpleHijacker) GetResponseReader() io.Reader {
+	return nil
+}
+
+func (s *simpleHijacker) GetResponseWriter(statusCode int,
 	header header.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
 ************************

@@ -31,9 +31,9 @@ type Request struct {
 	//headers info, includes conn close and content length
 	header header.Header
 
-	//sniffer, used for recording the http traffic
-	sniffer           hijack.Sniffer
-	snifferBodyWriter io.Writer
+	//hijacker, used for recording the http traffic
+	hijacker           hijack.Hijacker
+	hijackerBodyWriter io.Writer
 
 	//proxy super proxy used for target connection
 	proxy *superproxy.SuperProxy
@@ -49,7 +49,7 @@ func (r *Request) Reset() {
 	r.reader = nil
 	r.reqLine.Reset()
 	r.header.Reset()
-	r.sniffer = nil
+	r.hijacker = nil
 	r.proxy = nil
 	r.isTLS = false
 	r.tlsServerName = ""
@@ -58,18 +58,18 @@ func (r *Request) Reset() {
 
 // InitWithProxyReader init request with reader
 // then parse the start line of the http request
-func (r *Request) InitWithProxyReader(reader *bufio.Reader, sniffer hijack.Sniffer) error {
-	return r.initWithReader(reader, sniffer, false, "")
+func (r *Request) InitWithProxyReader(reader *bufio.Reader, hijacker hijack.Hijacker) error {
+	return r.initWithReader(reader, hijacker, false, "")
 }
 
 // InitWithTLSClientReader init request with reader supports TLS connections
 func (r *Request) InitWithTLSClientReader(reader *bufio.Reader,
-	sniffer hijack.Sniffer, tlsServerName string) error {
-	return r.initWithReader(reader, sniffer, true, tlsServerName)
+	hijacker hijack.Hijacker, tlsServerName string) error {
+	return r.initWithReader(reader, hijacker, true, tlsServerName)
 }
 
 func (r *Request) initWithReader(reader *bufio.Reader,
-	sniffer hijack.Sniffer, isTLS bool, tlsServerName string) error {
+	hijacker hijack.Hijacker, isTLS bool, tlsServerName string) error {
 	if r.reader != nil {
 		return errors.New("request already initialized")
 	}
@@ -86,7 +86,7 @@ func (r *Request) initWithReader(reader *bufio.Reader,
 		return util.ErrWrapper(err, "fail to read start line of request")
 	}
 	r.reader = reader
-	r.sniffer = sniffer
+	r.hijacker = hijacker
 	r.isTLS = isTLS
 	r.tlsServerName = tlsServerName
 	r.hostWithPort = r.reqLine.HostWithPort()
@@ -125,7 +125,7 @@ func (r *Request) WriteHeaderTo(writer *bufio.Writer) error {
 	if err := copyHeader(
 		r.reader, writer, &r.header,
 		func(rawHeader []byte) {
-			r.snifferBodyWriter = r.sniffer.GetRequestWriter(
+			r.hijackerBodyWriter = r.hijacker.GetRequestWriter(
 				r.hostWithPort, r.reqLine.Method(), r.reqLine.Path(),
 				r.header, rawHeader)
 		},
@@ -142,7 +142,7 @@ func (r *Request) WriteBodyTo(writer *bufio.Writer) error {
 		return errors.New("Empty request, nothing to write")
 	}
 	//write the request body (if any)
-	return copyBody(r.reader, writer, r.snifferBodyWriter, r.header)
+	return copyBody(r.reader, writer, r.hijackerBodyWriter, r.header)
 }
 
 // ConnectionClose if the request's "Connection" header value is set as "Close".
@@ -179,8 +179,8 @@ func (r *Request) TLSServerName() string {
 
 //Response http response implementation of http client
 type Response struct {
-	writer  *bufio.Writer
-	sniffer hijack.Sniffer
+	writer   *bufio.Writer
+	hijacker hijack.Hijacker
 
 	//start line of http response, i.e. request line
 	//build from reader
@@ -198,7 +198,7 @@ func (r *Response) Reset() {
 }
 
 // InitWithWriter init response with writer
-func (r *Response) InitWithWriter(writer *bufio.Writer, sniffer hijack.Sniffer) error {
+func (r *Response) InitWithWriter(writer *bufio.Writer, hijacker hijack.Hijacker) error {
 	if r.writer != nil {
 		return errors.New("response already initialized")
 	}
@@ -208,7 +208,7 @@ func (r *Response) InitWithWriter(writer *bufio.Writer, sniffer hijack.Sniffer) 
 	}
 
 	r.writer = writer
-	r.sniffer = sniffer
+	r.hijacker = hijacker
 	return nil
 }
 
@@ -227,11 +227,11 @@ func (r *Response) ReadFrom(reader *bufio.Reader) error {
 	}
 
 	//read & write the headers
-	var snifferBodyWriter io.Writer
+	var hijackerBodyWriter io.Writer
 	if err := copyHeader(
 		reader, r.writer, &r.header,
 		func(rawHeader []byte) {
-			snifferBodyWriter = r.sniffer.GetResponseWriter(
+			hijackerBodyWriter = r.hijacker.GetResponseWriter(
 				r.respLine.GetStatusCode(),
 				r.header, rawHeader)
 		},
@@ -240,7 +240,7 @@ func (r *Response) ReadFrom(reader *bufio.Reader) error {
 	}
 
 	//write the request body (if any)
-	return copyBody(reader, r.writer, snifferBodyWriter, r.header)
+	return copyBody(reader, r.writer, hijackerBodyWriter, r.header)
 }
 
 //ConnectionClose if the request's "Connection" header value is set as "Close"
@@ -315,24 +315,24 @@ func copyHeader(src *bufio.Reader, dst *bufio.Writer,
 	return nil
 }
 
-func copyBody(src *bufio.Reader, dst *bufio.Writer, snifferWriter io.Writer, header header.Header) error {
+func copyBody(src *bufio.Reader, dst *bufio.Writer, hijackerWriter io.Writer, header header.Header) error {
 	if header.ContentLength() > 0 {
 		//read contentLength data more from reader
-		return copyBodyFixedSize(src, dst, snifferWriter, header.ContentLength())
+		return copyBodyFixedSize(src, dst, hijackerWriter, header.ContentLength())
 	} else if header.IsBodyChunked() {
 		//read data chunked
 		buffer := bytebufferpool.Get()
 		defer bytebufferpool.Put(buffer)
-		return copyBodyChunked(src, dst, snifferWriter, buffer)
+		return copyBodyChunked(src, dst, hijackerWriter, buffer)
 	} else if header.IsBodyIdentity() {
 		//read till eof
-		return copyBodyIdentity(src, dst, snifferWriter)
+		return copyBodyIdentity(src, dst, hijackerWriter)
 	}
 	return nil
 }
 
 func copyBodyFixedSize(src *bufio.Reader, dst *bufio.Writer,
-	snifferWriter io.Writer, contentLength int64) error {
+	hijackerWriter io.Writer, contentLength int64) error {
 	byteStillNeeded := contentLength
 	for {
 		//read one more bytes
@@ -355,8 +355,8 @@ func copyBodyFixedSize(src *bufio.Reader, dst *bufio.Writer,
 			return util.ErrWrapper(err, "fail to write request body")
 		}
 
-		if snifferWriter != nil {
-			snifferWriter.Write(b[:bytesShouldRead])
+		if hijackerWriter != nil {
+			hijackerWriter.Write(b[:bytesShouldRead])
 		}
 
 		//discard wrote bytes
@@ -374,7 +374,7 @@ func copyBodyFixedSize(src *bufio.Reader, dst *bufio.Writer,
 var strCRLF = []byte("\r\n")
 
 func copyBodyChunked(src *bufio.Reader, dst *bufio.Writer,
-	snifferWriter io.Writer, buffer *bytebufferpool.ByteBuffer) error {
+	hijackerWriter io.Writer, buffer *bytebufferpool.ByteBuffer) error {
 	strCRLFLen := len(strCRLF)
 
 	for {
@@ -388,12 +388,12 @@ func copyBodyChunked(src *bufio.Reader, dst *bufio.Writer,
 			return err
 		}
 
-		if snifferWriter != nil {
-			snifferWriter.Write(buffer.B)
+		if hijackerWriter != nil {
+			hijackerWriter.Write(buffer.B)
 		}
 
 		//copy the chunk
-		if err := copyBodyFixedSize(src, dst, snifferWriter,
+		if err := copyBodyFixedSize(src, dst, hijackerWriter,
 			int64(chunkSize+strCRLFLen)); err != nil {
 			return err
 		}
@@ -427,8 +427,8 @@ func parseChunkSize(r *bufio.Reader, buffer *bytebufferpool.ByteBuffer) (int, er
 	}
 	return n, nil
 }
-func copyBodyIdentity(src *bufio.Reader, dst *bufio.Writer, snifferWriter io.Writer) error {
-	if err := copyBodyFixedSize(src, dst, snifferWriter, math.MaxInt64); err != nil {
+func copyBodyIdentity(src *bufio.Reader, dst *bufio.Writer, hijackerWriter io.Writer) error {
+	if err := copyBodyFixedSize(src, dst, hijackerWriter, math.MaxInt64); err != nil {
 		if err == io.EOF {
 			return nil
 		}

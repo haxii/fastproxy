@@ -33,8 +33,8 @@ type Proxy struct {
 	//proxy logger
 	ProxyLogger log.Logger
 
-	//sniffer pool
-	SnifferPool hijack.SnifferPool
+	//hijacker pool
+	HijackerPool hijack.HijackerPool
 
 	//proxy handler
 	Handler Handler
@@ -95,8 +95,8 @@ func (p *Proxy) init() error {
 	if p.BufioPool == nil {
 		return errors.New("nil bufio pool provided")
 	}
-	if p.SnifferPool == nil {
-		return errors.New("nil sniffer pool provided")
+	if p.HijackerPool == nil {
+		return errors.New("nil hijacker pool provided")
 	}
 	if p.Handler.ShouldDecryptHost == nil {
 		p.Handler.ShouldDecryptHost = func(host string) bool {
@@ -152,11 +152,11 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		p.BufioPool.ReleaseReader(reader)
 	}
 
-	//make a http sniffer
-	sniffer := p.SnifferPool.Get(c.RemoteAddr())
-	defer p.SnifferPool.Put(sniffer)
+	//make a http hijacker
+	hijacker := p.HijackerPool.Get(c.RemoteAddr())
+	defer p.HijackerPool.Put(hijacker)
 
-	if err := req.InitWithProxyReader(reader, sniffer); err != nil {
+	if err := req.InitWithProxyReader(reader, hijacker); err != nil {
 		releaseReqAndReader()
 		return util.ErrWrapper(err, "fail to read http request header")
 	}
@@ -172,7 +172,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 	//handle http requests
 	if !req.reqLine.IsConnect() {
 		err := p.Handler.handleHTTPConns(c, req,
-			p.BufioPool, sniffer, &p.Client)
+			p.BufioPool, hijacker, &p.Client)
 		releaseReqAndReader()
 		return err
 	}
@@ -184,7 +184,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 	releaseReqAndReader()
 	//make the requests
 	return p.Handler.handleHTTPSConns(c, host,
-		p.BufioPool, sniffer, &p.Client)
+		p.BufioPool, hijacker, &p.Client)
 }
 
 func (p *Proxy) writeFastError(w io.Writer, statusCode int, msg string) error {
