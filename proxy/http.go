@@ -404,7 +404,7 @@ func copyBodyChunked(src *bufio.Reader, dst *bufio.Writer,
 }
 
 func parseChunkSize(r *bufio.Reader, buffer *bytebufferpool.ByteBuffer) (int, error) {
-	n, err := readHexInt(r, buffer)
+	n, err := util.ReadHexInt(r, buffer)
 	if err != nil {
 		return -1, err
 	}
