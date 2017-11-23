@@ -6,13 +6,14 @@ import (
 	"errors"
 	"io"
 	"net"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
+	"github.com/haxii/fastproxy/cert"
 	"github.com/haxii/fastproxy/servertime"
+	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
 )
 
@@ -54,7 +55,7 @@ type Request interface {
 	TLSServerName() string
 
 	//super proxy
-	GetProxy() *SuperProxy
+	GetProxy() *superproxy.SuperProxy
 }
 
 //Response http response for response
@@ -159,7 +160,7 @@ func (c *Client) Do(req Request, resp Response) error {
 	//get target dialing host with port
 	hostWithPort := ""
 	if viaProxy {
-		hostWithPort = req.GetProxy().hostWithPort
+		hostWithPort = req.GetProxy().HostWithPort()
 		if len(hostWithPort) == 0 {
 			return errors.New("nil superproxy proxy host provided")
 		}
@@ -343,7 +344,7 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 	//set https tls config
 	if c.tlsServerConfig == nil {
 		if reqType == requestDirectHTTPS {
-			c.tlsServerConfig = newClientTLSConfig(req.HostWithPort(), req.TLSServerName())
+			c.tlsServerConfig = cert.MakeClientTLSConfig(req.HostWithPort(), req.TLSServerName())
 		} else if reqType == requestProxyHTTPS {
 			c.tlsServerConfig = &tls.Config{
 				ClientSessionCache: tls.NewLRUClientSessionCache(0),
@@ -360,7 +361,7 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 		case requestDirectHTTPS:
 			return transport.DialTLS(req.HostWithPort(), c.tlsServerConfig)
 		case requestProxyHTTP:
-			return transport.Dial(req.GetProxy().hostWithPort)
+			return transport.Dial(req.GetProxy().HostWithPort())
 		case requestProxyHTTPS:
 			tunnelConn, err := req.GetProxy().MakeHTTPTunnel(c.BufioPool, req.HostWithPort())
 			if err != nil {
@@ -415,7 +416,7 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 		}
 		//auth header if needed
 		if reqType == requestProxyHTTP {
-			if authHeader := req.GetProxy().authHeaderWithCRLF; authHeader != nil {
+			if authHeader := req.GetProxy().AuthHeaderWithCRLF(); authHeader != nil {
 				if nw, err := bw.Write(authHeader); err != nil {
 					return err
 				} else if nw != len(authHeader) {
@@ -468,31 +469,4 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 	}
 
 	return false, err
-}
-
-func newClientTLSConfig(host, serverName string) *tls.Config {
-	tlsServerName := func(addr string) string {
-		if !strings.Contains(addr, ":") {
-			return addr
-		}
-		host, _, err := net.SplitHostPort(addr)
-		if err != nil {
-			return "*"
-		}
-		return host
-	}
-	tlsConfig := &tls.Config{}
-	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(0)
-
-	if len(serverName) == 0 {
-		hostName := tlsServerName(host)
-		if hostName == "*" {
-			tlsConfig.InsecureSkipVerify = true
-		} else {
-			tlsConfig.ServerName = hostName
-		}
-	} else {
-		tlsConfig.ServerName = serverName
-	}
-	return tlsConfig
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/haxii/fastproxy/header"
 	"github.com/haxii/fastproxy/log"
 	"github.com/haxii/fastproxy/proxy"
+	"github.com/haxii/fastproxy/superproxy"
 )
 
 func main() {
@@ -19,14 +20,21 @@ func main() {
 	if err != nil {
 		return
 	}
-	superProxy, _ := client.NewSuperProxy("proxy.address", 8080, false, "user", "pass")
+	superProxy, _ := superproxy.NewSuperProxy("10.1.1.9", 8118, false, "", "")
 	proxy := proxy.Proxy{
 		BufioPool:   &bufiopool.Pool{},
 		Client:      client.Client{},
 		ProxyLogger: &log.DefaultLogger{},
 		SnifferPool: &SimpleSnifferPool{},
 		Handler: proxy.Handler{
-			URLProxy: func(uri []byte) *client.SuperProxy {
+			ShouldDecryptHost: func(hostWithPort string) bool {
+				return false
+			},
+			URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
+				if len(uri) == 0 {
+					//this is a connections should not decrypt
+					fmt.Println(hostWithPort)
+				}
 				return superProxy
 			},
 		},
@@ -60,32 +68,40 @@ func (p *SimpleSnifferPool) Put(s proxy.Sniffer) {
 
 type simpleSniffer struct {
 	clientAddr string
+	host       string
 }
 
-func (s *simpleSniffer) GetRequestWriter(uri []byte, header header.Header) io.Writer {
+func (s *simpleSniffer) GetRequestWriter(host string, method, path []byte,
+	header header.Header, rawHeader []byte) io.Writer {
+	s.host = host
 	fmt.Printf(`
 ************************
-addr:%s
+addr:%s, host:%s
 ************************
-request uri:%s
+%s %s
 ************************
 content length:%d
 ************************
+%s
+************************
 `,
-		s.clientAddr, uri, header.ContentLength())
+		s.clientAddr, s.host, method, path, header.ContentLength(), rawHeader)
 	return os.Stdout
 }
 
-func (s *simpleSniffer) GetResponseWriter(statusCode int, header header.Header) io.Writer {
+func (s *simpleSniffer) GetResponseWriter(statusCode int,
+	header header.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
 ************************
-addr:%s
+addr:%s, host:%s
 ************************
-response status code:%d
+status code:%d
 ************************
 content length:%d
 ************************
+%s
+************************
 `,
-		s.clientAddr, statusCode, header.ContentLength())
+		s.clientAddr, s.host, statusCode, header.ContentLength(), rawHeader)
 	return os.Stdout
 }

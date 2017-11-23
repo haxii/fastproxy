@@ -10,6 +10,8 @@ import (
 	"encoding/pem"
 	"errors"
 	"math/big"
+	"net"
+	"strings"
 	"time"
 
 	"github.com/haxii/fastproxy/util"
@@ -103,4 +105,33 @@ func GenCA(name string) (certPEM, keyPEM []byte, err error) {
 		Bytes: keyDER,
 	})
 	return
+}
+
+//MakeClientTLSConfig make a client TLS config based on host and servername
+//servername is 1st used to generate the config then from client tls
+func MakeClientTLSConfig(host, serverName string) *tls.Config {
+	tlsServerName := func(addr string) string {
+		if !strings.Contains(addr, ":") {
+			return addr
+		}
+		host, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			return "*"
+		}
+		return host
+	}
+	tlsConfig := &tls.Config{}
+	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(0)
+
+	if len(serverName) == 0 {
+		hostName := tlsServerName(host)
+		if hostName == "*" {
+			tlsConfig.InsecureSkipVerify = true
+		} else {
+			tlsConfig.ServerName = hostName
+		}
+	} else {
+		tlsConfig.ServerName = serverName
+	}
+	return tlsConfig
 }

@@ -9,8 +9,8 @@ import (
 	"sync"
 
 	"github.com/haxii/fastproxy/bytebufferpool"
-	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/header"
+	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/util"
 )
 
@@ -31,11 +31,11 @@ type Request struct {
 	header header.Header
 
 	//sniffer, used for recording the http traffic
-	sniffer       Sniffer
-	snifferWriter io.Writer
+	sniffer           Sniffer
+	snifferBodyWriter io.Writer
 
 	//proxy super proxy used for target connection
-	proxy *client.SuperProxy
+	proxy *superproxy.SuperProxy
 
 	//TLS request settings
 	isTLS         bool
@@ -93,12 +93,12 @@ func (r *Request) initWithReader(reader *bufio.Reader,
 }
 
 //SetProxy set super proxy for this request
-func (r *Request) SetProxy(p *client.SuperProxy) {
+func (r *Request) SetProxy(p *superproxy.SuperProxy) {
 	r.proxy = p
 }
 
 //GetProxy get super proxy for this request
-func (r *Request) GetProxy() *client.SuperProxy {
+func (r *Request) GetProxy() *superproxy.SuperProxy {
 	return r.proxy
 }
 
@@ -124,11 +124,9 @@ func (r *Request) WriteHeaderTo(writer *bufio.Writer) error {
 	if err := copyHeader(
 		r.reader, writer, &r.header,
 		func(rawHeader []byte) {
-			r.snifferWriter = r.sniffer.GetRequestWriter(r.reqLine.RawURI(), r.header)
-			if r.snifferWriter != nil {
-				r.snifferWriter.Write(r.reqLine.RawRequestLine())
-				r.snifferWriter.Write(rawHeader)
-			}
+			r.snifferBodyWriter = r.sniffer.GetRequestWriter(
+				r.hostWithPort, r.reqLine.Method(), r.reqLine.Path(),
+				r.header, rawHeader)
 		},
 	); err != nil {
 		return err
@@ -143,7 +141,7 @@ func (r *Request) WriteBodyTo(writer *bufio.Writer) error {
 		return errors.New("Empty request, nothing to write")
 	}
 	//write the request body (if any)
-	return copyBody(r.reader, writer, r.snifferWriter, r.header)
+	return copyBody(r.reader, writer, r.snifferBodyWriter, r.header)
 }
 
 // ConnectionClose if the request's "Connection" header value is set as "Close".
@@ -228,22 +226,20 @@ func (r *Response) ReadFrom(reader *bufio.Reader) error {
 	}
 
 	//read & write the headers
-	var snifferWriter io.Writer
+	var snifferBodyWriter io.Writer
 	if err := copyHeader(
 		reader, r.writer, &r.header,
 		func(rawHeader []byte) {
-			snifferWriter = r.sniffer.GetResponseWriter(r.respLine.GetStatusCode(), r.header)
-			if snifferWriter != nil {
-				snifferWriter.Write(respLineBytes)
-				snifferWriter.Write(rawHeader)
-			}
+			snifferBodyWriter = r.sniffer.GetResponseWriter(
+				r.respLine.GetStatusCode(),
+				r.header, rawHeader)
 		},
 	); err != nil {
 		return err
 	}
 
 	//write the request body (if any)
-	return copyBody(reader, r.writer, snifferWriter, r.header)
+	return copyBody(reader, r.writer, snifferBodyWriter, r.header)
 }
 
 //ConnectionClose if the request's "Connection" header value is set as "Close"
