@@ -98,11 +98,11 @@ func (p *Proxy) init() error {
 	}
 	if p.Handler.ShouldDecryptHost == nil {
 		p.Handler.ShouldDecryptHost = func(host string) bool {
-			return true
+			return false
 		}
 	}
 	if p.Handler.URLProxy == nil {
-		p.Handler.URLProxy = func(uri []byte) *client.SuperProxy {
+		p.Handler.URLProxy = func(hostWithPort string, path []byte) *client.SuperProxy {
 			return nil
 		}
 	}

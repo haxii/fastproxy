@@ -17,8 +17,8 @@ import (
 type Handler struct {
 	//HTTPSDecryptEnable test if host's https connection should be decrypted
 	ShouldDecryptHost func(host string) bool
-	//URLProxy url specified proxy
-	URLProxy func(uri []byte) *client.SuperProxy
+	//URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
+	URLProxy func(hostWithPort string, path []byte) *client.SuperProxy
 	//MitmCACert HTTPSDecryptCACert ca.cer used for https decryption
 	MitmCACert *tls.Certificate
 }
@@ -26,7 +26,7 @@ type Handler struct {
 func (h *Handler) handleHTTPConns(c net.Conn, req *Request,
 	bufioPool *bufiopool.Pool, sniffer Sniffer, client *client.Client) error {
 	//set requests proxy
-	req.SetProxy(h.URLProxy(req.reqLine.RawURI()))
+	req.SetProxy(h.URLProxy(req.HostWithPort(), req.reqLine.Path()))
 	//convert c into a http response
 	writer := bufioPool.AcquireWriter(c)
 	defer bufioPool.ReleaseWriter(writer)
@@ -49,7 +49,7 @@ func (h *Handler) handleHTTPSConns(c net.Conn, hostWithPort string,
 	if h.ShouldDecryptHost(hostWithPort) {
 		return h.decryptConnect(c, hostWithPort, bufioPool, sniffer, client)
 	}
-	return h.tunnelConnect(c, hostWithPort)
+	return h.tunnelConnect(c, bufioPool, hostWithPort)
 }
 
 func (h *Handler) sendHTTPSProxyStatusOK(c net.Conn) (err error) {
@@ -61,12 +61,24 @@ func (h *Handler) sendHTTPSProxyStatusBadGateway(c net.Conn) (err error) {
 }
 
 //proxy https traffic directly
-func (h *Handler) tunnelConnect(conn net.Conn, host string) error {
-	//acquire server conn to target host
-	tunnelConn, err := transport.Dial(host)
+func (h *Handler) tunnelConnect(conn net.Conn,
+	bufioPool *bufiopool.Pool, hostWithPort string) error {
+	superProxy := h.URLProxy(hostWithPort, nil)
+	var (
+		tunnelConn net.Conn
+		err        error
+	)
+	if superProxy != nil {
+		//acquire server conn to target host
+		tunnelConn, err = superProxy.MakeHTTPTunnel(bufioPool, hostWithPort)
+	} else {
+		//acquire server conn to target host
+		tunnelConn, err = transport.Dial(hostWithPort)
+	}
+
 	if err != nil {
 		h.sendHTTPSProxyStatusBadGateway(conn)
-		return util.ErrWrapper(err, "error occurred when dialing to host "+host)
+		return util.ErrWrapper(err, "error occurred when dialing to host "+hostWithPort)
 	}
 	defer tunnelConn.Close()
 
@@ -153,7 +165,7 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	//mandatory for tls request cause non hosts provided in request header
 	req.SetHostWithPort(hostWithPort)
 	//set requests proxy
-	req.SetProxy(h.URLProxy(req.reqLine.RawURI()))
+	req.SetProxy(h.URLProxy(hostWithPort, req.reqLine.Path()))
 
 	//convert fakeServerConn into a http response
 	writer := bufioPool.AcquireWriter(fakeServerConn)

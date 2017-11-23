@@ -174,6 +174,16 @@ func (l *RequestLine) Reset() {
 	l.protocol = l.protocol[:0]
 }
 
+//Method request method
+func (l *RequestLine) Method() []byte {
+	return l.method
+}
+
+//Path request relative path
+func (l *RequestLine) Path() []byte {
+	return l.uri.path
+}
+
 //IsConnect if the request is a https proxy request
 func (l *RequestLine) IsConnect() bool {
 	return bytes.Equal(l.method, methodConnect)
