@@ -9,6 +9,7 @@ import (
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/cert"
 	"github.com/haxii/fastproxy/client"
+	"github.com/haxii/fastproxy/hijack"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
 	"github.com/haxii/fastproxy/util"
@@ -25,7 +26,7 @@ type Handler struct {
 }
 
 func (h *Handler) handleHTTPConns(c net.Conn, req *Request,
-	bufioPool *bufiopool.Pool, sniffer Sniffer, client *client.Client) error {
+	bufioPool *bufiopool.Pool, sniffer hijack.Sniffer, client *client.Client) error {
 	//set requests proxy
 	req.SetProxy(h.URLProxy(req.HostWithPort(), req.reqLine.Path()))
 	//convert c into a http response
@@ -46,7 +47,7 @@ func (h *Handler) handleHTTPConns(c net.Conn, req *Request,
 }
 
 func (h *Handler) handleHTTPSConns(c net.Conn, hostWithPort string,
-	bufioPool *bufiopool.Pool, sniffer Sniffer, client *client.Client) error {
+	bufioPool *bufiopool.Pool, sniffer hijack.Sniffer, client *client.Client) error {
 	if h.ShouldDecryptHost(hostWithPort) {
 		return h.decryptConnect(c, hostWithPort, bufioPool, sniffer, client)
 	}
@@ -110,7 +111,7 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 
 //proxy the https connetions by MITM
 func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
-	bufioPool *bufiopool.Pool, sniffer Sniffer, client *client.Client) error {
+	bufioPool *bufiopool.Pool, sniffer hijack.Sniffer, client *client.Client) error {
 	//fakeTargetServer means a fake target server for remote client
 	//make a connection with client by creating a fake target server
 	//

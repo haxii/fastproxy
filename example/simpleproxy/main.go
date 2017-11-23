@@ -10,6 +10,7 @@ import (
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/header"
+	"github.com/haxii/fastproxy/hijack"
 	"github.com/haxii/fastproxy/log"
 	"github.com/haxii/fastproxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
@@ -50,7 +51,7 @@ type SimpleSnifferPool struct {
 }
 
 //Get get a simple sniffer from pool
-func (p *SimpleSnifferPool) Get(addr net.Addr) proxy.Sniffer {
+func (p *SimpleSnifferPool) Get(addr net.Addr) hijack.Sniffer {
 	v := p.pool.Get()
 	if v == nil {
 		sniffer := &simpleSniffer{clientAddr: addr.String()}
@@ -62,7 +63,7 @@ func (p *SimpleSnifferPool) Get(addr net.Addr) proxy.Sniffer {
 }
 
 //Put puts a simple sniffer back to pool
-func (p *SimpleSnifferPool) Put(s proxy.Sniffer) {
+func (p *SimpleSnifferPool) Put(s hijack.Sniffer) {
 	p.pool.Put(s)
 }
 

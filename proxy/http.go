@@ -10,6 +10,7 @@ import (
 
 	"github.com/haxii/fastproxy/bytebufferpool"
 	"github.com/haxii/fastproxy/header"
+	"github.com/haxii/fastproxy/hijack"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/util"
 )
@@ -31,7 +32,7 @@ type Request struct {
 	header header.Header
 
 	//sniffer, used for recording the http traffic
-	sniffer           Sniffer
+	sniffer           hijack.Sniffer
 	snifferBodyWriter io.Writer
 
 	//proxy super proxy used for target connection
@@ -57,18 +58,18 @@ func (r *Request) Reset() {
 
 // InitWithProxyReader init request with reader
 // then parse the start line of the http request
-func (r *Request) InitWithProxyReader(reader *bufio.Reader, sniffer Sniffer) error {
+func (r *Request) InitWithProxyReader(reader *bufio.Reader, sniffer hijack.Sniffer) error {
 	return r.initWithReader(reader, sniffer, false, "")
 }
 
 // InitWithTLSClientReader init request with reader supports TLS connections
 func (r *Request) InitWithTLSClientReader(reader *bufio.Reader,
-	sniffer Sniffer, tlsServerName string) error {
+	sniffer hijack.Sniffer, tlsServerName string) error {
 	return r.initWithReader(reader, sniffer, true, tlsServerName)
 }
 
 func (r *Request) initWithReader(reader *bufio.Reader,
-	sniffer Sniffer, isTLS bool, tlsServerName string) error {
+	sniffer hijack.Sniffer, isTLS bool, tlsServerName string) error {
 	if r.reader != nil {
 		return errors.New("request already initialized")
 	}
@@ -179,7 +180,7 @@ func (r *Request) TLSServerName() string {
 //Response http response implementation of http client
 type Response struct {
 	writer  *bufio.Writer
-	sniffer Sniffer
+	sniffer hijack.Sniffer
 
 	//start line of http response, i.e. request line
 	//build from reader
@@ -197,7 +198,7 @@ func (r *Response) Reset() {
 }
 
 // InitWithWriter init response with writer
-func (r *Response) InitWithWriter(writer *bufio.Writer, sniffer Sniffer) error {
+func (r *Response) InitWithWriter(writer *bufio.Writer, sniffer hijack.Sniffer) error {
 	if r.writer != nil {
 		return errors.New("response already initialized")
 	}

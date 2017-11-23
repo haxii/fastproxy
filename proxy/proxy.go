@@ -11,6 +11,7 @@ import (
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/header"
+	"github.com/haxii/fastproxy/hijack"
 	"github.com/haxii/fastproxy/log"
 	"github.com/haxii/fastproxy/server"
 	"github.com/haxii/fastproxy/servertime"
@@ -33,7 +34,7 @@ type Proxy struct {
 	ProxyLogger log.Logger
 
 	//sniffer pool
-	SnifferPool SnifferPool
+	SnifferPool hijack.SnifferPool
 
 	//proxy handler
 	Handler Handler
