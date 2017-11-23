@@ -19,14 +19,21 @@ func main() {
 	if err != nil {
 		return
 	}
-	superProxy, _ := client.NewSuperProxy("proxy.address", 8080, false, "user", "pass")
+	superProxy, _ := client.NewSuperProxy("10.1.1.9", 8118, false, "", "")
 	proxy := proxy.Proxy{
 		BufioPool:   &bufiopool.Pool{},
 		Client:      client.Client{},
 		ProxyLogger: &log.DefaultLogger{},
 		SnifferPool: &SimpleSnifferPool{},
 		Handler: proxy.Handler{
-			URLProxy: func(uri []byte) *client.SuperProxy {
+			ShouldDecryptHost: func(hostWithPort string) bool {
+				return false
+			},
+			URLProxy: func(hostWithPort string, uri []byte) *client.SuperProxy {
+				if len(uri) == 0 {
+					//this is a connections should not decrypt
+					fmt.Println(hostWithPort)
+				}
 				return superProxy
 			},
 		},
