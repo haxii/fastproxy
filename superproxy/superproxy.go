@@ -1,4 +1,4 @@
-package client
+package superproxy
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/bytebufferpool"
+	"github.com/haxii/fastproxy/cert"
 	"github.com/haxii/fastproxy/transport"
 	"github.com/haxii/fastproxy/util"
 )
@@ -21,9 +22,14 @@ type SuperProxy struct {
 	hostWithPort       string
 	hostWithPortBytes  []byte
 	authHeaderWithCRLF []byte
-	secure             bool
-	tlsConfig          *tls.Config
-	connManager        transport.ConnManager
+
+	// whether the super proxy supports ssl encryption
+	// if so, tlsConfig is set using host
+	secure    bool
+	tlsConfig *tls.Config
+
+	// proxy net connections pool/manager
+	connManager transport.ConnManager
 }
 
 //NewSuperProxy new a super proxy
@@ -47,7 +53,7 @@ func NewSuperProxy(host string, port uint16, ssl bool,
 		},
 	}
 	if ssl {
-		s.tlsConfig = newClientTLSConfig(host, "")
+		s.tlsConfig = cert.MakeClientTLSConfig(host, "")
 	}
 	s.hostWithPort = fmt.Sprintf("%s:%d", host, port)
 	s.hostWithPortBytes = make([]byte, len(s.hostWithPort))
@@ -60,6 +66,24 @@ func NewSuperProxy(host string, port uint16, ssl bool,
 		s.authHeaderWithCRLF = nil
 	}
 	return s, nil
+}
+
+// HostWithPort host with port in string
+// refer to `HostWithPortBytes` if you need a byte slice version
+func (p *SuperProxy) HostWithPort() string {
+	return p.hostWithPort
+}
+
+// HostWithPortBytes host with port in bytes
+// refer to `HostWithPort` if you need a string version
+func (p *SuperProxy) HostWithPortBytes() []byte {
+	return p.hostWithPortBytes
+
+}
+
+// AuthHeaderWithCRLF basic auth header with CRLF if user & password is set
+func (p *SuperProxy) AuthHeaderWithCRLF() []byte {
+	return p.authHeaderWithCRLF
 }
 
 //MakeHTTPTunnel make a http tunnel by making a connect request to proxy

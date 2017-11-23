@@ -9,6 +9,7 @@ import (
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/cert"
 	"github.com/haxii/fastproxy/client"
+	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
 	"github.com/haxii/fastproxy/util"
 )
@@ -18,7 +19,7 @@ type Handler struct {
 	//HTTPSDecryptEnable test if host's https connection should be decrypted
 	ShouldDecryptHost func(host string) bool
 	//URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
-	URLProxy func(hostWithPort string, path []byte) *client.SuperProxy
+	URLProxy func(hostWithPort string, path []byte) *superproxy.SuperProxy
 	//MitmCACert HTTPSDecryptCACert ca.cer used for https decryption
 	MitmCACert *tls.Certificate
 }
