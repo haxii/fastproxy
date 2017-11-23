@@ -1,4 +1,4 @@
-package header
+package http
 
 func changeToUpperCase(s []byte) {
 	for i, b := range s {

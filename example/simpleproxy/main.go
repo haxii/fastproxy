@@ -9,8 +9,8 @@ import (
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/client"
-	"github.com/haxii/fastproxy/header"
 	"github.com/haxii/fastproxy/hijack"
+	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/log"
 	"github.com/haxii/fastproxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
@@ -23,9 +23,9 @@ func main() {
 	}
 	superProxy, _ := superproxy.NewSuperProxy("10.1.1.9", 8118, false, "", "")
 	proxy := proxy.Proxy{
-		BufioPool:   &bufiopool.Pool{},
-		Client:      client.Client{},
-		ProxyLogger: &log.DefaultLogger{},
+		BufioPool:    &bufiopool.Pool{},
+		Client:       client.Client{},
+		ProxyLogger:  &log.DefaultLogger{},
 		HijackerPool: &SimpleHijackerPool{},
 		Handler: proxy.Handler{
 			ShouldDecryptHost: func(hostWithPort string) bool {
@@ -73,7 +73,7 @@ type simpleHijacker struct {
 }
 
 func (s *simpleHijacker) GetRequestWriter(host string, method, path []byte,
-	header header.Header, rawHeader []byte) io.Writer {
+	header http.Header, rawHeader []byte) io.Writer {
 	s.host = host
 	fmt.Printf(`
 ************************
@@ -95,7 +95,7 @@ func (s *simpleHijacker) GetResponseReader() io.Reader {
 }
 
 func (s *simpleHijacker) GetResponseWriter(statusCode int,
-	header header.Header, rawHeader []byte) io.Writer {
+	header http.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
 ************************
 addr:%s, host:%s

@@ -10,8 +10,8 @@ import (
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/client"
-	"github.com/haxii/fastproxy/header"
 	"github.com/haxii/fastproxy/hijack"
+	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/log"
 	"github.com/haxii/fastproxy/server"
 	"github.com/haxii/fastproxy/servertime"
@@ -73,7 +73,7 @@ func (p *Proxy) Serve(ln net.Listener) error {
 			return err
 		}
 		if !wp.Serve(c) {
-			p.writeFastError(c, header.StatusServiceUnavailable,
+			p.writeFastError(c, http.StatusServiceUnavailable,
 				"The connection cannot be served because Server.Concurrency limit exceeded")
 			c.Close()
 			if time.Since(lastOverflowErrorTime) > time.Minute {
@@ -161,7 +161,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		return util.ErrWrapper(err, "fail to read http request header")
 	}
 	if len(req.HostWithPort()) == 0 {
-		if e := p.writeFastError(c, header.StatusBadRequest,
+		if e := p.writeFastError(c, http.StatusBadRequest,
 			"This is a proxy server. Does not respond to non-proxy requests.\n"); e != nil {
 			return util.ErrWrapper(e, "fail to response non-proxy request")
 		}
@@ -189,7 +189,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 
 func (p *Proxy) writeFastError(w io.Writer, statusCode int, msg string) error {
 	var err error
-	_, err = w.Write(header.StatusLine(statusCode))
+	_, err = w.Write(http.StatusLine(statusCode))
 	if err != nil {
 		return err
 	}

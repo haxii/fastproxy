@@ -9,8 +9,8 @@ import (
 	"sync"
 
 	"github.com/haxii/fastproxy/bytebufferpool"
-	"github.com/haxii/fastproxy/header"
 	"github.com/haxii/fastproxy/hijack"
+	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/util"
 )
@@ -26,10 +26,10 @@ type Request struct {
 
 	//start line of http request, i.e. request line
 	//build from reader
-	reqLine header.RequestLine
+	reqLine http.RequestLine
 
 	//headers info, includes conn close and content length
-	header header.Header
+	header http.Header
 
 	//hijacker, used for recording the http traffic
 	hijacker           hijack.Hijacker
@@ -184,10 +184,10 @@ type Response struct {
 
 	//start line of http response, i.e. request line
 	//build from reader
-	respLine header.ResponseLine
+	respLine http.ResponseLine
 
 	//headers info, includes conn close and content length
-	header header.Header
+	header http.Header
 }
 
 //Reset reset response
@@ -300,7 +300,7 @@ func ReleaseResponse(resp *Response) {
 }
 
 func copyHeader(src *bufio.Reader, dst *bufio.Writer,
-	header *header.Header, parsedHeaderHandler func(headers []byte)) error {
+	header *http.Header, parsedHeaderHandler func(headers []byte)) error {
 	//read and write header
 	buffer := bytebufferpool.Get()
 	defer bytebufferpool.Put(buffer)
@@ -315,7 +315,7 @@ func copyHeader(src *bufio.Reader, dst *bufio.Writer,
 	return nil
 }
 
-func copyBody(src *bufio.Reader, dst *bufio.Writer, hijackerWriter io.Writer, header header.Header) error {
+func copyBody(src *bufio.Reader, dst *bufio.Writer, hijackerWriter io.Writer, header http.Header) error {
 	if header.ContentLength() > 0 {
 		//read contentLength data more from reader
 		return copyBodyFixedSize(src, dst, hijackerWriter, header.ContentLength())
