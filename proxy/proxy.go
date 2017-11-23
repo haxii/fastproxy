@@ -14,6 +14,7 @@ import (
 	"github.com/haxii/fastproxy/log"
 	"github.com/haxii/fastproxy/server"
 	"github.com/haxii/fastproxy/servertime"
+	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/util"
 	"github.com/haxii/fastproxy/x509"
 )
@@ -102,7 +103,7 @@ func (p *Proxy) init() error {
 		}
 	}
 	if p.Handler.URLProxy == nil {
-		p.Handler.URLProxy = func(hostWithPort string, path []byte) *client.SuperProxy {
+		p.Handler.URLProxy = func(hostWithPort string, path []byte) *superproxy.SuperProxy {
 			return nil
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/haxii/fastproxy/header"
 	"github.com/haxii/fastproxy/log"
 	"github.com/haxii/fastproxy/proxy"
+	"github.com/haxii/fastproxy/superproxy"
 )
 
 func main() {
@@ -19,7 +20,7 @@ func main() {
 	if err != nil {
 		return
 	}
-	superProxy, _ := client.NewSuperProxy("10.1.1.9", 8118, false, "", "")
+	superProxy, _ := superproxy.NewSuperProxy("10.1.1.9", 8118, false, "", "")
 	proxy := proxy.Proxy{
 		BufioPool:   &bufiopool.Pool{},
 		Client:      client.Client{},
@@ -29,7 +30,7 @@ func main() {
 			ShouldDecryptHost: func(hostWithPort string) bool {
 				return false
 			},
-			URLProxy: func(hostWithPort string, uri []byte) *client.SuperProxy {
+			URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
 				if len(uri) == 0 {
 					//this is a connections should not decrypt
 					fmt.Println(hostWithPort)
