@@ -7,19 +7,24 @@ import (
 	"github.com/haxii/fastproxy/http"
 )
 
-//Hijacker http hijacker
+//Hijacker http connection hijacker
+// Sniffer: `OnRequest` & `OnResponse`
+// Modifer:
 type Hijacker interface {
-	// GetRequestWriter return a request sniffing writer based on uri & header
-	GetRequestWriter(
-		host string, method, path []byte,
+	// OnRequest give the request header in parameters then
+	// write request body in the writer returned
+	OnRequest(host string, method, path []byte,
 		header http.Header, rawHeader []byte) io.Writer
-	// GetResponseReader return a response hijacking reader
+
+	// OnResponse give the response header in parameters then
+	// write response body in the writer returned
+	OnResponse(statusCode int,
+		header http.Header, rawHeader []byte) io.Writer
+
+	// HijackResponse return a response hijacking reader
 	//  a non-nil reader means proxy would stop the request to target
 	//  server then return the reader's response
-	GetResponseReader() io.Reader
-	// GetResponseWriter return a response sniffing writer based on status code & header
-	GetResponseWriter(statusCode int,
-		header http.Header, rawHeader []byte) io.Writer
+	HijackResponse() io.Reader
 }
 
 //HijackerPool pooling hijacker instances

@@ -126,7 +126,7 @@ func (r *Request) WriteHeaderTo(writer *bufio.Writer) error {
 	if err := copyHeader(
 		r.reader, writer, &r.header,
 		func(rawHeader []byte) {
-			r.hijackerBodyWriter = r.hijacker.GetRequestWriter(
+			r.hijackerBodyWriter = r.hijacker.OnRequest(
 				r.hostWithPort, r.reqLine.Method(), r.reqLine.Path(),
 				r.header, rawHeader)
 		},
@@ -235,7 +235,7 @@ func (r *Response) ReadFrom(reader *bufio.Reader) error {
 	if err := copyHeader(
 		reader, r.writer, &r.header,
 		func(rawHeader []byte) {
-			hijackerBodyWriter = r.hijacker.GetResponseWriter(
+			hijackerBodyWriter = r.hijacker.OnResponse(
 				r.respLine.GetStatusCode(),
 				r.header, rawHeader)
 		},

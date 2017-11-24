@@ -72,7 +72,7 @@ type simpleHijacker struct {
 	host       string
 }
 
-func (s *simpleHijacker) GetRequestWriter(host string, method, path []byte,
+func (s *simpleHijacker) OnRequest(host string, method, path []byte,
 	header http.Header, rawHeader []byte) io.Writer {
 	s.host = host
 	fmt.Printf(`
@@ -90,11 +90,11 @@ content length:%d
 	return os.Stdout
 }
 
-func (s *simpleHijacker) GetResponseReader() io.Reader {
+func (s *simpleHijacker) HijackResponse() io.Reader {
 	return nil
 }
 
-func (s *simpleHijacker) GetResponseWriter(statusCode int,
+func (s *simpleHijacker) OnResponse(statusCode int,
 	header http.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
 ************************
