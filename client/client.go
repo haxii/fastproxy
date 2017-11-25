@@ -29,15 +29,8 @@ var ErrConnectionClosed = errors.New("the server closed connection before return
 
 //Request http request for request
 type Request interface {
-	//ReadFrom init and read request from a reader
-	ReadFrom(*bufio.Reader) error
-
 	//Method request method in UPPER case
 	Method() []byte
-	//Host target Host
-	Host() []byte
-	//Port target host's port
-	Port() uint16
 	//HostWithPort
 	HostWithPort() string
 	//Path request relative path
@@ -68,7 +61,7 @@ type Request interface {
 //Response http response for response
 type Response interface {
 	//ReadFrom read the http response from the buffer IO reader
-	ReadFrom(*bufio.Reader) error
+	ReadFrom(discardBody bool, br *bufio.Reader) error
 
 	// ConnectionClose if the response's "Connection" header value is
 	// set as `Close`
@@ -410,19 +403,14 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 	bw := c.BufioPool.AcquireWriter(conn)
 	writeRequest := func() error {
 		//start line
-		var reqLine []byte
 		if reqType == requestProxyHTTP {
 			writeRequestLine(bw, true, req.Method(),
-				req.Host(), req.Port(), req.Path(), req.Protocol())
+				req.HostWithPort(), req.Path(), req.Protocol())
 		} else {
 			writeRequestLine(bw, false, req.Method(),
-				req.Host(), req.Port(), req.Path(), req.Protocol())
+				req.HostWithPort(), req.Path(), req.Protocol())
 		}
-		if nw, err := bw.Write(reqLine); err != nil {
-			return err
-		} else if nw != len(reqLine) {
-			return io.ErrShortWrite
-		}
+
 		//auth header if needed
 		if reqType == requestProxyHTTP {
 			if authHeader := req.GetProxy().AuthHeaderWithCRLF(); authHeader != nil {
@@ -436,6 +424,10 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 		//other request headers
 		if err := req.WriteHeaderTo(bw); err != nil {
 			return err
+		}
+		//do not read contents for get and head
+		if isHead(req.Method()) || isGet(req.Method()) {
+			return nil
 		}
 		//request body
 		return req.WriteBodyTo(bw)
@@ -463,7 +455,7 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 		}
 	}
 	br := c.BufioPool.AcquireReader(conn)
-	if err = resp.ReadFrom(br); err != nil {
+	if err = resp.ReadFrom(isHead(req.Method()), br); err != nil {
 		c.BufioPool.ReleaseReader(br)
 		c.ConnManager.CloseConn(cc)
 		return true, err

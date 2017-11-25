@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
-	"strconv"
+	"net"
 )
 
 var (
@@ -14,25 +14,35 @@ var (
 	methodDelete = []byte("DELETE")
 )
 
+func isHead(method []byte) bool {
+	return bytes.Equal(method, methodHead)
+}
+
+func isGet(method []byte) bool {
+	return bytes.Equal(method, methodGet)
+}
+
 //isIdempotent idempotent methods: get, head, put
 func isIdempotent(method []byte) bool {
-	return bytes.Equal(method, methodGet) ||
-		bytes.Equal(method, methodHead) ||
+	return isHead(method) || isGet(method) ||
 		bytes.Equal(method, methodDelete) ||
 		bytes.Equal(method, methodPut)
 }
 
 var (
 	startLineScheme = []byte("http://")
-	startLineColon  = byte(':')
 	startLineSP     = byte(' ')
 	startLineCRLF   = []byte("\r\n")
 )
 
-const defaultHTTPPort uint16 = 80
+const defaultHTTPPort = "80"
 
 func writeRequestLine(bw *bufio.Writer, fullURL bool,
-	method, host []byte, port uint16, path, protocol []byte) error {
+	method []byte, hostWithPort string, path, protocol []byte) error {
+	host, port, err := net.SplitHostPort(hostWithPort)
+	if err != nil {
+		return err
+	}
 	write := func(b []byte) error {
 		if nw, err := bw.Write(b); err != nil {
 			return err
@@ -59,14 +69,12 @@ func writeRequestLine(bw *bufio.Writer, fullURL bool,
 		if err := write(startLineScheme); err != nil {
 			return err
 		}
-		if err := write(host); err != nil {
-			return err
-		}
 		if port != defaultHTTPPort {
-			if err := bw.WriteByte(startLineColon); err != nil {
+			if err := writeStr(hostWithPort); err != nil {
 				return err
 			}
-			if err := writeStr(strconv.FormatInt(int64(port), 10)); err != nil {
+		} else {
+			if err := writeStr(host); err != nil {
 				return err
 			}
 		}
@@ -80,11 +88,5 @@ func writeRequestLine(bw *bufio.Writer, fullURL bool,
 	if err := write(protocol); err != nil {
 		return err
 	}
-	if err := bw.WriteByte(startLineSP); err != nil {
-		return err
-	}
-	if err := write(startLineCRLF); err != nil {
-		return err
-	}
-	return nil
+	return write(startLineCRLF)
 }
