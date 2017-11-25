@@ -29,18 +29,27 @@ var ErrConnectionClosed = errors.New("the server closed connection before return
 
 //Request http request for request
 type Request interface {
-	//StartLine 1st line of request
-	StartLine() []byte
+	//ReadFrom init and read request from a reader
+	ReadFrom(*bufio.Reader) error
 
-	//StartLineWithFullURI 1st line of request with full uri,
-	//useful for proxy request
-	StartLineWithFullURI() []byte
+	//Method request method in UPPER case
+	Method() []byte
+	//Host target Host
+	Host() []byte
+	//Port target host's port
+	Port() uint16
+	//HostWithPort
+	HostWithPort() string
+	//Path request relative path
+	Path() []byte
+	//Protocol HTTP/1.0, HTTP/1.1 etc.
+	Protocol() []byte
 
 	//WriteHeaderTo read header from request, then Write To buffer IO writer
-	WriteHeaderTo(w *bufio.Writer) error
+	WriteHeaderTo(*bufio.Writer) error
 
 	//WriteBodyTo read body from request, then Write To buffer IO writer
-	WriteBodyTo(w *bufio.Writer) error
+	WriteBodyTo(*bufio.Writer) error
 
 	// ConnectionClose if the request's "Connection" header value is
 	// set as `Close`
@@ -49,9 +58,7 @@ type Request interface {
 	ConnectionClose() bool
 
 	//specified in request's start line usually
-	IsIdempotent() bool
 	IsTLS() bool
-	HostWithPort() string
 	TLSServerName() string
 
 	//super proxy
@@ -299,7 +306,7 @@ func (c *HostClient) Do(req Request, resp Response) error {
 			break
 		}
 
-		if req.IsIdempotent() {
+		if isIdempotent(req.Method()) {
 			// Retry non-idempotent requests if the server closes
 			// the connection before sending the response.
 			//
@@ -405,9 +412,11 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 		//start line
 		var reqLine []byte
 		if reqType == requestProxyHTTP {
-			reqLine = req.StartLineWithFullURI()
+			writeRequestLine(bw, true, req.Method(),
+				req.Host(), req.Port(), req.Path(), req.Protocol())
 		} else {
-			reqLine = req.StartLine()
+			writeRequestLine(bw, false, req.Method(),
+				req.Host(), req.Port(), req.Path(), req.Protocol())
 		}
 		if nw, err := bw.Write(reqLine); err != nil {
 			return err
