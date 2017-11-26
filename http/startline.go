@@ -78,25 +78,6 @@ type RequestLine struct {
 	protocol []byte
 }
 
-//requestURI a uri struct
-type requestURI struct {
-	rawURI []byte
-	scheme []byte
-	host   []byte
-	path   []byte
-
-	hostWithPort string
-}
-
-var (
-	methodConnect = []byte("CONNECT")
-	methodGet     = []byte("GET")
-	methodHead    = []byte("HEAD")
-	methodPut     = []byte("PUT")
-	methodDelete  = []byte("DELETE")
-	methodPost    = []byte("POST")
-)
-
 // ParseRequestLine parse request line in stand-alone mode
 func ParseRequestLine(reader *bufio.Reader) (*RequestLine, error) {
 	reqLine := &RequestLine{}
@@ -140,7 +121,7 @@ func (l *RequestLine) Parse(reader *bufio.Reader) error {
 		return errors.New("no request uri provided")
 	}
 	reqURI := reqLine[reqURIStartIndex:reqURIEndIndex]
-	isConnect := bytes.Equal(methodConnect, method)
+	isConnect := IsMethodConnect(method)
 	l.uri.parse(isConnect, reqURI)
 	l.uri.fillHostWithPort(isConnect)
 
@@ -173,17 +154,9 @@ func (l *RequestLine) Path() []byte {
 	return l.uri.path
 }
 
-//IsConnect if the request is a https proxy request
-func (l *RequestLine) IsConnect() bool {
-	return bytes.Equal(l.method, methodConnect)
-}
-
-//IsIdempotent idempotent methods: get, head, put
-func (l *RequestLine) IsIdempotent() bool {
-	return bytes.Equal(l.method, methodGet) ||
-		bytes.Equal(l.method, methodHead) ||
-		bytes.Equal(l.method, methodDelete) ||
-		bytes.Equal(l.method, methodPut)
+//Protocol HTTP/1.0, HTTP/1.1 etc.
+func (l *RequestLine) Protocol() []byte {
+	return l.protocol
 }
 
 //HostWithPort the host with port
@@ -191,39 +164,22 @@ func (l *RequestLine) HostWithPort() string {
 	return l.uri.hostWithPort
 }
 
-//RawURI the raw URI separated
-func (l *RequestLine) RawURI() []byte {
-	return l.uri.rawURI
+//requestURI a uri struct
+type requestURI struct {
+	scheme []byte
+	host   []byte
+	port   uint16
+	path   []byte
+
+	hostWithPort string
 }
 
-var (
-	sp   = []byte(" ")
-	crlf = []byte("\r\n")
-)
-
-//RawRequestLine raw request line the proxy got
-func (l *RequestLine) RawRequestLine() []byte {
-	return l.fullLine
-}
-
-//RebuildRequestLine rebuild the request host line for direct http request
-func (l *RequestLine) RebuildRequestLine() []byte {
-	reqLine := make([]byte, len(l.method)+len(sp)+
-		len(l.uri.path)+len(sp)+len(l.protocol)+len(crlf))
-	copyIndex := 0
-	copy(reqLine[copyIndex:], l.method)
-	copyIndex += len(l.method)
-	copy(reqLine[copyIndex:], sp)
-	copyIndex += len(sp)
-	copy(reqLine[copyIndex:], l.uri.path)
-	copyIndex += len(l.uri.path)
-	copy(reqLine[copyIndex:], sp)
-	copyIndex += len(sp)
-	copy(reqLine[copyIndex:], l.protocol)
-	copyIndex += len(l.protocol)
-	copy(reqLine[copyIndex:], crlf)
-	copyIndex += len(crlf)
-	return reqLine
+//Reset reset the request URI
+func (uri *requestURI) Reset() {
+	uri.host = uri.host[:0]
+	uri.hostWithPort = ""
+	uri.path = uri.path[:0]
+	uri.scheme = uri.scheme[:0]
 }
 
 //parse parse the request URI
@@ -232,7 +188,6 @@ func (l *RequestLine) RebuildRequestLine() []byte {
 //uri3.1: http://www.example.com
 //uri3.2: http://www.example.com/path/to/resource
 func (uri *requestURI) parse(isConnect bool, reqURI []byte) {
-	uri.rawURI = reqURI
 	//uri1: https proxy reqest's hosts in the request uri
 	if isConnect {
 		uri.host = reqURI
@@ -260,13 +215,6 @@ func (uri *requestURI) parse(isConnect bool, reqURI []byte) {
 		uri.host = reqURI[hostNameStart:hostNameEnd]
 		uri.path = reqURI[hostNameEnd:]
 	}
-}
-
-func (uri *requestURI) Reset() {
-	uri.host = uri.host[:0]
-	uri.hostWithPort = ""
-	uri.path = uri.path[:0]
-	uri.scheme = uri.scheme[:0]
 }
 
 func (uri *requestURI) fillHostWithPort(isConnect bool) {
