@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/haxii/fastproxy/bufiopool"
@@ -12,7 +14,7 @@ import (
 	"github.com/haxii/fastproxy/hijack"
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/log"
-	"github.com/haxii/fastproxy/proxy"
+	"github.com/haxii/fastproxy/proxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
 )
 
@@ -23,15 +25,18 @@ func main() {
 	}
 	superProxy, _ := superproxy.NewSuperProxy("10.1.1.9", 8118, false, "", "")
 	proxy := proxy.Proxy{
-		BufioPool:    &bufiopool.Pool{},
-		Client:       client.Client{},
-		ProxyLogger:  &log.DefaultLogger{},
-		HijackerPool: &SimpleHijackerPool{},
+		BufioPool:   &bufiopool.Pool{},
+		Client:      client.Client{},
+		ProxyLogger: &log.DefaultLogger{},
 		Handler: proxy.Handler{
+			HijackerPool: &SimpleHijackerPool{},
 			ShouldDecryptHost: func(hostWithPort string) bool {
-				return false
+				return true
 			},
 			URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
+				if strings.Contains(hostWithPort, "lumtest") {
+					return nil
+				}
 				if len(uri) == 0 {
 					//this is a connections should not decrypt
 					fmt.Println(hostWithPort)
@@ -51,15 +56,17 @@ type SimpleHijackerPool struct {
 }
 
 //Get get a simple hijacker from pool
-func (p *SimpleHijackerPool) Get(addr net.Addr) hijack.Hijacker {
+func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
+	targetHost string, method, path []byte) hijack.Hijacker {
 	v := p.pool.Get()
+	var h *simpleHijacker
 	if v == nil {
-		hijacker := &simpleHijacker{clientAddr: addr.String()}
-		return hijacker
+		h = &simpleHijacker{}
+	} else {
+		h = v.(*simpleHijacker)
 	}
-	hijacker := v.(*simpleHijacker)
-	hijacker.clientAddr = addr.String()
-	return hijacker
+	h.Set(clientAddr, targetHost, method, path)
+	return h
 }
 
 //Put puts a simple hijacker back to pool
@@ -68,13 +75,19 @@ func (p *SimpleHijackerPool) Put(s hijack.Hijacker) {
 }
 
 type simpleHijacker struct {
-	clientAddr string
-	host       string
+	clientAddr, targetHost string
+	method, path           []byte
 }
 
-func (s *simpleHijacker) OnRequest(host string, method, path []byte,
-	header http.Header, rawHeader []byte) io.Writer {
-	s.host = host
+func (s *simpleHijacker) Set(clientAddr net.Addr,
+	host string, method, path []byte) {
+	s.clientAddr = clientAddr.String()
+	s.targetHost = host
+	s.method = method
+	s.path = path
+}
+
+func (s *simpleHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
 ************************
 addr:%s, host:%s
@@ -86,11 +99,16 @@ content length:%d
 %s
 ************************
 `,
-		s.clientAddr, s.host, method, path, header.ContentLength(), rawHeader)
+		s.clientAddr, s.targetHost, s.method, s.path,
+		header.ContentLength(), rawHeader)
 	return os.Stdout
 }
 
-func (s *simpleHijacker) HijackResponse() io.Reader {
+func (s *simpleHijacker) HijackResponse() *bufio.Reader {
+	if strings.Contains(s.targetHost, "douban") {
+		reader := strings.NewReader("HTTP/1.1 501 Response Hijacked\r\n\r\n")
+		return bufio.NewReader(reader)
+	}
 	return nil
 }
 
@@ -100,6 +118,8 @@ func (s *simpleHijacker) OnResponse(statusCode int,
 ************************
 addr:%s, host:%s
 ************************
+%s %s
+************************
 status code:%d
 ************************
 content length:%d
@@ -107,6 +127,7 @@ content length:%d
 %s
 ************************
 `,
-		s.clientAddr, s.host, statusCode, header.ContentLength(), rawHeader)
+		s.clientAddr, s.targetHost, s.method, s.path,
+		statusCode, header.ContentLength(), rawHeader)
 	return os.Stdout
 }
