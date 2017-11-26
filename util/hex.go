@@ -1,4 +1,4 @@
-package proxy
+package util
 
 import (
 	"bufio"
@@ -13,7 +13,8 @@ var (
 	errTooLargeHexNum = errors.New("too large hex number")
 )
 
-func readHexInt(r *bufio.Reader, buffer *bytebufferpool.ByteBuffer) (int, error) {
+//ReadHexInt read hex from r then return it as well as put result in buffer
+func ReadHexInt(r *bufio.Reader, buffer *bytebufferpool.ByteBuffer) (int, error) {
 	n := 0
 	i := 0
 	var k int
@@ -25,8 +26,10 @@ func readHexInt(r *bufio.Reader, buffer *bytebufferpool.ByteBuffer) (int, error)
 			}
 			return -1, err
 		}
-		if e := buffer.WriteByte(c); e != nil {
-			return -1, e
+		if buffer != nil {
+			if e := buffer.WriteByte(c); e != nil {
+				return -1, e
+			}
 		}
 		k = int(hex2intTable[c])
 		if k == 16 {
@@ -34,7 +37,9 @@ func readHexInt(r *bufio.Reader, buffer *bytebufferpool.ByteBuffer) (int, error)
 				return -1, errEmptyHexNum
 			}
 			r.UnreadByte()
-			buffer.B = buffer.B[:buffer.Len()-1]
+			if buffer != nil {
+				buffer.B = buffer.B[:buffer.Len()-1]
+			}
 			return n, nil
 		}
 		if i >= maxHexIntChars {

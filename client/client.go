@@ -29,18 +29,20 @@ var ErrConnectionClosed = errors.New("the server closed connection before return
 
 //Request http request for request
 type Request interface {
-	//StartLine 1st line of request
-	StartLine() []byte
-
-	//StartLineWithFullURI 1st line of request with full uri,
-	//useful for proxy request
-	StartLineWithFullURI() []byte
+	//Method request method in UPPER case
+	Method() []byte
+	//HostWithPort
+	HostWithPort() string
+	//Path request relative path
+	Path() []byte
+	//Protocol HTTP/1.0, HTTP/1.1 etc.
+	Protocol() []byte
 
 	//WriteHeaderTo read header from request, then Write To buffer IO writer
-	WriteHeaderTo(w *bufio.Writer) error
+	WriteHeaderTo(*bufio.Writer) error
 
 	//WriteBodyTo read body from request, then Write To buffer IO writer
-	WriteBodyTo(w *bufio.Writer) error
+	WriteBodyTo(*bufio.Writer) error
 
 	// ConnectionClose if the request's "Connection" header value is
 	// set as `Close`
@@ -49,9 +51,7 @@ type Request interface {
 	ConnectionClose() bool
 
 	//specified in request's start line usually
-	IsIdempotent() bool
 	IsTLS() bool
-	HostWithPort() string
 	TLSServerName() string
 
 	//super proxy
@@ -61,7 +61,7 @@ type Request interface {
 //Response http response for response
 type Response interface {
 	//ReadFrom read the http response from the buffer IO reader
-	ReadFrom(*bufio.Reader) error
+	ReadFrom(discardBody bool, br *bufio.Reader) error
 
 	// ConnectionClose if the response's "Connection" header value is
 	// set as `Close`
@@ -299,7 +299,7 @@ func (c *HostClient) Do(req Request, resp Response) error {
 			break
 		}
 
-		if req.IsIdempotent() {
+		if isIdempotent(req.Method()) {
 			// Retry non-idempotent requests if the server closes
 			// the connection before sending the response.
 			//
@@ -403,17 +403,14 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 	bw := c.BufioPool.AcquireWriter(conn)
 	writeRequest := func() error {
 		//start line
-		var reqLine []byte
 		if reqType == requestProxyHTTP {
-			reqLine = req.StartLineWithFullURI()
+			writeRequestLine(bw, true, req.Method(),
+				req.HostWithPort(), req.Path(), req.Protocol())
 		} else {
-			reqLine = req.StartLine()
+			writeRequestLine(bw, false, req.Method(),
+				req.HostWithPort(), req.Path(), req.Protocol())
 		}
-		if nw, err := bw.Write(reqLine); err != nil {
-			return err
-		} else if nw != len(reqLine) {
-			return io.ErrShortWrite
-		}
+
 		//auth header if needed
 		if reqType == requestProxyHTTP {
 			if authHeader := req.GetProxy().AuthHeaderWithCRLF(); authHeader != nil {
@@ -427,6 +424,10 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 		//other request headers
 		if err := req.WriteHeaderTo(bw); err != nil {
 			return err
+		}
+		//do not read contents for get and head
+		if isHead(req.Method()) || isGet(req.Method()) {
+			return nil
 		}
 		//request body
 		return req.WriteBodyTo(bw)
@@ -454,7 +455,7 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 		}
 	}
 	br := c.BufioPool.AcquireReader(conn)
-	if err = resp.ReadFrom(br); err != nil {
+	if err = resp.ReadFrom(isHead(req.Method()), br); err != nil {
 		c.BufioPool.ReleaseReader(br)
 		c.ConnManager.CloseConn(cc)
 		return true, err
