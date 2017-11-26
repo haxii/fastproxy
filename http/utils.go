@@ -1,4 +1,6 @@
-package header
+package http
+
+import "bytes"
 
 func changeToUpperCase(s []byte) {
 	for i, b := range s {
@@ -16,4 +18,11 @@ func changeToLowerCase(s []byte) {
 			s[i] = b
 		}
 	}
+}
+
+var methodConnect = []byte("CONNECT")
+
+//IsMethodConnect if the method is `CONNECT`
+func IsMethodConnect(method []byte) bool {
+	return bytes.Equal(method, methodConnect)
 }
