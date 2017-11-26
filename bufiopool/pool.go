@@ -2,7 +2,7 @@ package bufiopool
 
 import (
 	"bufio"
-	"net"
+	"io"
 	"sync"
 )
 
@@ -40,7 +40,7 @@ func New(readBufferSize, writeBufferSize int) *Pool {
 }
 
 //AcquireReader acquire a buffered reader based on net connection
-func (p *Pool) AcquireReader(c net.Conn) *bufio.Reader {
+func (p *Pool) AcquireReader(c io.Reader) *bufio.Reader {
 	v := p.readerPool.Get()
 	if v == nil {
 		n := p.readBufferSize
@@ -60,7 +60,7 @@ func (p *Pool) ReleaseReader(r *bufio.Reader) {
 }
 
 //AcquireWriter acquire a buffered writer based on net connection
-func (p *Pool) AcquireWriter(c net.Conn) *bufio.Writer {
+func (p *Pool) AcquireWriter(c io.Writer) *bufio.Writer {
 	v := p.writerPool.Get()
 	if v == nil {
 		n := p.writeBufferSize

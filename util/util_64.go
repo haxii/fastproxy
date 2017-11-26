@@ -1,6 +1,6 @@
 // +build amd64 arm64 ppc64
 
-package proxy
+package util
 
 const (
 	maxIntChars    = 18
