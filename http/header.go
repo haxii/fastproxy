@@ -31,6 +31,11 @@ func (header *Header) IsConnectionClose() bool {
 	return header.isConnectionClose
 }
 
+//ContentType content type in header
+func (header *Header) ContentType() string {
+	return header.contentType
+}
+
 //ContentLength content length header value,
 func (header *Header) ContentLength() int64 {
 	if header.contentLength > 0 {
