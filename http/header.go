@@ -16,12 +16,14 @@ import (
 type Header struct {
 	isConnectionClose bool
 	contentLength     int64
+	contentType       string
 }
 
 //Reset reset header info into default val
 func (header *Header) Reset() {
 	header.isConnectionClose = false
 	header.contentLength = 0
+	header.contentType = ""
 }
 
 //IsConnectionClose is connection header set to `close`
@@ -150,8 +152,14 @@ func (header *Header) readHeaders(buf []byte,
 			} else if bytes.Contains(rawHeaderLine, []byte("identity")) {
 				header.contentLength = -2
 			}
+		} else if isContentTypeHeader(rawHeaderLine) {
+			contentTypeBytesIndex := bytes.IndexByte(rawHeaderLine, ':')
+			if contentTypeBytesIndex >= 0 {
+				header.contentType = strings.TrimSpace(
+					string(rawHeaderLine[contentTypeBytesIndex+1:]),
+				)
+			}
 		}
-
 		//remove proxy header
 		if !isProxyHeader(rawHeaderLine) {
 			return util.WriteWithValidation(buffer, rawHeaderLine)
@@ -206,7 +214,7 @@ var proxyHeaders = [][]byte{
 
 func isProxyHeader(header []byte) bool {
 	for _, proxyHeaderKey := range proxyHeaders {
-		if bytes.HasPrefix(header, proxyHeaderKey) {
+		if hasPrefixIgnoreCase(header, proxyHeaderKey) {
 			return true
 		}
 	}
@@ -216,18 +224,23 @@ func isProxyHeader(header []byte) bool {
 var connectionHeader = []byte("Connection")
 
 func isConnectionHeader(header []byte) bool {
-	return bytes.HasPrefix(header, connectionHeader)
+	return hasPrefixIgnoreCase(header, connectionHeader)
 }
 
 var contentLengthHeader = []byte("Content-Length")
 
 func isContentLengthHeader(header []byte) bool {
-	return bytes.HasPrefix(header, contentLengthHeader)
+	return hasPrefixIgnoreCase(header, contentLengthHeader)
+}
+
+var contentTypeHeader = []byte("Content-Type")
+
+func isContentTypeHeader(header []byte) bool {
+	return hasPrefixIgnoreCase(header, contentTypeHeader)
 }
 
 var transferEncoding = []byte("Transfer-Encoding")
 
 func isTransferEncodingHeader(header []byte) bool {
-	return bytes.HasPrefix(header, transferEncoding)
-
+	return hasPrefixIgnoreCase(header, transferEncoding)
 }
