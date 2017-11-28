@@ -142,7 +142,8 @@ func (header *Header) readHeaders(buf []byte,
 		// content length < 0 means the transfer encoding is set,
 		//  -1 means chunked
 		//  -2 means identity
-		if isContentLengthHeader(rawHeaderLine) {
+		if isContentLengthHeader(rawHeaderLine) && header.contentLength >= 0 {
+			//content-length header can only be set with transfer encoding unset
 			lengthBytesIndex := bytes.IndexByte(rawHeaderLine, ':')
 			if lengthBytesIndex > 0 {
 				lengthBytes := rawHeaderLine[lengthBytesIndex+1:]
