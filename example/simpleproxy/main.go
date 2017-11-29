@@ -90,11 +90,11 @@ func (s *simpleHijacker) Set(clientAddr net.Addr,
 func (s *simpleHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
 ************************
-addr:%s, host:%s
+addr: %s, host: %s
 ************************
 %s %s
 ************************
-content length:%d
+content length: %d
 ************************
 %s
 ************************
@@ -116,18 +116,19 @@ func (s *simpleHijacker) OnResponse(statusCode int,
 	header http.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
 ************************
-addr:%s, host:%s
+addr: %s, host: %s
 ************************
 %s %s
 ************************
-status code:%d
+status code: %d
 ************************
-content length:%d
+content length: %d
+content type: %s
 ************************
 %s
 ************************
 `,
 		s.clientAddr, s.targetHost, s.method, s.path,
-		statusCode, header.ContentLength(), rawHeader)
+		statusCode, header.ContentLength(), header.ContentType(), rawHeader)
 	return os.Stdout
 }

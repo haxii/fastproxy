@@ -7,7 +7,11 @@ import (
 )
 
 //WriteWithValidation write p into w and validate the written data length
+// pass a nil writer does nothing and produce a nil error
 func WriteWithValidation(w io.Writer, p []byte) error {
+	if w == nil {
+		return nil
+	}
 	wn, err := w.Write(p)
 	if err != nil {
 		return err

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"io"
+	"sync"
 
 	"github.com/haxii/fastproxy/bytebufferpool"
 	"github.com/haxii/fastproxy/hijack"
@@ -132,9 +133,10 @@ func (r *Request) WriteHeaderTo(writer *bufio.Writer) error {
 		return errors.New("Empty request, nothing to write")
 	}
 	//read & write the headers
-	return copyHeader(r.reader, writer, &r.header,
-		func(rawHeader []byte) {
+	return copyHeader(&r.header, r.reader, writer,
+		func(rawHeader []byte) error {
 			r.hijackerBodyWriter = r.hijacker.OnRequest(r.header, rawHeader)
+			return nil
 		},
 	)
 }
@@ -146,7 +148,11 @@ func (r *Request) WriteBodyTo(writer *bufio.Writer) error {
 		return errors.New("Empty request, nothing to write")
 	}
 	//write the request body (if any)
-	return copyBody(&r.body, r.reader, writer, r.hijackerBodyWriter, r.header)
+	return copyBody(&r.header, &r.body, r.reader, writer,
+		func(rawBody []byte) error {
+			return util.WriteWithValidation(r.hijackerBodyWriter, rawBody)
+		},
+	)
 }
 
 // ConnectionClose if the request's "Connection" header value is set as "Close".
@@ -229,12 +235,12 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) error {
 
 	//read & write the headers
 	var hijackerBodyWriter io.Writer
-	if err := copyHeader(
-		reader, r.writer, &r.header,
-		func(rawHeader []byte) {
+	if err := copyHeader(&r.header, reader, r.writer,
+		func(rawHeader []byte) error {
 			hijackerBodyWriter = r.hijacker.OnResponse(
 				r.respLine.GetStatusCode(),
 				r.header, rawHeader)
+			return nil
 		},
 	); err != nil {
 		return err
@@ -245,7 +251,11 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) error {
 	}
 
 	//write the request body (if any)
-	return copyBody(&r.body, reader, r.writer, hijackerBodyWriter, r.header)
+	return copyBody(&r.header, &r.body, reader, r.writer,
+		func(rawBody []byte) error {
+			return util.WriteWithValidation(hijackerBodyWriter, rawBody)
+		},
+	)
 }
 
 //ConnectionClose if the request's "Connection" header value is set as "Close"
@@ -254,38 +264,48 @@ func (r *Response) ConnectionClose() bool {
 	return false
 }
 
-func copyHeader(src *bufio.Reader, dst *bufio.Writer,
-	header *http.Header, parsedHeaderHandler func(headers []byte)) error {
+//addtionalDst used by copyHeader and copyBody for additional write
+type addtionalDst func([]byte) error
+
+func copyHeader(header *http.Header,
+	src *bufio.Reader, dst1 io.Writer, dst2 addtionalDst) error {
 	//read and write header
 	buffer := bytebufferpool.Get()
 	defer bytebufferpool.Put(buffer)
 	if err := header.ParseHeaderFields(src, buffer); err != nil {
 		return util.ErrWrapper(err, "fail to parse http headers")
 	}
-	if err := util.WriteWithValidation(dst, buffer.B); err != nil {
-		return util.ErrWrapper(err, "fail to write http headers")
-	}
-
-	parsedHeaderHandler(buffer.B)
-	return nil
+	return parallelWrite(dst1, dst2, buffer.B)
 }
 
-func copyBody(body *http.Body, src *bufio.Reader, dst *bufio.Writer,
-	hijackerWriter io.Writer, header http.Header) error {
-	isDstSet := dst != nil
-	isHijackSet := hijackerWriter != nil
+func copyBody(header *http.Header, body *http.Body,
+	src *bufio.Reader, dst1 io.Writer, dst2 addtionalDst) error {
 	w := func(isChunkHeader bool, data []byte) error {
-		if isDstSet {
-			if err := util.WriteWithValidation(dst, data); err != nil {
-				return err
-			}
-		}
-		if isHijackSet {
-			if err := util.WriteWithValidation(hijackerWriter, data); err != nil {
-				return err
-			}
-		}
-		return nil
+		return parallelWrite(dst1, dst2, data)
 	}
 	return body.Parse(src, header.BodyType(), header.ContentLength(), w)
+}
+
+//parallelWrite write data to dst1 dst2 concurrently
+//TODO: with timeout?
+func parallelWrite(dst1 io.Writer, dst2 addtionalDst, data []byte) error {
+	var wg sync.WaitGroup
+	var err1, err2 error
+	wg.Add(2)
+	go func(e error) {
+		err1 = util.WriteWithValidation(dst1, data)
+		wg.Done()
+	}(err1)
+	go func(e error) {
+		err2 = dst2(data)
+		wg.Done()
+	}(err2)
+	wg.Wait()
+	if err1 != nil {
+		return util.ErrWrapper(err1, "error occurred when write to dst")
+	}
+	if err2 != nil {
+		return util.ErrWrapper(err2, "error occurred when write to addtional dst")
+	}
+	return nil
 }
