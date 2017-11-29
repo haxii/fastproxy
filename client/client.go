@@ -299,7 +299,7 @@ func (c *HostClient) Do(req Request, resp Response) error {
 			break
 		}
 
-		if isIdempotent(req.Method()) {
+		if isHeadOrGet(req.Method()) {
 			// Retry non-idempotent requests if the server closes
 			// the connection before sending the response.
 			//
@@ -426,7 +426,7 @@ func (c *HostClient) do(req Request, resp Response) (bool, error) {
 			return err
 		}
 		//do not read contents for get and head
-		if isHead(req.Method()) || isGet(req.Method()) {
+		if isHeadOrGet(req.Method()) {
 			return nil
 		}
 		//request body
