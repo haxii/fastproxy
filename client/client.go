@@ -414,8 +414,8 @@ func (c *HostClient) do(req Request, resp Response,
 		} else {
 			reqWriteToTarget = conn
 		}
-		if err := readFromReqAndWriteToIOWriter(req,
-			reqType == requestProxyHTTP, reqWriteToTarget, c.BufioPool); err != nil {
+		if err := c.readFromReqAndWriteToIOWriter(req,
+			reqType == requestProxyHTTP, reqWriteToTarget); err != nil {
 			if shouldCacheReqForRetry {
 				reqCacheForRetry.Reset()
 			}
@@ -426,7 +426,7 @@ func (c *HostClient) do(req Request, resp Response,
 	}
 	if isCachedReqAvaliable() {
 		//write the cached http requests to conn
-		if err := writeData(reqCacheForRetry.Bytes(), conn, c.BufioPool); err != nil {
+		if err := c.writeData(reqCacheForRetry.Bytes(), conn); err != nil {
 			if err != nil {
 				c.ConnManager.CloseConn(cc)
 				return true, err
@@ -475,9 +475,9 @@ func (c *HostClient) do(req Request, resp Response,
 	return false, err
 }
 
-func writeData(data []byte, w io.Writer, bufioPool *bufiopool.Pool) error {
-	bw := bufioPool.AcquireWriter(w)
-	defer bufioPool.ReleaseWriter(bw)
+func (c *HostClient) writeData(data []byte, w io.Writer) error {
+	bw := c.BufioPool.AcquireWriter(w)
+	defer c.BufioPool.ReleaseWriter(bw)
 	if nw, err := bw.Write(data); err != nil {
 		return err
 	} else if nw != len(data) {
@@ -486,10 +486,10 @@ func writeData(data []byte, w io.Writer, bufioPool *bufiopool.Pool) error {
 	return bw.Flush()
 }
 
-func readFromReqAndWriteToIOWriter(req Request, isReqProxyHTTP bool,
-	w io.Writer, bufioPool *bufiopool.Pool) error {
-	bw := bufioPool.AcquireWriter(w)
-	defer bufioPool.ReleaseWriter(bw)
+func (c *HostClient) readFromReqAndWriteToIOWriter(req Request,
+	isReqProxyHTTP bool, w io.Writer) error {
+	bw := c.BufioPool.AcquireWriter(w)
+	defer c.BufioPool.ReleaseWriter(bw)
 
 	//start line
 	if isReqProxyHTTP {
