@@ -15,7 +15,6 @@ import (
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
-	"haxii.com/akita/sniffer/bytebufferpool"
 )
 
 // ErrConnectionClosed may be returned from client methods if the server
@@ -294,14 +293,13 @@ func (c *HostClient) Do(req Request, resp Response) error {
 	attempts := 0
 
 	atomic.AddUint64(&c.pendingRequests, 1)
-	buffer := bytebufferpool.Get()
 	for {
-		retry, err = c.do(req, resp, buffer)
+		retry, err = c.do(req, resp)
 		if err == nil || !retry {
 			break
 		}
 
-		if isHeadOrGet(req.Method()) {
+		if isIdempotent(req.Method()) {
 			// Retry non-idempotent requests if the server closes
 			// the connection before sending the response.
 			//
@@ -318,7 +316,6 @@ func (c *HostClient) Do(req Request, resp Response) error {
 			break
 		}
 	}
-	bytebufferpool.Put(buffer)
 	atomic.AddUint64(&c.pendingRequests, ^uint64(0))
 
 	if err == io.EOF {
@@ -336,8 +333,7 @@ func (c *HostClient) PendingRequests() int {
 	return int(atomic.LoadUint64(&c.pendingRequests))
 }
 
-func (c *HostClient) do(req Request, resp Response,
-	reqCacheForRetry *bytebufferpool.ByteBuffer) (bool, error) {
+func (c *HostClient) do(req Request, resp Response) (bool, error) {
 	//set hostclient's last used time
 	atomic.StoreUint32(&c.lastUseTime, uint32(servertime.CoarseTimeNow().Unix()-startTimeUnix))
 
@@ -404,35 +400,45 @@ func (c *HostClient) do(req Request, resp Response,
 	}
 
 	//write request
-	shouldCacheReqForRetry := (reqCacheForRetry != nil) && isHeadOrGet(req.Method())
-	isCachedReqAvaliable := func() bool { return shouldCacheReqForRetry && (reqCacheForRetry.Len() > 0) }
-	if (!shouldCacheReqForRetry) || (!isCachedReqAvaliable()) {
-		//determine where the parsed request should write to
-		var reqWriteToTarget io.Writer
-		if shouldCacheReqForRetry {
-			reqWriteToTarget = reqCacheForRetry
+	bw := c.BufioPool.AcquireWriter(conn)
+	writeRequest := func() error {
+		//start line
+		if reqType == requestProxyHTTP {
+			writeRequestLine(bw, true, req.Method(),
+				req.HostWithPort(), req.Path(), req.Protocol())
 		} else {
-			reqWriteToTarget = conn
+			writeRequestLine(bw, false, req.Method(),
+				req.HostWithPort(), req.Path(), req.Protocol())
 		}
-		if err := c.readFromReqAndWriteToIOWriter(req,
-			reqType == requestProxyHTTP, reqWriteToTarget); err != nil {
-			if shouldCacheReqForRetry {
-				reqCacheForRetry.Reset()
-			}
-			c.ConnManager.CloseConn(cc)
-			//cannot even read a complete request, do NOT retry
-			return false, err
-		}
-	}
-	if isCachedReqAvaliable() {
-		//write the cached http requests to conn
-		if err := c.writeData(reqCacheForRetry.Bytes(), conn); err != nil {
-			if err != nil {
-				c.ConnManager.CloseConn(cc)
-				return true, err
+
+		//auth header if needed
+		if reqType == requestProxyHTTP {
+			if authHeader := req.GetProxy().AuthHeaderWithCRLF(); authHeader != nil {
+				if nw, err := bw.Write(authHeader); err != nil {
+					return err
+				} else if nw != len(authHeader) {
+					return io.ErrShortWrite
+				}
 			}
 		}
+		//other request headers
+		if err := req.WriteHeaderTo(bw); err != nil {
+			return err
+		}
+		//do not read contents for get and head
+		if isHead(req.Method()) || isGet(req.Method()) {
+			return nil
+		}
+		//request body
+		return req.WriteBodyTo(bw)
 	}
+	if e := writeRequest(); e != nil {
+		c.BufioPool.ReleaseWriter(bw)
+		c.ConnManager.CloseConn(cc)
+		return true, e
+	}
+	err = bw.Flush()
+	c.BufioPool.ReleaseWriter(bw)
 
 	//get response
 	if c.ReadTimeout > 0 {
@@ -449,19 +455,10 @@ func (c *HostClient) do(req Request, resp Response,
 		}
 	}
 	br := c.BufioPool.AcquireReader(conn)
-	//read a byte from response to test if the connection has been closed by remote
-	if b, err := br.Peek(1); err != nil {
-		if err == io.EOF {
-			return true, io.EOF
-		}
-		return false, err
-	} else if len(b) == 0 {
-		return true, io.EOF
-	}
 	if err = resp.ReadFrom(isHead(req.Method()), br); err != nil {
 		c.BufioPool.ReleaseReader(br)
 		c.ConnManager.CloseConn(cc)
-		return false, err
+		return true, err
 	}
 	c.BufioPool.ReleaseReader(br)
 
@@ -473,54 +470,4 @@ func (c *HostClient) do(req Request, resp Response,
 	}
 
 	return false, err
-}
-
-func (c *HostClient) writeData(data []byte, w io.Writer) error {
-	bw := c.BufioPool.AcquireWriter(w)
-	defer c.BufioPool.ReleaseWriter(bw)
-	if nw, err := bw.Write(data); err != nil {
-		return err
-	} else if nw != len(data) {
-		return io.ErrShortWrite
-	}
-	return bw.Flush()
-}
-
-func (c *HostClient) readFromReqAndWriteToIOWriter(req Request,
-	isReqProxyHTTP bool, w io.Writer) error {
-	bw := c.BufioPool.AcquireWriter(w)
-	defer c.BufioPool.ReleaseWriter(bw)
-
-	//start line
-	if isReqProxyHTTP {
-		writeRequestLine(bw, true, req.Method(),
-			req.HostWithPort(), req.Path(), req.Protocol())
-	} else {
-		writeRequestLine(bw, false, req.Method(),
-			req.HostWithPort(), req.Path(), req.Protocol())
-	}
-
-	//auth header if needed
-	if isReqProxyHTTP {
-		if authHeader := req.GetProxy().AuthHeaderWithCRLF(); authHeader != nil {
-			if nw, err := bw.Write(authHeader); err != nil {
-				return err
-			} else if nw != len(authHeader) {
-				return io.ErrShortWrite
-			}
-		}
-	}
-	//other request headers
-	if err := req.WriteHeaderTo(bw); err != nil {
-		return err
-	}
-	//do not read contents for get and head
-	if isHeadOrGet(req.Method()) {
-		return bw.Flush()
-	}
-	//request body
-	if err := req.WriteBodyTo(bw); err != nil {
-		return err
-	}
-	return bw.Flush()
 }
