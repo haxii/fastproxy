@@ -22,9 +22,11 @@ func isGet(method []byte) bool {
 	return bytes.Equal(method, methodGet)
 }
 
-//isHeadOrGet get, head as idempotent methods
-func isHeadOrGet(method []byte) bool {
-	return isHead(method) || isGet(method)
+//isIdempotent idempotent methods: get, head, put
+func isIdempotent(method []byte) bool {
+	return isHead(method) || isGet(method) ||
+		bytes.Equal(method, methodDelete) ||
+		bytes.Equal(method, methodPut)
 }
 
 var (
