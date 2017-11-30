@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
+	"github.com/haxii/fastproxy/bytebufferpool"
 	"github.com/haxii/fastproxy/cert"
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
-	"haxii.com/akita/sniffer/bytebufferpool"
 )
 
 // ErrConnectionClosed may be returned from client methods if the server
