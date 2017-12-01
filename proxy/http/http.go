@@ -134,9 +134,8 @@ func (r *Request) WriteHeaderTo(writer *bufio.Writer) error {
 	}
 	//read & write the headers
 	return copyHeader(&r.header, r.reader, writer,
-		func(rawHeader []byte) error {
+		func(rawHeader []byte) {
 			r.hijackerBodyWriter = r.hijacker.OnRequest(r.header, rawHeader)
-			return nil
 		},
 	)
 }
@@ -149,8 +148,10 @@ func (r *Request) WriteBodyTo(writer *bufio.Writer) error {
 	}
 	//write the request body (if any)
 	return copyBody(&r.header, &r.body, r.reader, writer,
-		func(rawBody []byte) error {
-			return util.WriteWithValidation(r.hijackerBodyWriter, rawBody)
+		func(rawBody []byte) {
+			if err := util.WriteWithValidation(r.hijackerBodyWriter, rawBody); err != nil {
+				//TODO: log the sniffer error
+			}
 		},
 	)
 }
@@ -236,11 +237,10 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) error {
 	//read & write the headers
 	var hijackerBodyWriter io.Writer
 	if err := copyHeader(&r.header, reader, r.writer,
-		func(rawHeader []byte) error {
+		func(rawHeader []byte) {
 			hijackerBodyWriter = r.hijacker.OnResponse(
 				r.respLine.GetStatusCode(),
 				r.header, rawHeader)
-			return nil
 		},
 	); err != nil {
 		return err
@@ -252,8 +252,10 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) error {
 
 	//write the request body (if any)
 	return copyBody(&r.header, &r.body, reader, r.writer,
-		func(rawBody []byte) error {
-			return util.WriteWithValidation(hijackerBodyWriter, rawBody)
+		func(rawBody []byte) {
+			if err := util.WriteWithValidation(hijackerBodyWriter, rawBody); err != nil {
+				//TODO: log the sniffer error
+			}
 		},
 	)
 }
@@ -264,11 +266,11 @@ func (r *Response) ConnectionClose() bool {
 	return false
 }
 
-//addtionalDst used by copyHeader and copyBody for additional write
-type addtionalDst func([]byte) error
+//additionalDst used by copyHeader and copyBody for additional write
+type additionalDst func([]byte)
 
 func copyHeader(header *http.Header,
-	src *bufio.Reader, dst1 io.Writer, dst2 addtionalDst) error {
+	src *bufio.Reader, dst1 io.Writer, dst2 additionalDst) error {
 	//read and write header
 	buffer := bytebufferpool.Get()
 	defer bytebufferpool.Put(buffer)
@@ -279,7 +281,7 @@ func copyHeader(header *http.Header,
 }
 
 func copyBody(header *http.Header, body *http.Body,
-	src *bufio.Reader, dst1 io.Writer, dst2 addtionalDst) error {
+	src *bufio.Reader, dst1 io.Writer, dst2 additionalDst) error {
 	w := func(isChunkHeader bool, data []byte) error {
 		return parallelWrite(dst1, dst2, data)
 	}
@@ -288,24 +290,21 @@ func copyBody(header *http.Header, body *http.Body,
 
 //parallelWrite write data to dst1 dst2 concurrently
 //TODO: with timeout?
-func parallelWrite(dst1 io.Writer, dst2 addtionalDst, data []byte) error {
+func parallelWrite(dst1 io.Writer, dst2 additionalDst, data []byte) error {
 	var wg sync.WaitGroup
-	var err1, err2 error
+	var err error
 	wg.Add(2)
-	go func(e error) {
-		err1 = util.WriteWithValidation(dst1, data)
+	go func() {
+		err = util.WriteWithValidation(dst1, data)
 		wg.Done()
-	}(err1)
-	go func(e error) {
-		err2 = dst2(data)
+	}()
+	go func() {
+		dst2(data)
 		wg.Done()
-	}(err2)
+	}()
 	wg.Wait()
-	if err1 != nil {
-		return util.ErrWrapper(err1, "error occurred when write to dst")
-	}
-	if err2 != nil {
-		return util.ErrWrapper(err2, "error occurred when write to addtional dst")
+	if err != nil {
+		return util.ErrWrapper(err, "error occurred when write to dst")
 	}
 	return nil
 }
