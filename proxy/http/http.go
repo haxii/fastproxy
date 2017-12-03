@@ -239,8 +239,7 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) error {
 	if err := copyHeader(&r.header, reader, r.writer,
 		func(rawHeader []byte) {
 			hijackerBodyWriter = r.hijacker.OnResponse(
-				r.respLine.GetStatusCode(),
-				r.header, rawHeader)
+				r.respLine, r.header, rawHeader)
 		},
 	); err != nil {
 		return err
