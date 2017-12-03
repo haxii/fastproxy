@@ -124,7 +124,6 @@ func (l *RequestLine) Parse(reader *bufio.Reader) error {
 	reqURI := reqLine[reqURIStartIndex:reqURIEndIndex]
 	isConnect := IsMethodConnect(method)
 	l.uri.Parse(isConnect, reqURI)
-	l.uri.FillHostWithPort(isConnect)
 
 	//protocol
 	protocolStartIndex := reqURIEndIndex + 1
