@@ -1,7 +1,6 @@
 package hijack
 
 import (
-	"bufio"
 	"io"
 	"net"
 
@@ -23,7 +22,7 @@ type Hijacker interface {
 	// HijackResponse return a response hijacking reader
 	//  a non-nil reader means proxy would stop the request to target
 	//  server then return the reader's response
-	HijackResponse() *bufio.Reader
+	HijackResponse() io.Reader
 }
 
 //HijackerPool pooling hijacker instances

@@ -2,6 +2,7 @@ package hijack
 
 import (
 	"bufio"
+	"io"
 
 	"github.com/haxii/fastproxy/bufiopool"
 )
@@ -31,17 +32,18 @@ type Client struct {
 }
 
 //Do make the hijack response using
-func (c *Client) Do(req Request, resp Response, hijackedRespReader *bufio.Reader) error {
+func (c *Client) Do(req Request, resp Response, hijackedRespReader io.Reader) error {
 	if err := c.writeReqToDevNull(req); err != nil {
 		return err
 	}
-
-	return resp.ReadFrom(false, hijackedRespReader)
+	bufHijackedRespReader := c.bufioPool.AcquireReader(hijackedRespReader)
+	defer c.bufioPool.ReleaseReader(bufHijackedRespReader)
+	return resp.ReadFrom(false, bufHijackedRespReader)
 }
 
 func (c *Client) writeReqToDevNull(req Request) error {
 	devNullBufferedWriter := c.bufioPool.AcquireWriter(defaultDevNullWriter)
-	c.bufioPool.ReleaseWriter(devNullBufferedWriter)
+	defer c.bufioPool.ReleaseWriter(devNullBufferedWriter)
 	if err := req.WriteHeaderTo(devNullBufferedWriter); err != nil {
 		return err
 	}

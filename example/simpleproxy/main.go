@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"net"
@@ -104,10 +103,9 @@ content length: %d
 	return os.Stdout
 }
 
-func (s *simpleHijacker) HijackResponse() *bufio.Reader {
+func (s *simpleHijacker) HijackResponse() io.Reader {
 	if strings.Contains(s.targetHost, "douban") {
-		reader := strings.NewReader("HTTP/1.1 501 Response Hijacked\r\n\r\n")
-		return bufio.NewReader(reader)
+		return strings.NewReader("HTTP/1.1 501 Response Hijacked\r\n\r\n")
 	}
 	return nil
 }
