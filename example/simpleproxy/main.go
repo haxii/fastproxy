@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"net"
@@ -104,15 +103,14 @@ content length: %d
 	return os.Stdout
 }
 
-func (s *simpleHijacker) HijackResponse() *bufio.Reader {
+func (s *simpleHijacker) HijackResponse() io.Reader {
 	if strings.Contains(s.targetHost, "douban") {
-		reader := strings.NewReader("HTTP/1.1 501 Response Hijacked\r\n\r\n")
-		return bufio.NewReader(reader)
+		return strings.NewReader("HTTP/1.1 501 Response Hijacked\r\n\r\n")
 	}
 	return nil
 }
 
-func (s *simpleHijacker) OnResponse(statusCode int,
+func (s *simpleHijacker) OnResponse(respLine http.ResponseLine,
 	header http.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
 ************************
@@ -120,7 +118,7 @@ addr: %s, host: %s
 ************************
 %s %s
 ************************
-status code: %d
+%s %d %s
 ************************
 content length: %d
 content type: %s
@@ -129,6 +127,7 @@ content type: %s
 ************************
 `,
 		s.clientAddr, s.targetHost, s.method, s.path,
-		statusCode, header.ContentLength(), header.ContentType(), rawHeader)
+		respLine.GetProtocol(), respLine.GetStatusCode(), respLine.GetStatusMessage(),
+		header.ContentLength(), header.ContentType(), rawHeader)
 	return os.Stdout
 }
