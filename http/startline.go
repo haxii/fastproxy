@@ -13,7 +13,9 @@ import (
 //ResponseLine start line of a http response
 type ResponseLine struct {
 	fullLine   []byte
+	protocol   []byte
 	statusCode int
+	statusMsg  []byte
 }
 
 //GetResponseLine get full response line
@@ -21,16 +23,33 @@ func (l *ResponseLine) GetResponseLine() []byte {
 	return l.fullLine
 }
 
+//GetProtocol get response protocol i.e. http version
+func (l *ResponseLine) GetProtocol() []byte {
+	return l.protocol
+}
+
 //GetStatusCode get response status code
 func (l *ResponseLine) GetStatusCode() int {
 	return l.statusCode
 }
 
+//GetStatusMessage get response status message
+func (l *ResponseLine) GetStatusMessage() []byte {
+	return l.statusMsg
+}
+
 //Reset reset response line
 func (l *ResponseLine) Reset() {
-	l.statusCode = 0
 	l.fullLine = l.fullLine[:0]
+	l.protocol = l.protocol[:0]
+	l.statusCode = 0
+	l.statusMsg = l.statusMsg[:0]
 }
+
+var (
+	errRespLineNOProtocol   = errors.New("no protocol provided")
+	errRespLineNOStatusCode = errors.New("no status code provided")
+)
 
 // Parse parse response line
 // The first line of a response message is the status-line, consisting
@@ -48,26 +67,34 @@ func (l *ResponseLine) Parse(reader *bufio.Reader) error {
 		return err
 	}
 
-	//http version token
-	httpVersionIndex := bytes.IndexByte(respLineWithCRLF, ' ')
-	if httpVersionIndex <= 0 {
-		return errors.New("no http version provided")
+	var respLine []byte
+	if respLineWithCRLF[len(respLineWithCRLF)-2] == '\r' {
+		respLine = respLineWithCRLF[:len(respLineWithCRLF)-2] //CRLF included
+	} else {
+		respLine = respLineWithCRLF[:len(respLineWithCRLF)-1] //only LF included
 	}
 
-	//3-digit status code
-	statusCodeStartIndex := httpVersionIndex + 1
-	statusCodeEndIndex := statusCodeStartIndex + bytes.IndexByte(respLineWithCRLF[statusCodeStartIndex:], ' ')
-	if statusCodeEndIndex <= statusCodeStartIndex {
-		return errors.New("no status code provided")
+	//http version token
+	protocolEndIndex := bytes.IndexByte(respLine, ' ')
+	if protocolEndIndex <= 0 {
+		return errRespLineNOProtocol
 	}
-	statusCode := respLineWithCRLF[statusCodeStartIndex:statusCodeEndIndex]
+	l.protocol = respLine[:protocolEndIndex]
+
+	//3-digit status code
+	statusCodeStartIndex := protocolEndIndex + 1
+	statusCodeEndIndex := statusCodeStartIndex + bytes.IndexByte(respLine[statusCodeStartIndex:], ' ')
+	if statusCodeEndIndex <= statusCodeStartIndex {
+		return errRespLineNOStatusCode
+	}
+	statusCode := respLine[statusCodeStartIndex:statusCodeEndIndex]
 	if code, err := strconv.Atoi(string(statusCode)); code > 0 && err == nil {
 		l.statusCode = code
 		l.fullLine = respLineWithCRLF
 	} else {
-		return util.ErrWrapper(err, "fail to parse status code %s", statusCode)
+		return util.ErrWrapper(err, "fail to parse status status code %s", statusCode)
 	}
-
+	l.statusMsg = respLine[statusCodeEndIndex+1:]
 	return nil
 }
 
