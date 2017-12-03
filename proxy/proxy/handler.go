@@ -53,7 +53,7 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 
 	//set requests hijacker
 	hijacker := h.HijackerPool.Get(c.RemoteAddr(),
-		req.HostWithPort(), req.Method(), req.Path())
+		req.HostWithPort(), req.Method(), req.PathWithQueryFragment())
 	defer h.HijackerPool.Put(hijacker)
 
 	//set request & response hijacker
@@ -64,7 +64,7 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 	}
 
 	//set requests proxy
-	superProxy := h.URLProxy(req.HostWithPort(), req.Path())
+	superProxy := h.URLProxy(req.HostWithPort(), req.PathWithQueryFragment())
 	req.SetProxy(superProxy)
 	//handle http proxy request
 	return client.Do(req, resp)

@@ -35,7 +35,7 @@ type Request interface {
 	//HostWithPort
 	HostWithPort() string
 	//Path request relative path
-	Path() []byte
+	PathWithQueryFragment() []byte
 	//Protocol HTTP/1.0, HTTP/1.1 etc.
 	Protocol() []byte
 
@@ -494,10 +494,10 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request,
 	//start line
 	if isReqProxyHTTP {
 		writeRequestLine(bw, true, req.Method(),
-			req.HostWithPort(), req.Path(), req.Protocol())
+			req.HostWithPort(), req.PathWithQueryFragment(), req.Protocol())
 	} else {
 		writeRequestLine(bw, false, req.Method(),
-			req.HostWithPort(), req.Path(), req.Protocol())
+			req.HostWithPort(), req.PathWithQueryFragment(), req.Protocol())
 	}
 
 	//auth header if needed
