@@ -116,9 +116,9 @@ func (r *Request) SetHostWithPort(hostWithPort string) {
 	r.hostWithPort = hostWithPort
 }
 
-//Path request relative path
-func (r *Request) Path() []byte {
-	return r.reqLine.Path()
+//PathWithQueryFragment request path with query and fragment
+func (r *Request) PathWithQueryFragment() []byte {
+	return r.reqLine.PathWithQueryFragment()
 }
 
 //Protocol HTTP/1.0, HTTP/1.1 etc.

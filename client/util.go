@@ -28,9 +28,10 @@ func isHeadOrGet(method []byte) bool {
 }
 
 var (
-	startLineScheme = []byte("http://")
-	startLineSP     = byte(' ')
-	startLineCRLF   = []byte("\r\n")
+	startLineScheme  = []byte("http://")
+	startLineSP      = byte(' ')
+	startLinePathSep = byte('/')
+	startLineCRLF    = []byte("\r\n")
 )
 
 const defaultHTTPPort = "80"
@@ -77,8 +78,19 @@ func writeRequestLine(bw *bufio.Writer, fullURL bool,
 			}
 		}
 	}
-	if err := write(path); err != nil {
-		return err
+	if len(path) == 0 {
+		if err := bw.WriteByte(startLinePathSep); err != nil {
+			return err
+		}
+	} else {
+		if path[0] != startLinePathSep {
+			if err := bw.WriteByte(startLinePathSep); err != nil {
+				return err
+			}
+		}
+		if err := write(path); err != nil {
+			return err
+		}
 	}
 	if err := bw.WriteByte(startLineSP); err != nil {
 		return err

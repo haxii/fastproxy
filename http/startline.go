@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strconv"
 
+	"github.com/haxii/fastproxy/uri"
 	"github.com/haxii/fastproxy/util"
 )
 
@@ -74,7 +75,7 @@ func (l *ResponseLine) Parse(reader *bufio.Reader) error {
 type RequestLine struct {
 	fullLine []byte
 	method   []byte
-	uri      requestURI
+	uri      uri.URI
 	protocol []byte
 }
 
@@ -122,8 +123,7 @@ func (l *RequestLine) Parse(reader *bufio.Reader) error {
 	}
 	reqURI := reqLine[reqURIStartIndex:reqURIEndIndex]
 	isConnect := IsMethodConnect(method)
-	l.uri.parse(isConnect, reqURI)
-	l.uri.fillHostWithPort(isConnect)
+	l.uri.Parse(isConnect, reqURI)
 
 	//protocol
 	protocolStartIndex := reqURIEndIndex + 1
@@ -149,9 +149,9 @@ func (l *RequestLine) Method() []byte {
 	return l.method
 }
 
-//Path request relative path
-func (l *RequestLine) Path() []byte {
-	return l.uri.path
+//PathWithQueryFragment request relative path
+func (l *RequestLine) PathWithQueryFragment() []byte {
+	return l.uri.PathWithQueryFragment()
 }
 
 //Protocol HTTP/1.0, HTTP/1.1 etc.
@@ -161,78 +161,7 @@ func (l *RequestLine) Protocol() []byte {
 
 //HostWithPort the host with port
 func (l *RequestLine) HostWithPort() string {
-	return l.uri.hostWithPort
-}
-
-//requestURI a uri struct
-type requestURI struct {
-	scheme []byte
-	host   []byte
-	port   uint16
-	path   []byte
-
-	hostWithPort string
-}
-
-//Reset reset the request URI
-func (uri *requestURI) Reset() {
-	uri.host = uri.host[:0]
-	uri.hostWithPort = ""
-	uri.path = uri.path[:0]
-	uri.scheme = uri.scheme[:0]
-}
-
-//parse parse the request URI
-//uri1: www.example.com:443
-//uri2: /path/to/resource
-//uri3.1: http://www.example.com
-//uri3.2: http://www.example.com/path/to/resource
-func (uri *requestURI) parse(isConnect bool, reqURI []byte) {
-	//uri1: https proxy reqest's hosts in the request uri
-	if isConnect {
-		uri.host = reqURI
-		return
-	}
-
-	//scheme
-	schemeEnd := bytes.Index(reqURI, []byte("//"))
-	if schemeEnd <= 0 {
-		//uri2: not a full uri, only relative path
-		uri.path = reqURI
-		return
-	}
-	uri.scheme = reqURI[:schemeEnd]
-
-	//host
-	hostNameStart := schemeEnd + 2
-	hostNameEnd := hostNameStart + bytes.IndexByte(reqURI[hostNameStart:], '/')
-	if hostNameEnd <= hostNameStart {
-		//uri3.1
-		uri.host = reqURI[hostNameStart:]
-		uri.path = []byte{'/'}
-	} else {
-		//uri3.2
-		uri.host = reqURI[hostNameStart:hostNameEnd]
-		uri.path = reqURI[hostNameEnd:]
-	}
-}
-
-func (uri *requestURI) fillHostWithPort(isConnect bool) {
-	hasPortFuncByte := func(host []byte) bool {
-		return bytes.LastIndexByte(host, ':') >
-			bytes.LastIndexByte(host, ']')
-	}
-	if len(uri.host) == 0 {
-		return
-	}
-	uri.hostWithPort = string(uri.host)
-	if !hasPortFuncByte(uri.host) {
-		if isConnect {
-			uri.hostWithPort += ":443"
-		} else {
-			uri.hostWithPort += ":80"
-		}
-	}
+	return l.uri.HostWithPort()
 }
 
 func parseStartline(reader *bufio.Reader) ([]byte, error) {
