@@ -18,7 +18,7 @@ type Hijacker interface {
 
 	// OnResponse give the response header in parameters then
 	// write response body in the writer returned
-	OnResponse(statusCode int, header http.Header, rawHeader []byte) io.Writer
+	OnResponse(statusLine http.ResponseLine, header http.Header, rawHeader []byte) io.Writer
 
 	// HijackResponse return a response hijacking reader
 	//  a non-nil reader means proxy would stop the request to target
