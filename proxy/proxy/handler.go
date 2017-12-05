@@ -18,14 +18,19 @@ import (
 
 //Handler proxy handler
 type Handler struct {
+	//ShouldAllowConnection should allow the connection to proxy, return false to drop the conn
+	ShouldAllowConnection func(connAddr net.Addr) bool
+
+	//HTTPSDecryptEnable test if host's https connection should be decrypted
+	ShouldDecryptHost func(host string) bool
+
+	//URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
+	URLProxy func(hostWithPort string, path []byte) *superproxy.SuperProxy
+
 	//hijacker pool for making a hijacker for every incoming request
 	HijackerPool hijack.HijackerPool
 	//hijacker client for make hijacked response if avaliable
 	hijackClient hijack.Client
-	//HTTPSDecryptEnable test if host's https connection should be decrypted
-	ShouldDecryptHost func(host string) bool
-	//URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
-	URLProxy func(hostWithPort string, path []byte) *superproxy.SuperProxy
 	//MitmCACert HTTPSDecryptCACert ca.cer used for https decryption
 	MitmCACert *tls.Certificate
 
