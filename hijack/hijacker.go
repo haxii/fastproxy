@@ -7,7 +7,7 @@ import (
 	"github.com/haxii/fastproxy/http"
 )
 
-//Hijacker hijacker of each http connection
+//Hijacker hijacker of each http connection and decrypted https connection
 // Sniffer: `OnRequest` & `OnResponse`
 // Modifer: `HijackResponse`
 type Hijacker interface {

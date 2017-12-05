@@ -28,7 +28,10 @@ func main() {
 		Client:      client.Client{},
 		ProxyLogger: &log.DefaultLogger{},
 		Handler: proxy.Handler{
-			HijackerPool: &SimpleHijackerPool{},
+			ShouldAllowConnection: func(conn net.Addr) bool {
+				fmt.Printf("addlowed connection from %s\n", conn.String())
+				return true
+			},
 			ShouldDecryptHost: func(hostWithPort string) bool {
 				return true
 			},
@@ -42,6 +45,7 @@ func main() {
 				}
 				return superProxy
 			},
+			HijackerPool: &SimpleHijackerPool{},
 		},
 	}
 	if err := proxy.Serve(ln); err != nil {
