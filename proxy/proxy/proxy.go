@@ -51,8 +51,13 @@ func (p *Proxy) init() error {
 	if p.Handler.HijackerPool == nil {
 		return errors.New("nil hijacker pool provided")
 	}
+	if p.Handler.ShouldAllowConnection == nil {
+		p.Handler.ShouldAllowConnection = func(net.Addr) bool {
+			return false
+		}
+	}
 	if p.Handler.ShouldDecryptHost == nil {
-		p.Handler.ShouldDecryptHost = func(host string) bool {
+		p.Handler.ShouldDecryptHost = func(string) bool {
 			return false
 		}
 	}
@@ -145,6 +150,9 @@ func (p *Proxy) acceptConn(ln net.Listener, lastPerIPErrorTime *time.Time) (net.
 }
 
 func (p *Proxy) serveConn(c net.Conn) error {
+	if !p.Handler.ShouldAllowConnection(c.RemoteAddr()) {
+		return nil
+	}
 	//convert c into a http request
 	reader := p.BufioPool.AcquireReader(c)
 	req := p.reqPool.Acquire()
