@@ -4,6 +4,12 @@ import (
 	"log"
 )
 
+//InfoWrapper log info wrapper
+type InfoWrapper func(format string, v ...interface{})
+
+//ErrorWrapper log error wrapper
+type ErrorWrapper func(err error, format string, v ...interface{})
+
 //Logger proxy logger, used for logging proxy info and errors
 type Logger interface {
 	Info(format string, v ...interface{})
