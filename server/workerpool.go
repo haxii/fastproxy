@@ -45,6 +45,7 @@ type workerChan struct {
 	ch          chan net.Conn
 }
 
+//Start ...
 func (wp *WorkerPool) Start() {
 	if wp.stopCh != nil {
 		panic("BUG: workerPool already started")
@@ -65,6 +66,7 @@ func (wp *WorkerPool) Start() {
 	}()
 }
 
+//Stop stop..
 func (wp *WorkerPool) Stop() {
 	if wp.stopCh == nil {
 		panic("BUG: workerPool wasn't started")
@@ -120,7 +122,7 @@ func (wp *WorkerPool) clean(scratch *[]*workerChan) {
 	// Notify obsolete workers to stop.
 	// This notification must be outside the wp.lock, since ch.ch
 	// may be blocking and may consume a lot of time if many workers
-	// are located on non-local CPUs.
+	// are located on non-local CPU-s.
 	tmp := *scratch
 	for i, ch := range tmp {
 		ch.ch <- nil
@@ -128,6 +130,7 @@ func (wp *WorkerPool) clean(scratch *[]*workerChan) {
 	}
 }
 
+//Serve server connection
 func (wp *WorkerPool) Serve(c net.Conn) bool {
 	ch := wp.getCh()
 	if ch == nil {
@@ -215,7 +218,7 @@ func (wp *WorkerPool) workerFunc(ch *workerChan) {
 			if !(strings.Contains(errStr, "broken pipe") ||
 				strings.Contains(errStr, "reset by peer") ||
 				strings.Contains(errStr, "i/o timeout")) {
-				wp.Logger.Error(err, "error when serving connection %q<->%q", c.LocalAddr(), c.RemoteAddr())
+				wp.Logger.Error(c.RemoteAddr(), err, "error when serving connection")
 			}
 		}
 		c.Close()

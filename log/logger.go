@@ -2,6 +2,7 @@ package log
 
 import (
 	"log"
+	"net"
 )
 
 //InfoWrapper log info wrapper
@@ -13,7 +14,8 @@ type ErrorWrapper func(err error, format string, v ...interface{})
 //Logger proxy logger, used for logging proxy info and errors
 type Logger interface {
 	Info(format string, v ...interface{})
-	Error(err error, format string, v ...interface{})
+	//Error nil client means this is a server internal error
+	Error(client net.Addr, err error, format string, v ...interface{})
 }
 
 //DefaultLogger default logger based on std logger
@@ -21,14 +23,18 @@ type DefaultLogger struct{}
 
 //Info log info
 func (l *DefaultLogger) Info(format string, v ...interface{}) {
-	log.Printf("[INFO] "+format, v...)
+	log.Printf("[ INFO ] "+format, v...)
 }
 
 //Error log error
-func (l *DefaultLogger) Error(err error, format string, v ...interface{}) {
+func (l *DefaultLogger) Error(client net.Addr, err error, format string, v ...interface{}) {
 	var errMsg string
 	if err != nil {
 		errMsg = err.Error()
 	}
-	log.Printf("[ERROR "+errMsg+" ]"+format, v...)
+	clientAddr := ""
+	if client != nil {
+		clientAddr = client.String()
+	}
+	log.Printf("[ ERROR "+clientAddr+" : "+errMsg+" ]"+format, v...)
 }
