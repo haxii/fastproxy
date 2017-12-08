@@ -13,8 +13,7 @@ type ErrorWrapper func(err error, format string, v ...interface{})
 
 //Logger proxy logger, used for logging proxy info and errors
 type Logger interface {
-	Info(format string, v ...interface{})
-	//Error nil client means this is a server internal error
+	Info(client net.Addr, format string, v ...interface{})
 	Error(client net.Addr, err error, format string, v ...interface{})
 }
 
@@ -22,8 +21,8 @@ type Logger interface {
 type DefaultLogger struct{}
 
 //Info log info
-func (l *DefaultLogger) Info(format string, v ...interface{}) {
-	log.Printf("[ INFO ] "+format, v...)
+func (l *DefaultLogger) Info(client net.Addr, format string, v ...interface{}) {
+	log.Printf("[ INFO "+client.String()+" ] "+format, v...)
 }
 
 //Error log error
@@ -32,9 +31,21 @@ func (l *DefaultLogger) Error(client net.Addr, err error, format string, v ...in
 	if err != nil {
 		errMsg = err.Error()
 	}
-	clientAddr := ""
-	if client != nil {
-		clientAddr = client.String()
-	}
-	log.Printf("[ ERROR "+clientAddr+" : "+errMsg+" ]"+format, v...)
+	log.Printf("[ ERROR "+client.String()+" : "+errMsg+" ]"+format, v...)
+}
+
+//DefaultProxyServerAddr used by Logger to log server related info and errors
+var DefaultProxyServerAddr = &ProxyServerAddr{}
+
+//ProxyServerAddr implements the net.Addr for proxy server
+type ProxyServerAddr struct{}
+
+//Network ...
+func (*ProxyServerAddr) Network() string {
+	return "TCP"
+}
+
+//String ...
+func (*ProxyServerAddr) String() string {
+	return "ProxyMGR"
 }
