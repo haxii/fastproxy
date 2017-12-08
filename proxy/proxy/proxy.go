@@ -113,9 +113,10 @@ func (p *Proxy) Serve(ln net.Listener) error {
 				"The connection cannot be served because Server.Concurrency limit exceeded")
 			c.Close()
 			if time.Since(lastOverflowErrorTime) > time.Minute {
-				p.ProxyLogger.Error(nil, "The incoming connection cannot be served, "+
-					"because %d concurrent connections are served. "+
-					"Try increasing Server.Concurrency", maxWorkersCount)
+				p.ProxyLogger.Error(log.DefaultProxyServerAddr, nil,
+					"The incoming connection cannot be served, "+
+						"because %d concurrent connections are served. "+
+						"Try increasing Server.Concurrency", maxWorkersCount)
 				lastOverflowErrorTime = servertime.CoarseTimeNow()
 			}
 			time.Sleep(100 * time.Millisecond)
@@ -132,12 +133,14 @@ func (p *Proxy) acceptConn(ln net.Listener, lastPerIPErrorTime *time.Time) (net.
 				panic("BUG: net.Listener returned non-nil conn and non-nil error")
 			}
 			if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
-				p.ProxyLogger.Error(netErr, "Temporary error when accepting new connections")
+				p.ProxyLogger.Error(log.DefaultProxyServerAddr,
+					netErr, "Temporary error when accepting new connections")
 				time.Sleep(time.Second)
 				continue
 			}
 			if err != io.EOF && !strings.Contains(err.Error(), "use of closed network connection") {
-				p.ProxyLogger.Error(err, "Permanent error when accepting new connections")
+				p.ProxyLogger.Error(log.DefaultProxyServerAddr,
+					err, "Permanent error when accepting new connections")
 				return nil, err
 			}
 			return nil, io.EOF
