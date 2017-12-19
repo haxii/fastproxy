@@ -24,10 +24,6 @@ func WriteWithValidation(w io.Writer, p []byte) error {
 
 //ErrWrapper wrap the error message except io.EOF
 func ErrWrapper(err error, msg string, args ...interface{}) error {
-	//do not wrap io.EOF
-	if err == io.EOF {
-		return err
-	}
 	if err == nil {
 		return fmt.Errorf(msg, args...)
 	}
