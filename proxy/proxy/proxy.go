@@ -182,7 +182,10 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		err := p.Handler.handleHTTPConns(c, req,
 			p.BufioPool, &p.Client)
 		releaseReqAndReader()
-		return err
+		if err != nil {
+			return util.ErrWrapper(err, "error HTTP traffic %s ", req.HostWithPort())
+		}
+		return nil
 	}
 
 	//handle https proxy request
@@ -191,8 +194,11 @@ func (p *Proxy) serveConn(c net.Conn) error {
 	host := strings.Repeat(req.HostWithPort(), 1)
 	releaseReqAndReader()
 	//make the requests
-	return p.Handler.handleHTTPSConns(c, host,
-		p.BufioPool, &p.Client)
+	if err := p.Handler.handleHTTPSConns(c, host,
+		p.BufioPool, &p.Client); err != nil {
+		return util.ErrWrapper(err, "error HTTPS traffic "+host+" ")
+	}
+	return nil
 }
 
 func (p *Proxy) writeFastError(w io.Writer, statusCode int, msg string) error {
