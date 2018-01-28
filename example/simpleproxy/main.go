@@ -12,9 +12,9 @@ import (
 	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/hijack"
 	"github.com/haxii/fastproxy/http"
-	"github.com/haxii/fastproxy/log"
 	"github.com/haxii/fastproxy/proxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
+	"github.com/haxii/log"
 )
 
 func main() {

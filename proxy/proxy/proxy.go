@@ -11,12 +11,12 @@ import (
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/http"
-	"github.com/haxii/fastproxy/log"
 	"github.com/haxii/fastproxy/server"
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/util"
 	"github.com/haxii/fastproxy/x509"
+	"github.com/haxii/log"
 
 	proxyhttp "github.com/haxii/fastproxy/proxy/http"
 )
@@ -76,6 +76,8 @@ func (p *Proxy) init() error {
 	return nil
 }
 
+const proxyManagerLoggerName = "ProxyMNG"
+
 // DefaultConcurrency is the maximum number of concurrent connections
 const DefaultConcurrency = 256 * 1024
 
@@ -113,7 +115,7 @@ func (p *Proxy) Serve(ln net.Listener) error {
 				"The connection cannot be served because Server.Concurrency limit exceeded")
 			c.Close()
 			if time.Since(lastOverflowErrorTime) > time.Minute {
-				p.ProxyLogger.Error(log.DefaultProxyServerAddr, nil,
+				p.ProxyLogger.Error(proxyManagerLoggerName, nil,
 					"The incoming connection cannot be served, "+
 						"because %d concurrent connections are served. "+
 						"Try increasing Server.Concurrency", maxWorkersCount)
@@ -133,13 +135,13 @@ func (p *Proxy) acceptConn(ln net.Listener, lastPerIPErrorTime *time.Time) (net.
 				panic("BUG: net.Listener returned non-nil conn and non-nil error")
 			}
 			if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
-				p.ProxyLogger.Error(log.DefaultProxyServerAddr,
+				p.ProxyLogger.Error(proxyManagerLoggerName,
 					netErr, "Temporary error when accepting new connections")
 				time.Sleep(time.Second)
 				continue
 			}
 			if err != io.EOF && !strings.Contains(err.Error(), "use of closed network connection") {
-				p.ProxyLogger.Error(log.DefaultProxyServerAddr,
+				p.ProxyLogger.Error(proxyManagerLoggerName,
 					err, "Permanent error when accepting new connections")
 				return nil, err
 			}
