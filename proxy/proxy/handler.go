@@ -101,7 +101,7 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 	)
 	if superProxy != nil {
 		//acquire server conn to target host
-		tunnelConn, err = superProxy.MakeHTTPTunnel(bufioPool, hostWithPort)
+		tunnelConn, err = superProxy.MakeTunnel(bufioPool, hostWithPort)
 	} else {
 		//acquire server conn to target host
 		tunnelConn, err = transport.Dial(hostWithPort)

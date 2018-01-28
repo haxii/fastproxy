@@ -36,10 +36,8 @@ var socks5Errors = []string{
 	"address type not supported",
 }
 
-func (p *SuperProxy) initSOCKS5GreetingsAndAuth(host string,
-	user string, pass string) {
-	// the Greeting size here is just an estimate
-	p.socks5Greetings = make([]byte, 0, 6+len(host))
+func (p *SuperProxy) initSOCKS5GreetingsAndAuth(user string, pass string) {
+	p.socks5Greetings = make([]byte, 0, 4)
 	p.socks5Greetings = append(p.socks5Greetings, socks5Version)
 	if len(user) > 0 && len(user) < 256 && len(pass) < 256 {
 		p.socks5Greetings = append(p.socks5Greetings, 2, /* num auth methods */
@@ -60,7 +58,7 @@ func (p *SuperProxy) initSOCKS5GreetingsAndAuth(host string,
 // connect takes an existing connection to a socks5 proxy server,
 // and commands the server to extend that connection to target,
 // which must be a canonical address with a host and port.
-func (p *SuperProxy) connectSOCKS5Proxy(conn net.Conn) error {
+func (p *SuperProxy) connectSOCKS5Proxy(conn net.Conn, targetHost string, targetPort int) error {
 	if _, err := conn.Write(p.socks5Greetings); err != nil {
 		return errors.New("proxy: failed to write greeting to SOCKS5 proxy at " +
 			p.hostWithPort + ": " + err.Error())
@@ -106,7 +104,7 @@ func (p *SuperProxy) connectSOCKS5Proxy(conn net.Conn) error {
 	buf.WriteByte(socks5Connect)
 	buf.WriteByte(0) /* reserved */
 
-	if ip := net.ParseIP(p.host); ip != nil {
+	if ip := net.ParseIP(targetHost); ip != nil {
 		if ip4 := ip.To4(); ip4 != nil {
 			buf.WriteByte(socks5IP4)
 			ip = ip4
@@ -115,15 +113,15 @@ func (p *SuperProxy) connectSOCKS5Proxy(conn net.Conn) error {
 		}
 		buf.Write(ip)
 	} else {
-		if len(p.host) > 255 {
-			return errors.New("proxy: destination host name too long: " + p.host)
+		if len(targetHost) > 255 {
+			return errors.New("proxy: destination host name too long: " + targetHost)
 		}
 		buf.WriteByte(socks5Domain)
-		buf.WriteByte(byte(len(p.host)))
-		buf.WriteString(p.host)
+		buf.WriteByte(byte(len(targetHost)))
+		buf.WriteString(targetHost)
 	}
-	buf.WriteByte(byte(p.port >> 8))
-	buf.WriteByte(byte(p.port))
+	buf.WriteByte(byte(targetPort >> 8))
+	buf.WriteByte(byte(targetPort))
 
 	if _, err := conn.Write(buf.B); err != nil {
 		return errors.New("proxy: failed to write connect request to SOCKS5 proxy at " +

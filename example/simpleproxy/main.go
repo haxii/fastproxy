@@ -22,14 +22,14 @@ func main() {
 	if err != nil {
 		return
 	}
-	superProxy, _ := superproxy.NewSuperProxy("10.1.1.9", 8118, false, "", "")
+	superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8081, superproxy.ProxyTypeSOCKS5, "", "")
 	proxy := proxy.Proxy{
 		BufioPool:   &bufiopool.Pool{},
 		Client:      client.Client{},
 		ProxyLogger: &log.DefaultLogger{},
 		Handler: proxy.Handler{
 			ShouldAllowConnection: func(conn net.Addr) bool {
-				fmt.Printf("addlowed connection from %s\n", conn.String())
+				fmt.Printf("allowed connection from %s\n", conn.String())
 				return true
 			},
 			ShouldDecryptHost: func(hostWithPort string) bool {

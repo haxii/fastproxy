@@ -102,7 +102,7 @@ type Client struct {
 
 	hostClientsLock sync.Mutex
 	//refers to all possibilities of requestType i.e. isTLS x isProxy
-	hostClientsList [4]hostClients
+	hostClientsList [5]hostClients
 }
 
 type hostClients map[string]*HostClient
@@ -113,19 +113,26 @@ func (r *requestType) Value() int {
 	return int(*r)
 }
 
-func parseRequestType(viaProxy, isTLS bool) requestType {
+func parseRequestType(superProxy *superproxy.SuperProxy, isHTTPS bool) requestType {
 	var rt requestType
-	if !viaProxy {
-		if !isTLS {
+	if superProxy == nil {
+		if !isHTTPS {
 			rt = requestDirectHTTP
 		} else {
 			rt = requestDirectHTTPS
 		}
 	} else {
-		if !isTLS {
-			rt = requestProxyHTTP
-		} else {
-			rt = requestProxyHTTPS
+		switch superProxy.GetProxyType() {
+		case superproxy.ProxyTypeSOCKS5:
+			rt = requestProxySOCKS5
+		case superproxy.ProxyTypeHTTP:
+			fallthrough
+		case superproxy.ProxyTypeHTTPS:
+			if !isHTTPS {
+				rt = requestProxyHTTP
+			} else {
+				rt = requestProxyHTTPS
+			}
 		}
 	}
 	return rt
@@ -136,6 +143,7 @@ const (
 	requestDirectHTTPS
 	requestProxyHTTP
 	requestProxyHTTPS
+	requestProxySOCKS5
 )
 
 // Do performs the given http request and fills the given http response.
@@ -156,7 +164,7 @@ func (c *Client) Do(req Request, resp Response) error {
 	}
 	//fetch request type
 	viaProxy := (req.GetProxy() != nil)
-	reqType := parseRequestType(viaProxy, req.IsTLS())
+	reqType := parseRequestType(req.GetProxy(), req.IsTLS())
 
 	//get target dialing host with port
 	hostWithPort := ""
@@ -343,7 +351,7 @@ func (c *HostClient) do(req Request, resp Response,
 
 	//analysis request type
 	viaProxy := (req.GetProxy() != nil)
-	reqType := parseRequestType(viaProxy, req.IsTLS())
+	reqType := parseRequestType(req.GetProxy(), req.IsTLS())
 
 	//set https tls config
 	if c.tlsServerConfig == nil {
@@ -367,12 +375,17 @@ func (c *HostClient) do(req Request, resp Response,
 		case requestProxyHTTP:
 			return transport.Dial(req.GetProxy().HostWithPort())
 		case requestProxyHTTPS:
-			tunnelConn, err := req.GetProxy().MakeHTTPTunnel(c.BufioPool, req.HostWithPort())
+			fallthrough
+		case requestProxySOCKS5:
+			tunnelConn, err := req.GetProxy().MakeTunnel(c.BufioPool, req.HostWithPort())
 			if err != nil {
 				return nil, err
 			}
-			conn := tls.Client(tunnelConn, c.tlsServerConfig)
-			return conn, nil
+			if reqType == requestProxyHTTPS {
+				conn := tls.Client(tunnelConn, c.tlsServerConfig)
+				return conn, nil
+			}
+			return tunnelConn, nil
 		}
 		return nil, errors.New("request type not implemented")
 	}
@@ -502,7 +515,7 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request,
 
 	//auth header if needed
 	if isReqProxyHTTP {
-		if authHeader := req.GetProxy().AuthHeaderWithCRLF(); authHeader != nil {
+		if authHeader := req.GetProxy().HTTPProxyAuthHeaderWithCRLF(); authHeader != nil {
 			if nw, err := bw.Write(authHeader); err != nil {
 				return err
 			} else if nw != len(authHeader) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
@@ -25,8 +26,6 @@ const (
 
 //SuperProxy chaining proxy
 type SuperProxy struct {
-	host              string
-	port              int
 	hostWithPort      string
 	hostWithPortBytes []byte
 
@@ -48,37 +47,40 @@ type SuperProxy struct {
 }
 
 // NewSuperProxy new a super proxy
-func NewSuperProxy(host string, port uint16, proxyType ProxyType,
+func NewSuperProxy(proxyHost string, proxyPort uint16, proxyType ProxyType,
 	user string, pass string) (*SuperProxy, error) {
 	// check input vars
-	if len(host) == 0 {
+	if len(proxyHost) == 0 {
 		return nil, errors.New("nil host provided")
 	}
-	if port == 0 {
+	if proxyPort == 0 {
 		return nil, errors.New("nil port provided")
 	}
 
 	// make a super proxy instance
 	s := &SuperProxy{
-		host:      host,
-		port:      int(port),
 		proxyType: proxyType,
 		connManager: transport.ConnManager{
 			MaxConns:            1024,
 			MaxIdleConnDuration: 10 * time.Second,
 		},
 	}
-	s.hostWithPort = fmt.Sprintf("%s:%d", host, port)
+	s.hostWithPort = fmt.Sprintf("%s:%d", proxyHost, proxyPort)
 	s.hostWithPortBytes = make([]byte, len(s.hostWithPort))
 	copy(s.hostWithPortBytes, []byte(s.hostWithPort))
 
 	if proxyType != ProxyTypeSOCKS5 {
-		s.initHTTPCertAndAuth(proxyType == ProxyTypeHTTPS, host, user, pass)
+		s.initHTTPCertAndAuth(proxyType == ProxyTypeHTTPS, proxyHost, user, pass)
 	} else {
-		s.initSOCKS5GreetingsAndAuth(host, user, pass)
+		s.initSOCKS5GreetingsAndAuth(user, pass)
 	}
 
 	return s, nil
+}
+
+//GetProxyType returns super proxy type
+func (p *SuperProxy) GetProxyType() ProxyType {
+	return p.proxyType
 }
 
 // HostWithPort host with port in string
@@ -100,17 +102,18 @@ func (p *SuperProxy) HTTPProxyAuthHeaderWithCRLF() []byte {
 
 // MakeTunnel makes a TCP tunnel by making a connect request to proxy
 func (p *SuperProxy) MakeTunnel(pool *bufiopool.Pool,
-	hostWithPort string) (net.Conn, error) {
+	targetHostWithPort string) (net.Conn, error) {
 	var (
 		c   net.Conn
 		err error
 	)
 	switch p.proxyType {
 	case ProxyTypeHTTP:
+		fallthrough
+	case ProxyTypeSOCKS5:
 		c, err = transport.Dial(p.hostWithPort)
 	case ProxyTypeHTTPS:
 		c, err = transport.DialTLS(p.hostWithPort, p.tlsConfig)
-	case ProxyTypeSOCKS5:
 	}
 
 	if err != nil {
@@ -119,7 +122,7 @@ func (p *SuperProxy) MakeTunnel(pool *bufiopool.Pool,
 
 	if p.proxyType != ProxyTypeSOCKS5 {
 		// HTTP/HTTPS tunnel establishing
-		if err := p.writeHTTPProxyReq(c, []byte(hostWithPort)); err != nil {
+		if err := p.writeHTTPProxyReq(c, []byte(targetHostWithPort)); err != nil {
 			c.Close()
 			return nil, err
 		}
@@ -129,7 +132,18 @@ func (p *SuperProxy) MakeTunnel(pool *bufiopool.Pool,
 		}
 	} else {
 		// SOCKS5 tunnel establishing
-		if err = p.connectSOCKS5Proxy(c); err != nil {
+		targetHost, targetPortStr, err := net.SplitHostPort(targetHostWithPort)
+		if err != nil {
+			return nil, err
+		}
+		targetPort, err := strconv.Atoi(targetPortStr)
+		if err != nil {
+			return nil, errors.New("proxy: failed to parse target port number: " + targetPortStr)
+		}
+		if targetPort < 1 || targetPort > 0xffff {
+			return nil, errors.New("proxy: target port number out of range: " + targetPortStr)
+		}
+		if err = p.connectSOCKS5Proxy(c, targetHost, targetPort); err != nil {
 			return nil, err
 		}
 	}
