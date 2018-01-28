@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/haxii/fastproxy/log"
 	"github.com/haxii/fastproxy/servertime"
+	"github.com/haxii/log"
 )
 
 // WorkerPool serves incoming connections via a pool of workers
@@ -218,7 +218,7 @@ func (wp *WorkerPool) workerFunc(ch *workerChan) {
 			if !(strings.Contains(errStr, "broken pipe") ||
 				strings.Contains(errStr, "reset by peer") ||
 				strings.Contains(errStr, "i/o timeout")) {
-				wp.Logger.Error(c.RemoteAddr(), err, "error when serving connection")
+				wp.Logger.Error(c.RemoteAddr().String(), err, "error when serving connection")
 			}
 		}
 		c.Close()
