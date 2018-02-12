@@ -48,7 +48,7 @@ type Request interface {
 	// ConnectionClose if the request's "Connection" header value is
 	// set as `Close`
 	//
-	// this determines weather the client reusing the connetions
+	// this determines weather the client reusing the connections
 	ConnectionClose() bool
 
 	//specified in request's start line usually
@@ -67,7 +67,7 @@ type Response interface {
 	// ConnectionClose if the response's "Connection" header value is
 	// set as `Close`
 	//
-	// this determines weather the client reusing the connetions
+	// this determines weather the client reusing the connections
 	ConnectionClose() bool
 }
 
@@ -418,8 +418,8 @@ func (c *HostClient) do(req Request, resp Response,
 
 	//write request
 	shouldCacheReqForRetry := (reqCacheForRetry != nil) && isHeadOrGet(req.Method())
-	isCachedReqAvaliable := func() bool { return shouldCacheReqForRetry && (reqCacheForRetry.Len() > 0) }
-	if (!shouldCacheReqForRetry) || (!isCachedReqAvaliable()) {
+	isCachedReqAvailable := func() bool { return shouldCacheReqForRetry && (reqCacheForRetry.Len() > 0) }
+	if (!shouldCacheReqForRetry) || (!isCachedReqAvailable()) {
 		//determine where the parsed request should write to
 		var reqWriteToTarget io.Writer
 		if shouldCacheReqForRetry {
@@ -437,7 +437,7 @@ func (c *HostClient) do(req Request, resp Response,
 			return false, err
 		}
 	}
-	if isCachedReqAvaliable() {
+	if isCachedReqAvailable() {
 		//write the cached http requests to conn
 		if err := c.writeData(reqCacheForRetry.Bytes(), conn); err != nil {
 			if err != nil {
