@@ -235,6 +235,7 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) error {
 	}
 
 	//read & write the headers
+	//TODO: refactor hijackerBodywriter as fixed-size bytes buffer pool
 	var hijackerBodyWriter io.Writer
 	if err := copyHeader(&r.header, reader, r.writer,
 		func(rawHeader []byte) {
