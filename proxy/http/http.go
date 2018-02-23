@@ -187,6 +187,9 @@ type Response struct {
 
 	//body http body parser
 	body http.Body
+
+	//pool sniffer bytes buffer pool
+	pool sync.Pool
 }
 
 //Reset reset response
@@ -235,7 +238,6 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) error {
 	}
 
 	//read & write the headers
-	//TODO: refactor hijackerBodywriter as fixed-size bytes buffer pool
 	var hijackerBodyWriter io.Writer
 	if err := copyHeader(&r.header, reader, r.writer,
 		func(rawHeader []byte) {
