@@ -32,7 +32,7 @@ func (header *Header) IsConnectionClose() bool {
 	return header.isConnectionClose
 }
 
-//IsProxyConnectionClose is connection header set to `keep-alive`
+//IsProxyConnectionKeepalive is Proxy-Connection header set to `keep-alive`
 func (header *Header) IsProxyConnectionKeepalive() bool {
 	return header.isProxyConnectionKeepalive
 }
