@@ -60,9 +60,9 @@ func (r *Request) Reset() {
 // ReadFrom init request with reader
 // then parse the start line of the http request
 func (r *Request) ReadFrom(reader *bufio.Reader) error {
-	if r.reader != nil {
+	/*if r.reader != nil {
 		return errors.New("request already initialized")
-	}
+	}*/
 
 	if reader == nil {
 		return errors.New("nil reader provided")
@@ -161,6 +161,12 @@ func (r *Request) WriteBodyTo(writer *bufio.Writer) error {
 // this func. result is only valid after `WriteTo` method is called
 func (r *Request) ConnectionClose() bool {
 	return r.header.IsConnectionClose()
+}
+
+// ProxyConnectionKeepalive if the request's "Proxy-Connection" header value is set as "keep-alive".
+// this determines how the client reusing the connetions.
+func (r *Request) ProxyConnectionKeepalive() bool {
+	return r.header.IsProxyConnectionKeepalive()
 }
 
 //IsTLS is tls requests
