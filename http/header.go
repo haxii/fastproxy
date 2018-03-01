@@ -14,9 +14,10 @@ import (
 
 //Header header part of http request & respose
 type Header struct {
-	isConnectionClose bool
-	contentLength     int64
-	contentType       string
+	isConnectionClose          bool
+	isProxyConnectionKeepalive bool
+	contentLength              int64
+	contentType                string
 }
 
 //Reset reset header info into default val
@@ -29,6 +30,11 @@ func (header *Header) Reset() {
 //IsConnectionClose is connection header set to `close`
 func (header *Header) IsConnectionClose() bool {
 	return header.isConnectionClose
+}
+
+//IsProxyConnectionKeepalive is Proxy-Connection header set to `keep-alive`
+func (header *Header) IsProxyConnectionKeepalive() bool {
+	return header.isProxyConnectionKeepalive
 }
 
 //ContentType content type in header
@@ -137,6 +143,14 @@ func (header *Header) readHeaders(buf []byte,
 			return nil
 		}
 
+		if isProxyConnectionHeader(rawHeaderLine) {
+			changeToLowerCase(rawHeaderLine)
+			if bytes.Contains(rawHeaderLine, []byte("keep-alive")) {
+				header.isProxyConnectionKeepalive = true
+			}
+			return nil
+		}
+
 		// parse content length
 		// content length > 0 means the length of the body
 		// content length < 0 means the transfer encoding is set,
@@ -228,9 +242,14 @@ func isProxyHeader(header []byte) bool {
 }
 
 var connectionHeader = []byte("Connection")
+var proxyConnectionHeader = []byte("Proxy-Connection")
 
 func isConnectionHeader(header []byte) bool {
 	return hasPrefixIgnoreCase(header, connectionHeader)
+}
+
+func isProxyConnectionHeader(header []byte) bool {
+	return hasPrefixIgnoreCase(header, proxyConnectionHeader)
 }
 
 var contentLengthHeader = []byte("Content-Length")
