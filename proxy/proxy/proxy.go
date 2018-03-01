@@ -225,6 +225,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			if err != nil {
 				return util.ErrWrapper(err, "error HTTP traffic %s ", req.HostWithPort())
 			}
+			reader.Reset(c)
 			req.Reset()
 			continue
 		}
@@ -243,6 +244,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			break
 		}
 
+		reader.Reset(c)
 		req.Reset()
 		currentTime = servertime.CoarseTimeNow()
 	}
