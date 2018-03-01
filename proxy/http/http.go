@@ -60,9 +60,9 @@ func (r *Request) Reset() {
 // ReadFrom init request with reader
 // then parse the start line of the http request
 func (r *Request) ReadFrom(reader *bufio.Reader) error {
-	/*if r.reader != nil {
+	if r.reader != nil {
 		return errors.New("request already initialized")
-	}*/
+	}
 
 	if reader == nil {
 		return errors.New("nil reader provided")
