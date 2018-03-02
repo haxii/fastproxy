@@ -7,16 +7,14 @@ import (
 // MaxSize default max size for byte buffer
 var MaxSize = 1024 * 1024
 
-// FixedSizeByteBuffer provides byte buffer, which can be used for minimizing
-// memory allocations.
+// FixedSizeByteBuffer provides fixed size byte buffer
 //
 // ByteBuffer may be used with functions appending data to the given []byte
-// slice. See example code for details.
+// slice.
 //
 // Use Get for obtaining an empty byte buffer.
 type FixedSizeByteBuffer struct {
 	// B is a byte buffer to use in append-like workloads.
-	// See example code for details.
 	B    []byte
 	Used int
 }
@@ -28,7 +26,7 @@ func (b *FixedSizeByteBuffer) Bytes() []byte {
 	return b.B[:b.Used]
 }
 
-// Write implements io.Writer - it appends p to ByteBuffer.B
+// Write implements io.Writer
 func (b *FixedSizeByteBuffer) Write(p []byte) (int, error) {
 	n := len(b.B) - b.Used
 	var err error
@@ -45,7 +43,7 @@ func (b *FixedSizeByteBuffer) Write(p []byte) (int, error) {
 	return writingLength, err
 }
 
-// MakeByteBuffer get a ByteBuffer by default
+// MakeByteBuffer get a fixed size ByteBuffer by default
 func MakeByteBuffer(size int) *FixedSizeByteBuffer {
 	var byteBuffer = FixedSizeByteBuffer{
 		B:    make([]byte, size),
