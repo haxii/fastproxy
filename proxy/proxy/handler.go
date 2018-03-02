@@ -39,7 +39,7 @@ type Handler struct {
 	reqPool  http.RequestPool
 	respPool http.ResponsePool
 
-	//set true to open proxy and super-proxy usage
+	//set true to open proxy usage
 	ShouldOpenUsage bool
 }
 
@@ -70,7 +70,7 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 	resp.SetHijacker(hijacker)
 	if hijackedRespReader := hijacker.HijackResponse(); hijackedRespReader != nil {
 		err := h.hijackClient.Do(req, resp, hijackedRespReader)
-		if h.ShouldOpenUsage {
+		if usage != nil {
 			usage.AddIncomingSize(uint64(req.GetSize()))
 			usage.AddOutgoingSize(uint64(resp.GetSize()))
 		}
@@ -82,13 +82,13 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 	req.SetProxy(superProxy)
 	//handle http proxy request
 	err := client.Do(req, resp)
-	if h.ShouldOpenUsage {
+	if usage != nil {
 		usage.AddIncomingSize(uint64(req.GetSize()))
 		usage.AddOutgoingSize(uint64(resp.GetSize()))
-		if superProxy != nil {
-			superProxy.Usage.AddIncomingSize(uint64(resp.GetSize()))
-			superProxy.Usage.AddOutgoingSize(uint64(req.GetSize()))
-		}
+	}
+	if superProxy != nil && superProxy.Usage != nil {
+		superProxy.Usage.AddIncomingSize(uint64(resp.GetSize()))
+		superProxy.Usage.AddOutgoingSize(uint64(req.GetSize()))
 	}
 
 	return err
@@ -150,18 +150,20 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 	}()
 	wg.Wait()
 
-	if h.ShouldOpenUsage {
-		if num1 > 0 {
+	if num1 > 0 {
+		if usage != nil {
 			usage.AddIncomingSize(uint64(num1))
-			if superProxy != nil {
-				superProxy.Usage.AddOutgoingSize(uint64(num1))
-			}
 		}
-		if num2 > 0 {
+		if superProxy != nil && superProxy.Usage != nil {
+			superProxy.Usage.AddOutgoingSize(uint64(num1))
+		}
+	}
+	if num2 > 0 {
+		if usage != nil {
 			usage.AddOutgoingSize(uint64(num2))
-			if superProxy != nil {
-				superProxy.Usage.AddIncomingSize(uint64(num2))
-			}
+		}
+		if superProxy != nil && superProxy.Usage != nil {
+			superProxy.Usage.AddIncomingSize(uint64(num2))
 		}
 	}
 

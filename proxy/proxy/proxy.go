@@ -61,7 +61,7 @@ type Proxy struct {
 	ReadTimeout time.Duration
 
 	//usage
-	Usage usage.ProxyUsage
+	Usage *usage.ProxyUsage
 }
 
 func (p *Proxy) init() error {
@@ -124,6 +124,11 @@ func (p *Proxy) Serve(ln net.Listener) error {
 		Logger:          p.ProxyLogger,
 	}
 	wp.Start()
+
+	if p.Handler.ShouldOpenUsage {
+		p.Usage = &usage.ProxyUsage{}
+		p.Usage.Start()
+	}
 
 	for {
 		if c, err = p.acceptConn(ln, &lastPerIPErrorTime); err != nil {
@@ -225,7 +230,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		//handle http requests
 		if !http.IsMethodConnect(req.Method()) {
 			err := p.Handler.handleHTTPConns(c, req,
-				p.BufioPool, &p.Client, &p.Usage)
+				p.BufioPool, &p.Client, p.Usage)
 			if err != nil {
 				return util.ErrWrapper(err, "error HTTP traffic %s ", req.HostWithPort())
 			}
@@ -236,7 +241,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			host := strings.Repeat(req.HostWithPort(), 1)
 			//make the requests
 			if err := p.Handler.handleHTTPSConns(c, host,
-				p.BufioPool, &p.Client, &p.Usage); err != nil {
+				p.BufioPool, &p.Client, p.Usage); err != nil {
 				return util.ErrWrapper(err, "error HTTPS traffic "+host+" ")
 			}
 		}
