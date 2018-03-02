@@ -12,6 +12,7 @@ import (
 	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/server"
+	"github.com/haxii/fastproxy/servershutdown"
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/util"
@@ -88,7 +89,7 @@ func (p *Proxy) Serve(ln net.Listener) error {
 	if e := p.init(); e != nil {
 		return e
 	}
-	gln := NewGracefulListener(ln, 30*time.Second)
+	gln := servershutdown.NewGracefulListener(ln, 30*time.Second)
 	var lastOverflowErrorTime time.Time
 	var lastPerIPErrorTime time.Time
 	var c net.Conn
@@ -131,6 +132,7 @@ func (p *Proxy) acceptConn(ln net.Listener, lastPerIPErrorTime *time.Time) (net.
 	for {
 		c, err := ln.Accept()
 		if err != nil {
+			defer ln.Close()
 			if c != nil {
 				panic("BUG: net.Listener returned non-nil conn and non-nil error")
 			}
@@ -148,6 +150,7 @@ func (p *Proxy) acceptConn(ln net.Listener, lastPerIPErrorTime *time.Time) (net.
 			return nil, io.EOF
 		}
 		if c == nil {
+			ln.Close()
 			panic("BUG: net.Listener returned (nil, nil)")
 		}
 		return c, nil
