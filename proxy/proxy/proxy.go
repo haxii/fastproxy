@@ -132,7 +132,6 @@ func (p *Proxy) acceptConn(ln net.Listener, lastPerIPErrorTime *time.Time) (net.
 	for {
 		c, err := ln.Accept()
 		if err != nil {
-			defer ln.Close()
 			if c != nil {
 				panic("BUG: net.Listener returned non-nil conn and non-nil error")
 			}
@@ -150,7 +149,6 @@ func (p *Proxy) acceptConn(ln net.Listener, lastPerIPErrorTime *time.Time) (net.
 			return nil, io.EOF
 		}
 		if c == nil {
-			ln.Close()
 			panic("BUG: net.Listener returned (nil, nil)")
 		}
 		return c, nil
