@@ -165,7 +165,6 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		p.reqPool.Release(req)
 		p.BufioPool.ReleaseReader(reader)
 	}
-
 	if err := req.ReadFrom(reader); err != nil {
 		releaseReqAndReader()
 		return util.ErrWrapper(err, "fail to read http request header")

@@ -29,7 +29,7 @@ type Handler struct {
 
 	//hijacker pool for making a hijacker for every incoming request
 	HijackerPool hijack.HijackerPool
-	//hijacker client for make hijacked response if avaliable
+	//hijacker client for make hijacked response if available
 	hijackClient hijack.Client
 	//MitmCACert HTTPSDecryptCACert ca.cer used for https decryption
 	MitmCACert *tls.Certificate
