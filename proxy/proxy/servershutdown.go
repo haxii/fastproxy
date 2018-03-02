@@ -1,4 +1,4 @@
-package servershutdown
+package proxy
 
 import (
 	"fmt"

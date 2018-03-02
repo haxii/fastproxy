@@ -88,7 +88,7 @@ func (p *Proxy) Serve(ln net.Listener) error {
 	if e := p.init(); e != nil {
 		return e
 	}
-
+	gln := NewGracefulListener(ln, 30*time.Second)
 	var lastOverflowErrorTime time.Time
 	var lastPerIPErrorTime time.Time
 	var c net.Conn
@@ -103,7 +103,7 @@ func (p *Proxy) Serve(ln net.Listener) error {
 	wp.Start()
 
 	for {
-		if c, err = p.acceptConn(ln, &lastPerIPErrorTime); err != nil {
+		if c, err = p.acceptConn(gln, &lastPerIPErrorTime); err != nil {
 			wp.Stop()
 			if err == io.EOF {
 				return nil
