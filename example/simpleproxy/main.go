@@ -9,12 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/balinor2017/fastproxy/servershutdown"
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/hijack"
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/proxy/proxy"
+	"github.com/haxii/fastproxy/servershutdown"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/log"
 )
