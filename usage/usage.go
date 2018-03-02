@@ -44,10 +44,16 @@ func (u *ProxyUsage) Stop() {
 }
 
 func (u *ProxyUsage) AddIncomingSize(n uint64) {
+	if u.incomingChan == nil {
+		return
+	}
 	u.incomingChan <- n
 }
 
 func (u *ProxyUsage) AddOutgoingSize(n uint64) {
+	if u.outgoingChan == nil {
+		return
+	}
 	u.outgoingChan <- n
 }
 
