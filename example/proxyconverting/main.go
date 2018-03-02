@@ -22,7 +22,7 @@ func main() {
 	if err != nil {
 		return
 	}
-	socksSuperProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8082, superproxy.ProxyTypeSOCKS5, "", "")
+	socksSuperProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 9099, superproxy.ProxyTypeSOCKS5, "", "")
 	httpProxy := proxy.Proxy{
 		BufioPool:   &bufiopool.Pool{},
 		Client:      client.Client{},
@@ -104,6 +104,7 @@ func (s *simpleHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writ
 		s.clientAddr, s.targetHost, s.method, s.path,
 		header.ContentLength(), rawHeader)
 	return os.Stdout
+	return nil
 }
 
 func (s *simpleHijacker) HijackResponse() io.Reader {
