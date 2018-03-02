@@ -22,14 +22,13 @@ func main() {
 	if err != nil {
 		return
 	}
-	superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8081, superproxy.ProxyTypeHTTP, "", "")
-	proxy := proxy.Proxy{
+	socksSuperProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 9099, superproxy.ProxyTypeSOCKS5, "", "")
+	httpProxy := proxy.Proxy{
 		BufioPool:   &bufiopool.Pool{},
 		Client:      client.Client{},
 		ProxyLogger: &log.DefaultLogger{},
 		Handler: proxy.Handler{
 			ShouldAllowConnection: func(conn net.Addr) bool {
-				fmt.Printf("allowed connection from %s\n", conn.String())
 				return true
 			},
 			ShouldDecryptHost: func(hostWithPort string) bool {
@@ -43,12 +42,12 @@ func main() {
 					//this is a connections should not decrypt
 					fmt.Println(hostWithPort)
 				}
-				return superProxy
+				return socksSuperProxy
 			},
 			HijackerPool: &SimpleHijackerPool{},
 		},
 	}
-	if err := proxy.Serve(ln); err != nil {
+	if err := httpProxy.Serve(ln); err != nil {
 		panic(err)
 	}
 }
@@ -92,19 +91,20 @@ func (s *simpleHijacker) Set(clientAddr net.Addr,
 
 func (s *simpleHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
-************************
-addr: %s, host: %s
-************************
-%s %s
-************************
-content length: %d
-************************
-%s
-************************
-`,
+		************************
+		addr: %s, host: %s
+		************************
+		%s %s
+		************************
+		content length: %d
+		************************
+		%s
+		************************
+		`,
 		s.clientAddr, s.targetHost, s.method, s.path,
 		header.ContentLength(), rawHeader)
 	return os.Stdout
+	return nil
 }
 
 func (s *simpleHijacker) HijackResponse() io.Reader {
@@ -117,19 +117,19 @@ func (s *simpleHijacker) HijackResponse() io.Reader {
 func (s *simpleHijacker) OnResponse(respLine http.ResponseLine,
 	header http.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
-************************
-addr: %s, host: %s
-************************
-%s %s
-************************
-%s %d %s
-************************
-content length: %d
-content type: %s
-************************
-%s
-************************
-`,
+			************************
+			addr: %s, host: %s
+			************************
+			%s %s
+			************************
+			%s %d %s
+			************************
+			content length: %d
+			content type: %s
+			************************
+			%s
+			************************
+			`,
 		s.clientAddr, s.targetHost, s.method, s.path,
 		respLine.GetProtocol(), respLine.GetStatusCode(), respLine.GetStatusMessage(),
 		header.ContentLength(), header.ContentType(), rawHeader)
