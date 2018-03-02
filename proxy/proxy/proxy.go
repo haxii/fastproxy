@@ -225,19 +225,16 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			if err != nil {
 				return util.ErrWrapper(err, "error HTTP traffic %s ", req.HostWithPort())
 			}
-			reader.Reset(c)
-			req.Reset()
-			continue
-		}
-
-		//handle https proxy request
-		//here I make a copy of the host
-		//then release the request immediately
-		host := strings.Repeat(req.HostWithPort(), 1)
-		//make the requests
-		if err := p.Handler.handleHTTPSConns(c, host,
-			p.BufioPool, &p.Client); err != nil {
-			return util.ErrWrapper(err, "error HTTPS traffic "+host+" ")
+		} else {
+			//handle https proxy request
+			//here I make a copy of the host
+			//then release the request immediately
+			host := strings.Repeat(req.HostWithPort(), 1)
+			//make the requests
+			if err := p.Handler.handleHTTPSConns(c, host,
+				p.BufioPool, &p.Client); err != nil {
+				return util.ErrWrapper(err, "error HTTPS traffic "+host+" ")
+			}
 		}
 
 		if connectionClose {
