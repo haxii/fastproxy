@@ -4,12 +4,12 @@ import (
 	"sync"
 )
 
-// FixedSizeByteBufferPool ...
+// FixedSizeByteBufferPool is a fixedsize bytebuffer pool
 type FixedSizeByteBufferPool struct {
 	pool sync.Pool
 }
 
-// Get ...
+// Get get a fixed bytebuffer from pool
 func (p *FixedSizeByteBufferPool) Get() *FixedSizeByteBuffer {
 	value := p.pool.Get()
 	if value != nil {
@@ -18,7 +18,7 @@ func (p *FixedSizeByteBufferPool) Get() *FixedSizeByteBuffer {
 	return MakeByteBuffer(MaxSize)
 }
 
-// Put ...
+// Put put a bytebuffer into pool
 func (p *FixedSizeByteBufferPool) Put(byteBuffer *FixedSizeByteBuffer) {
 	p.pool.Put(byteBuffer)
 }
