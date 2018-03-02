@@ -57,6 +57,9 @@ type Request interface {
 
 	//super proxy
 	GetProxy() *superproxy.SuperProxy
+
+	//size of header and body
+	GetSize() int
 }
 
 //Response http response for response
@@ -69,6 +72,9 @@ type Response interface {
 	//
 	// this determines weather the client reusing the connections
 	ConnectionClose() bool
+
+	//size of header and body
+	GetSize() int
 }
 
 // Client implements http client.

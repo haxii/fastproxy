@@ -14,6 +14,7 @@ import (
 	"github.com/haxii/fastproxy/server"
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
+	"github.com/haxii/fastproxy/usage"
 	"github.com/haxii/fastproxy/util"
 	"github.com/haxii/fastproxy/x509"
 	"github.com/haxii/log"
@@ -58,6 +59,9 @@ type Proxy struct {
 	//
 	// By default request read timeout is unlimited.
 	ReadTimeout time.Duration
+
+	//usage
+	Usage usage.ProxyUsage
 }
 
 func (p *Proxy) init() error {
@@ -221,7 +225,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		//handle http requests
 		if !http.IsMethodConnect(req.Method()) {
 			err := p.Handler.handleHTTPConns(c, req,
-				p.BufioPool, &p.Client)
+				p.BufioPool, &p.Client, &p.Usage)
 			if err != nil {
 				return util.ErrWrapper(err, "error HTTP traffic %s ", req.HostWithPort())
 			}
@@ -232,7 +236,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			host := strings.Repeat(req.HostWithPort(), 1)
 			//make the requests
 			if err := p.Handler.handleHTTPSConns(c, host,
-				p.BufioPool, &p.Client); err != nil {
+				p.BufioPool, &p.Client, &p.Usage); err != nil {
 				return util.ErrWrapper(err, "error HTTPS traffic "+host+" ")
 			}
 		}
