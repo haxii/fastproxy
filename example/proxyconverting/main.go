@@ -7,22 +7,24 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/hijack"
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/proxy/proxy"
+	"github.com/haxii/fastproxy/servershutdown"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/log"
 )
 
 func main() {
 	ln, err := net.Listen("tcp4", "0.0.0.0:8080")
-	gln := newGracefulListener()
 	if err != nil {
 		return
 	}
+	gln := servershutdown.NewGracefulListener(ln, 30*time.Second)
 	socksSuperProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8082, superproxy.ProxyTypeSOCKS5, "", "")
 	httpProxy := proxy.Proxy{
 		BufioPool:   &bufiopool.Pool{},
@@ -48,7 +50,7 @@ func main() {
 			HijackerPool: &SimpleHijackerPool{},
 		},
 	}
-	if err := httpProxy.Serve(ln); err != nil {
+	if err := httpProxy.Serve(gln); err != nil {
 		panic(err)
 	}
 }

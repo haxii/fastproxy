@@ -7,7 +7,8 @@ import (
 	"time"
 )
 
-type gracefulNetListener struct {
+// GracefulNetListener is a graceful shutdown listener
+type GracefulNetListener struct {
 	// inner listener
 	ln net.Listener
 
@@ -25,15 +26,15 @@ type gracefulNetListener struct {
 }
 
 // NewGracefulListener wraps the given listener into 'graceful shutdown' listener.
-func newGracefulListener(ln net.Listener, maxWaitTime time.Duration) net.Listener {
-	return &gracefulNetListener{
+func NewGracefulListener(ln net.Listener, maxWaitTime time.Duration) net.Listener {
+	return &GracefulNetListener{
 		ln:          ln,
 		maxWaitTime: maxWaitTime,
 		done:        make(chan struct{}),
 	}
 }
 
-func (ln *gracefulNetListener) Accept() (net.Conn, error) {
+func (ln *GracefulNetListener) Accept() (net.Conn, error) {
 	c, err := ln.ln.Accept()
 
 	if err != nil {
@@ -48,13 +49,13 @@ func (ln *gracefulNetListener) Accept() (net.Conn, error) {
 	}, nil
 }
 
-func (ln *gracefulNetListener) Addr() net.Addr {
+func (ln *GracefulNetListener) Addr() net.Addr {
 	return ln.ln.Addr()
 }
 
 // Close closes the inner listener and waits until all the pending open connections
 // are closed before returning.
-func (ln *gracefulNetListener) Close() error {
+func (ln *GracefulNetListener) Close() error {
 	err := ln.ln.Close()
 
 	if err != nil {
@@ -64,7 +65,7 @@ func (ln *gracefulNetListener) Close() error {
 	return ln.waitForZeroConns()
 }
 
-func (ln *gracefulNetListener) waitForZeroConns() error {
+func (ln *GracefulNetListener) waitForZeroConns() error {
 	atomic.AddUint64(&ln.shutdown, 1)
 
 	if atomic.LoadUint64(&ln.connsCount) == 0 {
@@ -80,7 +81,7 @@ func (ln *gracefulNetListener) waitForZeroConns() error {
 	}
 }
 
-func (ln *gracefulNetListener) closeConn() {
+func (ln *GracefulNetListener) closeConn() {
 	connsCount := atomic.AddUint64(&ln.connsCount, ^uint64(0))
 
 	if atomic.LoadUint64(&ln.shutdown) != 0 && connsCount == 0 {
@@ -90,7 +91,7 @@ func (ln *gracefulNetListener) closeConn() {
 
 type gracefulConn struct {
 	net.Conn
-	ln *gracefulNetListener
+	ln *GracefulNetListener
 }
 
 func (c *gracefulConn) Close() error {
