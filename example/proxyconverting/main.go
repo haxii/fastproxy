@@ -19,6 +19,7 @@ import (
 
 func main() {
 	ln, err := net.Listen("tcp4", "0.0.0.0:8080")
+	gln := newGracefulListener()
 	if err != nil {
 		return
 	}
