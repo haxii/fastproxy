@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/client"
@@ -48,7 +49,7 @@ func main() {
 			HijackerPool: &SimpleHijackerPool{},
 		},
 	}
-	if err := proxy.Serve(ln); err != nil {
+	if err := proxy.Serve(ln, 30*time.Second); err != nil {
 		panic(err)
 	}
 }
