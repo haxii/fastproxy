@@ -28,7 +28,7 @@ func (u *ProxyUsage) Start() {
 			case n = <-u.outgoingChan:
 				u.Outgoing += n
 			case <-u.done:
-				break
+				return
 			}
 		}
 	}()
