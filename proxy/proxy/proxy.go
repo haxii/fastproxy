@@ -39,6 +39,25 @@ type Proxy struct {
 
 	//proxy http requests pool
 	reqPool proxyhttp.RequestPool
+
+	// Maximum keep-alive connection lifetime.
+	//
+	// The server closes keep-alive connection after its' lifetime
+	// expiration.
+	//
+	// See also ReadTimeout for limiting the duration of idle keep-alive
+	// connections.
+	//
+	// By default keep-alive connection lifetime is unlimited.
+	MaxKeepaliveDuration time.Duration
+
+	// Maximum duration for reading the full request (including body).
+	//
+	// This also limits the maximum duration for idle keep-alive
+	// connections.
+	//
+	// By default request read timeout is unlimited.
+	ReadTimeout time.Duration
 }
 
 func (p *Proxy) init() error {
@@ -165,41 +184,63 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		p.reqPool.Release(req)
 		p.BufioPool.ReleaseReader(reader)
 	}
+	defer releaseReqAndReader()
 
-	if err := req.ReadFrom(reader); err != nil {
-		releaseReqAndReader()
-		return util.ErrWrapper(err, "fail to read http request header")
-	}
-	if len(req.HostWithPort()) == 0 {
-		if e := p.writeFastError(c, http.StatusBadRequest,
-			"This is a proxy server. Does not respond to non-proxy requests.\n"); e != nil {
-			return util.ErrWrapper(e, "fail to response non-proxy request")
+	var (
+		connTime, currentTime time.Time
+		lastReadDeadlineTime  time.Time
+	)
+	currentTime = servertime.CoarseTimeNow()
+	connTime = currentTime
+
+	for {
+		if p.MaxKeepaliveDuration > 0 {
+			lastReadDeadlineTime = p.updateReadDeadline(c, currentTime, connTime, lastReadDeadlineTime)
+			if lastReadDeadlineTime.IsZero() {
+				return util.ErrWrapper(nil, "exceeded MaxKeepaliveDuration, close connection after %s", p.MaxKeepaliveDuration)
+			}
 		}
-		releaseReqAndReader()
-		return nil
-	}
 
-	//handle http requests
-	if !http.IsMethodConnect(req.Method()) {
-		err := p.Handler.handleHTTPConns(c, req,
-			p.BufioPool, &p.Client)
-		releaseReqAndReader()
-		if err != nil {
-			return util.ErrWrapper(err, "error HTTP traffic %s ", req.HostWithPort())
+		if err := req.ReadFrom(reader); err != nil {
+			return util.ErrWrapper(err, "fail to read http request header")
 		}
-		return nil
+
+		if len(req.HostWithPort()) == 0 {
+			if e := p.writeFastError(c, http.StatusBadRequest,
+				"This is a proxy server. Does not respond to non-proxy requests.\n"); e != nil {
+				return util.ErrWrapper(e, "fail to response non-proxy request")
+			}
+			return nil
+		}
+
+		//handle http requests
+		if !http.IsMethodConnect(req.Method()) {
+			err := p.Handler.handleHTTPConns(c, req,
+				p.BufioPool, &p.Client)
+			if err != nil {
+				return util.ErrWrapper(err, "error HTTP traffic %s ", req.HostWithPort())
+			}
+		} else {
+			//handle https proxy request
+			//here I make a copy of the host
+			//then release the request immediately
+			host := strings.Repeat(req.HostWithPort(), 1)
+			//make the requests
+			if err := p.Handler.handleHTTPSConns(c, host,
+				p.BufioPool, &p.Client); err != nil {
+				return util.ErrWrapper(err, "error HTTPS traffic "+host+" ")
+			}
+		}
+
+		if req.ConnectionClose() || req.ProxyConnectionClose() {
+			break
+		}
+
+		reader.Reset(c)
+		req.Reset()
+		currentTime = servertime.CoarseTimeNow()
 	}
 
-	//handle https proxy request
-	//here I make a copy of the host
-	//then release the request immediately
-	host := strings.Repeat(req.HostWithPort(), 1)
-	releaseReqAndReader()
-	//make the requests
-	if err := p.Handler.handleHTTPSConns(c, host,
-		p.BufioPool, &p.Client); err != nil {
-		return util.ErrWrapper(err, "error HTTPS traffic "+host+" ")
-	}
 	return nil
 }
 
@@ -217,4 +258,28 @@ func (p *Proxy) writeFastError(w io.Writer, statusCode int, msg string) error {
 		"%s",
 		servertime.ServerDate(), len(msg), msg)
 	return err
+}
+
+func (p *Proxy) updateReadDeadline(c net.Conn, currentTime, connTime, lastDeadlineTime time.Time) time.Time {
+	readTimeout := p.ReadTimeout
+	if p.MaxKeepaliveDuration > 0 {
+		connTimeout := p.MaxKeepaliveDuration - currentTime.Sub(connTime)
+		if connTimeout <= 0 {
+			return time.Time{}
+		}
+		if connTimeout < readTimeout {
+			readTimeout = connTimeout
+		}
+	}
+
+	// Optimization: update read deadline only if more than 25%
+	// of the last read deadline exceeded.
+	// See https://github.com/golang/go/issues/15133 for details.
+	if currentTime.Sub(lastDeadlineTime) > (readTimeout >> 2) {
+		if err := c.SetReadDeadline(currentTime.Add(readTimeout)); err != nil {
+			util.ErrWrapper(nil, "BUG: error in SetReadDeadline(%s): %s", readTimeout, err)
+		}
+		lastDeadlineTime = currentTime
+	}
+	return lastDeadlineTime
 }
