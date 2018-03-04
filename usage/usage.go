@@ -19,6 +19,7 @@ type ProxyUsage struct {
 func (u *ProxyUsage) Start() {
 	u.incomingChan = make(chan uint64, DEFAULT_CHAN_CAP)
 	u.outgoingChan = make(chan uint64, DEFAULT_CHAN_CAP)
+	u.done = make(chan struct{})
 	go func() {
 		var n uint64
 		for {
@@ -35,12 +36,12 @@ func (u *ProxyUsage) Start() {
 }
 
 func (u *ProxyUsage) Stop() {
-	u.done <- struct{}{}
-
+	close(u.done)
 	close(u.incomingChan)
 	close(u.outgoingChan)
 	u.incomingChan = nil
 	u.outgoingChan = nil
+	u.done = nil
 }
 
 func (u *ProxyUsage) AddIncomingSize(n uint64) {
