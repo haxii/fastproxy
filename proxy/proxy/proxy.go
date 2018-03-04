@@ -189,7 +189,6 @@ func (p *Proxy) serveConn(c net.Conn) error {
 	var (
 		connTime, currentTime time.Time
 		lastReadDeadlineTime  time.Time
-		connectionClose       bool
 	)
 	currentTime = servertime.CoarseTimeNow()
 	connTime = currentTime
@@ -214,10 +213,6 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			return nil
 		}
 
-		if req.ConnectionClose() && !req.ProxyConnectionKeepalive() {
-			connectionClose = true
-		}
-
 		//handle http requests
 		if !http.IsMethodConnect(req.Method()) {
 			err := p.Handler.handleHTTPConns(c, req,
@@ -237,7 +232,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			}
 		}
 
-		if connectionClose {
+		if req.ConnectionClose() || req.ProxyConnectionClose() {
 			break
 		}
 

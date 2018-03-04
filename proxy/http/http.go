@@ -163,10 +163,10 @@ func (r *Request) ConnectionClose() bool {
 	return r.header.IsConnectionClose()
 }
 
-// ProxyConnectionKeepalive if the request's "Proxy-Connection" header value is set as "keep-alive".
+// ProxyConnectionClose if the request's "Proxy-Connection" header value is set as "close".
 // this determines how the client reusing the connetions.
-func (r *Request) ProxyConnectionKeepalive() bool {
-	return r.header.IsProxyConnectionKeepalive()
+func (r *Request) ProxyConnectionClose() bool {
+	return r.header.IsProxyConnectionClose()
 }
 
 //IsTLS is tls requests

@@ -14,10 +14,10 @@ import (
 
 //Header header part of http request & respose
 type Header struct {
-	isConnectionClose          bool
-	isProxyConnectionKeepalive bool
-	contentLength              int64
-	contentType                string
+	isConnectionClose      bool
+	isProxyConnectionClose bool
+	contentLength          int64
+	contentType            string
 }
 
 //Reset reset header info into default val
@@ -32,9 +32,9 @@ func (header *Header) IsConnectionClose() bool {
 	return header.isConnectionClose
 }
 
-//IsProxyConnectionKeepalive is Proxy-Connection header set to `keep-alive`
-func (header *Header) IsProxyConnectionKeepalive() bool {
-	return header.isProxyConnectionKeepalive
+//IsProxyConnectionClose is Proxy-Connection header set to `close`
+func (header *Header) IsProxyConnectionClose() bool {
+	return header.isProxyConnectionClose
 }
 
 //ContentType content type in header
@@ -145,8 +145,8 @@ func (header *Header) readHeaders(buf []byte,
 
 		if isProxyConnectionHeader(rawHeaderLine) {
 			changeToLowerCase(rawHeaderLine)
-			if bytes.Contains(rawHeaderLine, []byte("keep-alive")) {
-				header.isProxyConnectionKeepalive = true
+			if bytes.Contains(rawHeaderLine, []byte("close")) {
+				header.isProxyConnectionClose = true
 			}
 			return nil
 		}
