@@ -43,6 +43,9 @@ type Request struct {
 	isTLS         bool
 	tlsServerName string
 	hostWithPort  string
+
+	//totol byte size of header and body
+	readSize int
 }
 
 //Reset reset request
@@ -55,6 +58,7 @@ func (r *Request) Reset() {
 	r.isTLS = false
 	r.tlsServerName = ""
 	r.hostWithPort = ""
+	r.readSize = 0
 }
 
 // ReadFrom init request with reader
@@ -135,6 +139,7 @@ func (r *Request) WriteHeaderTo(writer *bufio.Writer) error {
 	//read & write the headers
 	return copyHeader(&r.header, r.reader, writer,
 		func(rawHeader []byte) {
+			r.readSize += len(rawHeader)
 			r.hijackerBodyWriter = r.hijacker.OnRequest(r.header, rawHeader)
 		},
 	)
@@ -149,6 +154,7 @@ func (r *Request) WriteBodyTo(writer *bufio.Writer) error {
 	//write the request body (if any)
 	return copyBody(&r.header, &r.body, r.reader, writer,
 		func(rawBody []byte) {
+			r.readSize += len(rawBody)
 			if err := util.WriteWithValidation(r.hijackerBodyWriter, rawBody); err != nil {
 				//TODO: log the sniffer error
 			}
@@ -163,6 +169,12 @@ func (r *Request) ConnectionClose() bool {
 	return r.header.IsConnectionClose()
 }
 
+// ProxyConnectionKeepalive if the request's "Proxy-Connection" header value is set as "keep-alive".
+// this determines how the client reusing the connetions.
+func (r *Request) ProxyConnectionKeepalive() bool {
+	return r.header.IsProxyConnectionKeepalive()
+}
+
 //IsTLS is tls requests
 func (r *Request) IsTLS() bool {
 	return r.isTLS
@@ -171,6 +183,11 @@ func (r *Request) IsTLS() bool {
 //TLSServerName server name for handshaking
 func (r *Request) TLSServerName() string {
 	return r.tlsServerName
+}
+
+//header and body size of per request
+func (r *Request) GetSize() int {
+	return r.readSize
 }
 
 //Response http response implementation of http client
@@ -187,6 +204,14 @@ type Response struct {
 
 	//body http body parser
 	body http.Body
+
+	//totol byte size of header and body
+	writeSize int
+}
+
+//header and body size of per Response
+func (r *Response) GetSize() int {
+	return r.writeSize
 }
 
 //Reset reset response
@@ -194,6 +219,7 @@ func (r *Response) Reset() {
 	r.writer = nil
 	r.respLine.Reset()
 	r.header.Reset()
+	r.writeSize = 0
 }
 
 // WriteTo init response with writer which would write to
@@ -233,11 +259,13 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) error {
 	if err := util.WriteWithValidation(r.writer, respLineBytes); err != nil {
 		return util.ErrWrapper(err, "fail to write start line of response")
 	}
+	r.writeSize += len(respLineBytes)
 
 	//read & write the headers
 	var hijackerBodyWriter io.Writer
 	if err := copyHeader(&r.header, reader, r.writer,
 		func(rawHeader []byte) {
+			r.writeSize += len(rawHeader)
 			hijackerBodyWriter = r.hijacker.OnResponse(
 				r.respLine, r.header, rawHeader)
 		},
@@ -252,6 +280,7 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) error {
 	//write the request body (if any)
 	return copyBody(&r.header, &r.body, reader, r.writer,
 		func(rawBody []byte) {
+			r.writeSize += len(rawBody)
 			if err := util.WriteWithValidation(hijackerBodyWriter, rawBody); err != nil {
 				//TODO: log the sniffer error
 			}

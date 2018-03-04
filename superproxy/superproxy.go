@@ -10,6 +10,7 @@ import (
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/transport"
+	"github.com/haxii/fastproxy/usage"
 )
 
 // ProxyType type of super proxy
@@ -44,11 +45,14 @@ type SuperProxy struct {
 	// SOCKS5 greetings & auth header
 	socks5Greetings []byte
 	socks5Auth      []byte
+
+	//usage
+	Usage *usage.ProxyUsage
 }
 
 // NewSuperProxy new a super proxy
 func NewSuperProxy(proxyHost string, proxyPort uint16, proxyType ProxyType,
-	user string, pass string) (*SuperProxy, error) {
+	user string, pass string, shouldOpenUsage bool) (*SuperProxy, error) {
 	// check input vars
 	if len(proxyHost) == 0 {
 		return nil, errors.New("nil host provided")
@@ -73,6 +77,11 @@ func NewSuperProxy(proxyHost string, proxyPort uint16, proxyType ProxyType,
 		s.initHTTPCertAndAuth(proxyType == ProxyTypeHTTPS, proxyHost, user, pass)
 	} else {
 		s.initSOCKS5GreetingsAndAuth(user, pass)
+	}
+
+	if shouldOpenUsage {
+		s.Usage = &usage.ProxyUsage{}
+		s.Usage.Start()
 	}
 
 	return s, nil
