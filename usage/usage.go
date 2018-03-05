@@ -1,6 +1,9 @@
 package usage
 
-import "sync/atomic"
+import (
+	"fmt"
+	"sync/atomic"
+)
 
 const (
 	DEFAULT_CHAN_CAP = 1000
@@ -29,6 +32,12 @@ func (u *ProxyUsage) Start() {
 	u.outgoingChan = make(chan uint64, DEFAULT_CHAN_CAP)
 	u.stop = make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println("Recovered in ProxyUsage.Start", r)
+			}
+		}()
+
 		var n uint64
 		for {
 			select {

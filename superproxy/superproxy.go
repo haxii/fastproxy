@@ -23,6 +23,9 @@ const (
 	ProxyTypeHTTPS
 	// ProxyTypeSOCKS5 a SOCKS5 proxy
 	ProxyTypeSOCKS5
+
+	//default concurrency
+	DefaultMaxConcurrency = 2
 )
 
 //SuperProxy chaining proxy
@@ -48,6 +51,9 @@ type SuperProxy struct {
 
 	//usage
 	Usage *usage.ProxyUsage
+
+	//concurrency chan
+	concurrencyChan chan struct{}
 }
 
 // NewSuperProxy new a super proxy
@@ -83,6 +89,7 @@ func NewSuperProxy(proxyHost string, proxyPort uint16, proxyType ProxyType,
 		s.Usage = usage.NewProxyUsage()
 	}
 
+	s.SetMaxConcurrency(DefaultMaxConcurrency)
 	return s, nil
 }
 
@@ -164,4 +171,28 @@ func (p *SuperProxy) Release() {
 		p.Usage.Stop()
 		p.Usage = nil
 	}
+}
+
+// SetMaxConcurrency sets max concurrency,
+// n should > 0
+func (p *SuperProxy) SetMaxConcurrency(n int) {
+	if n <= 0 {
+		return
+	}
+	p.concurrencyChan = make(chan struct{}, n)
+	for n > 0 {
+		p.concurrencyChan <- struct{}{}
+		n--
+	}
+}
+
+// acquire a token from concurrencyChan,
+// block here if concurrencyChan is empty
+func (p *SuperProxy) AcquireToken() {
+	<-p.concurrencyChan
+}
+
+// push a token back to concurrencyChan
+func (p *SuperProxy) PushBackToken() {
+	p.concurrencyChan <- struct{}{}
 }

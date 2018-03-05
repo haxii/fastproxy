@@ -77,6 +77,13 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 	//set requests proxy
 	superProxy := h.URLProxy(req.HostWithPort(), req.PathWithQueryFragment())
 	req.SetProxy(superProxy)
+	if superProxy != nil {
+		superProxy.AcquireToken()
+		defer func() {
+			superProxy.PushBackToken()
+		}()
+	}
+
 	//handle http proxy request
 	err := client.Do(req, resp)
 	if usage != nil {
@@ -111,6 +118,13 @@ func (h *Handler) sendHTTPSProxyStatusBadGateway(c net.Conn) (err error) {
 func (h *Handler) tunnelConnect(conn net.Conn,
 	bufioPool *bufiopool.Pool, hostWithPort string, usage *usage.ProxyUsage) error {
 	superProxy := h.URLProxy(hostWithPort, nil)
+	if superProxy != nil {
+		superProxy.AcquireToken()
+		defer func() {
+			superProxy.PushBackToken()
+		}()
+	}
+
 	var (
 		tunnelConn net.Conn
 		err        error
