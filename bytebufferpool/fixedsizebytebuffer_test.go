@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func Test_byteBuffer(t *testing.T) {
+func Test_fixedSizeByteBuffer(t *testing.T) {
 	var wrongData []byte
 	wrongData = []byte("1234567")
 	var dataBuffer = MakeByteBuffer(5)
