@@ -13,6 +13,7 @@ import (
 	"github.com/haxii/fastproxy/proxy/http"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
+	"github.com/haxii/fastproxy/usage"
 	"github.com/haxii/fastproxy/util"
 )
 
@@ -40,12 +41,12 @@ type Handler struct {
 }
 
 func (h *Handler) handleHTTPConns(c net.Conn, req *http.Request,
-	bufioPool *bufiopool.Pool, client *client.Client) error {
-	return h.do(c, req, bufioPool, client)
+	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage) error {
+	return h.do(c, req, bufioPool, client, usage)
 }
 
 func (h *Handler) do(c net.Conn, req *http.Request,
-	bufioPool *bufiopool.Pool, client *client.Client) error {
+	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage) error {
 	//convert connetion into a http response
 	writer := bufioPool.AcquireWriter(c)
 	defer bufioPool.ReleaseWriter(writer)
@@ -65,22 +66,37 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 	req.SetHijacker(hijacker)
 	resp.SetHijacker(hijacker)
 	if hijackedRespReader := hijacker.HijackResponse(); hijackedRespReader != nil {
-		return h.hijackClient.Do(req, resp, hijackedRespReader)
+		err := h.hijackClient.Do(req, resp, hijackedRespReader)
+		if usage != nil {
+			usage.AddIncomingSize(uint64(req.GetSize()))
+			usage.AddOutgoingSize(uint64(resp.GetSize()))
+		}
+		return err
 	}
 
 	//set requests proxy
 	superProxy := h.URLProxy(req.HostWithPort(), req.PathWithQueryFragment())
 	req.SetProxy(superProxy)
 	//handle http proxy request
-	return client.Do(req, resp)
+	err := client.Do(req, resp)
+	if usage != nil {
+		usage.AddIncomingSize(uint64(req.GetSize()))
+		usage.AddOutgoingSize(uint64(resp.GetSize()))
+	}
+	if superProxy != nil && superProxy.Usage != nil {
+		superProxy.Usage.AddIncomingSize(uint64(resp.GetSize()))
+		superProxy.Usage.AddOutgoingSize(uint64(req.GetSize()))
+	}
+
+	return err
 }
 
 func (h *Handler) handleHTTPSConns(c net.Conn, hostWithPort string,
-	bufioPool *bufiopool.Pool, client *client.Client) error {
+	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage) error {
 	if h.ShouldDecryptHost(hostWithPort) {
-		return h.decryptConnect(c, hostWithPort, bufioPool, client)
+		return h.decryptConnect(c, hostWithPort, bufioPool, client, usage)
 	}
-	return h.tunnelConnect(c, bufioPool, hostWithPort)
+	return h.tunnelConnect(c, bufioPool, hostWithPort, usage)
 }
 
 func (h *Handler) sendHTTPSProxyStatusOK(c net.Conn) (err error) {
@@ -93,7 +109,7 @@ func (h *Handler) sendHTTPSProxyStatusBadGateway(c net.Conn) (err error) {
 
 //proxy https traffic directly
 func (h *Handler) tunnelConnect(conn net.Conn,
-	bufioPool *bufiopool.Pool, hostWithPort string) error {
+	bufioPool *bufiopool.Pool, hostWithPort string, usage *usage.ProxyUsage) error {
 	superProxy := h.URLProxy(hostWithPort, nil)
 	var (
 		tunnelConn net.Conn
@@ -118,29 +134,48 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 		return util.ErrWrapper(err, "error occurred when handshaking with client")
 	}
 	var wg sync.WaitGroup
-	var err1, err2 error
+	var superProxyWriteErr, superProxyReadErr error
+	var superProxyOutgoingTrafficSize, superProxyIncomingTrafficSize int64
 	wg.Add(2)
-	go func(e error) {
-		err1 = transport.Forward(tunnelConn, conn)
+	go func() {
+		superProxyOutgoingTrafficSize, superProxyWriteErr = transport.Forward(tunnelConn, conn)
 		wg.Done()
-	}(err1)
-	go func(e error) {
-		err2 = transport.Forward(conn, tunnelConn)
+	}()
+	go func() {
+		superProxyIncomingTrafficSize, superProxyReadErr = transport.Forward(conn, tunnelConn)
 		wg.Done()
-	}(err2)
+	}()
 	wg.Wait()
-	if err1 != nil {
-		return util.ErrWrapper(err1, "error occurred when tunneling client request to client")
+
+	if superProxyOutgoingTrafficSize > 0 {
+		if usage != nil {
+			usage.AddIncomingSize(uint64(superProxyOutgoingTrafficSize))
+		}
+		if superProxy != nil && superProxy.Usage != nil {
+			superProxy.Usage.AddOutgoingSize(uint64(superProxyOutgoingTrafficSize))
+		}
 	}
-	if err2 != nil {
-		return util.ErrWrapper(err2, "error occurred when tunneling client response to client")
+	if superProxyIncomingTrafficSize > 0 {
+		if usage != nil {
+			usage.AddOutgoingSize(uint64(superProxyIncomingTrafficSize))
+		}
+		if superProxy != nil && superProxy.Usage != nil {
+			superProxy.Usage.AddIncomingSize(uint64(superProxyIncomingTrafficSize))
+		}
+	}
+
+	if superProxyWriteErr != nil {
+		return util.ErrWrapper(superProxyWriteErr, "error occurred when tunneling client request to client")
+	}
+	if superProxyReadErr != nil {
+		return util.ErrWrapper(superProxyReadErr, "error occurred when tunneling client response to client")
 	}
 	return nil
 }
 
 //proxy the https connetions by MITM
 func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
-	bufioPool *bufiopool.Pool, client *client.Client) error {
+	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage) error {
 	//fakeTargetServer means a fake target server for remote client
 	//make a connection with client by creating a fake target server
 	//
@@ -196,7 +231,7 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	//mandatory for tls request cause non hosts provided in request header
 	req.SetHostWithPort(hostWithPort)
 
-	return h.do(fakeServerConn, req, bufioPool, client)
+	return h.do(fakeServerConn, req, bufioPool, client, usage)
 }
 
 func (h *Handler) signFakeCert(mitmCACert *tls.Certificate, host string) (*tls.Certificate, error) {

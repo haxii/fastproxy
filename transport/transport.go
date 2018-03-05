@@ -19,12 +19,15 @@ func Dial(addr string) (net.Conn, error) {
 	return dial(addr, false, nil)
 }
 
-//Forward forward remote and local connection
-func Forward(dst io.Writer, src io.Reader) error {
+// Forward forward remote and local connection
+// It returns the number of bytes write to dst
+// and the first error encountered while writing, if any.
+func Forward(dst io.Writer, src io.Reader) (int64, error) {
 	buffer := bytebufferpool.Get()
 	defer bytebufferpool.Put(buffer)
-	var err error
-	if _, e := buffer.Copy(dst, src); e != nil {
+	var err, e error
+	var wn int64
+	if wn, e = buffer.Copy(dst, src); e != nil {
 		errStr := e.Error()
 		if !(strings.Contains(errStr, "broken pipe") ||
 			strings.Contains(errStr, "reset by peer") ||
@@ -32,5 +35,5 @@ func Forward(dst io.Writer, src io.Reader) error {
 			err = e
 		}
 	}
-	return err
+	return wn, err
 }
