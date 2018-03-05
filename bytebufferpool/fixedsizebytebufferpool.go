@@ -15,7 +15,7 @@ func (p *FixedSizeByteBufferPool) Get() *FixedSizeByteBuffer {
 	if value != nil {
 		return value.(*FixedSizeByteBuffer)
 	}
-	return MakeByteBuffer(MaxSize)
+	return MakeFixedSizeByteBuffer(MaxSize)
 }
 
 // Put put a bytebuffer into pool

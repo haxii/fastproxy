@@ -48,8 +48,8 @@ func (b *FixedSizeByteBuffer) Write(p []byte) (int, error) {
 	return writingLength, err
 }
 
-// MakeByteBuffer get a fixed size ByteBuffer by default
-func MakeByteBuffer(size int) *FixedSizeByteBuffer {
+// MakeFixedSizeByteBuffer get a fixed size ByteBuffer by default
+func MakeFixedSizeByteBuffer(size int) *FixedSizeByteBuffer {
 	var byteBuffer = FixedSizeByteBuffer{
 		B:    make([]byte, size),
 		used: 0,
