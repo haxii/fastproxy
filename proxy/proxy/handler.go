@@ -134,41 +134,41 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 		return util.ErrWrapper(err, "error occurred when handshaking with client")
 	}
 	var wg sync.WaitGroup
-	var supperProxyWriteErr, supperProxyReadErr error
-	var supperProxyOutgoingTrafficSize, supperProxyIncomingTrafficSize int64
+	var superProxyWriteErr, superProxyReadErr error
+	var superProxyOutgoingTrafficSize, superProxyIncomingTrafficSize int64
 	wg.Add(2)
 	go func() {
-		supperProxyOutgoingTrafficSize, supperProxyWriteErr = transport.Forward(tunnelConn, conn)
+		superProxyOutgoingTrafficSize, superProxyWriteErr = transport.Forward(tunnelConn, conn)
 		wg.Done()
 	}()
 	go func() {
-		supperProxyIncomingTrafficSize, supperProxyReadErr = transport.Forward(conn, tunnelConn)
+		superProxyIncomingTrafficSize, superProxyReadErr = transport.Forward(conn, tunnelConn)
 		wg.Done()
 	}()
 	wg.Wait()
 
-	if supperProxyOutgoingTrafficSize > 0 {
+	if superProxyOutgoingTrafficSize > 0 {
 		if usage != nil {
-			usage.AddIncomingSize(uint64(supperProxyOutgoingTrafficSize))
+			usage.AddIncomingSize(uint64(superProxyOutgoingTrafficSize))
 		}
 		if superProxy != nil && superProxy.Usage != nil {
-			superProxy.Usage.AddOutgoingSize(uint64(supperProxyOutgoingTrafficSize))
+			superProxy.Usage.AddOutgoingSize(uint64(superProxyOutgoingTrafficSize))
 		}
 	}
-	if supperProxyIncomingTrafficSize > 0 {
+	if superProxyIncomingTrafficSize > 0 {
 		if usage != nil {
-			usage.AddOutgoingSize(uint64(supperProxyIncomingTrafficSize))
+			usage.AddOutgoingSize(uint64(superProxyIncomingTrafficSize))
 		}
 		if superProxy != nil && superProxy.Usage != nil {
-			superProxy.Usage.AddIncomingSize(uint64(supperProxyIncomingTrafficSize))
+			superProxy.Usage.AddIncomingSize(uint64(superProxyIncomingTrafficSize))
 		}
 	}
 
-	if supperProxyWriteErr != nil {
-		return util.ErrWrapper(supperProxyWriteErr, "error occurred when tunneling client request to client")
+	if superProxyWriteErr != nil {
+		return util.ErrWrapper(superProxyWriteErr, "error occurred when tunneling client request to client")
 	}
-	if supperProxyReadErr != nil {
-		return util.ErrWrapper(supperProxyReadErr, "error occurred when tunneling client response to client")
+	if superProxyReadErr != nil {
+		return util.ErrWrapper(superProxyReadErr, "error occurred when tunneling client response to client")
 	}
 	return nil
 }
