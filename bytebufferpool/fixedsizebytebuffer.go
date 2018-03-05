@@ -5,7 +5,7 @@ import (
 )
 
 // MaxSize default max size for byte buffer
-var MaxSize = 1024 * 1024
+var MaxSize = 32 * 1024
 
 // FixedSizeByteBuffer provides fixed size byte buffer
 //
@@ -16,29 +16,29 @@ var MaxSize = 1024 * 1024
 type FixedSizeByteBuffer struct {
 	// B is a byte buffer to use in append-like workloads.
 	B    []byte
-	Used int
+	used int
 }
 
 // Bytes returns b.B, i.e. all the bytes accumulated in the buffer.
 //
 // The purpose of this function is bytes.Buffer compatibility.
 func (b *FixedSizeByteBuffer) Bytes() []byte {
-	return b.B[:b.Used]
+	return b.B[:b.used]
 }
 
 // Write implements io.Writer
 func (b *FixedSizeByteBuffer) Write(p []byte) (int, error) {
-	n := len(b.B) - b.Used
+	n := len(b.B) - b.used
 	var err error
 	var writingLength int
 	if len(p) < n {
-		writingLength = copy(b.B[b.Used:], p)
-		b.Used += len(p)
+		writingLength = copy(b.B[b.used:], p)
+		b.used += len(p)
 		err = nil
 	} else {
-		writingLength = copy(b.B[b.Used:], p[:n])
+		writingLength = copy(b.B[b.used:], p[:n])
 		err = io.ErrShortBuffer
-		b.Used = len(b.B)
+		b.used = len(b.B)
 	}
 	return writingLength, err
 }
@@ -47,12 +47,12 @@ func (b *FixedSizeByteBuffer) Write(p []byte) (int, error) {
 func MakeByteBuffer(size int) *FixedSizeByteBuffer {
 	var byteBuffer = FixedSizeByteBuffer{
 		B:    make([]byte, size),
-		Used: 0,
+		used: 0,
 	}
 	return &byteBuffer
 }
 
 // Reset reset byteBuffer
 func (b *FixedSizeByteBuffer) Reset() {
-	b.Used = 0
+	b.used = 0
 }
