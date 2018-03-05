@@ -84,11 +84,11 @@ const DefaultConcurrency = 256 * 1024
 // Serve serves incoming connections from the given listener.
 //
 // Serve blocks until the given listener returns permanent error.
-func (p *Proxy) Serve(ln net.Listener) error {
+func (p *Proxy) Serve(ln net.Listener, maxWaitTime time.Duration) error {
 	if e := p.init(); e != nil {
 		return e
 	}
-
+	gln := NewGracefulListener(ln, maxWaitTime)
 	var lastOverflowErrorTime time.Time
 	var lastPerIPErrorTime time.Time
 	var c net.Conn
@@ -103,7 +103,7 @@ func (p *Proxy) Serve(ln net.Listener) error {
 	wp.Start()
 
 	for {
-		if c, err = p.acceptConn(ln, &lastPerIPErrorTime); err != nil {
+		if c, err = p.acceptConn(gln, &lastPerIPErrorTime); err != nil {
 			wp.Stop()
 			if err == io.EOF {
 				return nil
@@ -165,7 +165,6 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		p.reqPool.Release(req)
 		p.BufioPool.ReleaseReader(reader)
 	}
-
 	if err := req.ReadFrom(reader); err != nil {
 		releaseReqAndReader()
 		return util.ErrWrapper(err, "fail to read http request header")

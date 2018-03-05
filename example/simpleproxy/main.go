@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/client"
@@ -48,7 +49,7 @@ func main() {
 			HijackerPool: &SimpleHijackerPool{},
 		},
 	}
-	if err := proxy.Serve(ln); err != nil {
+	if err := proxy.Serve(ln, 30*time.Second); err != nil {
 		panic(err)
 	}
 }
@@ -92,16 +93,16 @@ func (s *simpleHijacker) Set(clientAddr net.Addr,
 
 func (s *simpleHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
-************************
-addr: %s, host: %s
-************************
-%s %s
-************************
-content length: %d
-************************
-%s
-************************
-`,
+	************************
+	addr: %s, host: %s
+	************************
+	%s %s
+	************************
+	content length: %d
+	************************
+	%s
+	************************
+	`,
 		s.clientAddr, s.targetHost, s.method, s.path,
 		header.ContentLength(), rawHeader)
 	return os.Stdout
@@ -117,19 +118,19 @@ func (s *simpleHijacker) HijackResponse() io.Reader {
 func (s *simpleHijacker) OnResponse(respLine http.ResponseLine,
 	header http.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
-************************
-addr: %s, host: %s
-************************
-%s %s
-************************
-%s %d %s
-************************
-content length: %d
-content type: %s
-************************
-%s
-************************
-`,
+	************************
+	addr: %s, host: %s
+	************************
+	%s %s
+	************************
+	%s %d %s
+	************************
+	content length: %d
+	content type: %s
+	************************
+	%s
+	************************
+	`,
 		s.clientAddr, s.targetHost, s.method, s.path,
 		respLine.GetProtocol(), respLine.GetStatusCode(), respLine.GetStatusMessage(),
 		header.ContentLength(), header.ContentType(), rawHeader)
