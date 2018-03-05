@@ -187,9 +187,6 @@ type Response struct {
 
 	//body http body parser
 	body http.Body
-
-	//pool sniffer bytes buffer pool
-	pool sync.Pool
 }
 
 //Reset reset response
