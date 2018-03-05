@@ -135,32 +135,32 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 	}
 	var wg sync.WaitGroup
 	var supperProxyWriteErr, supperProxyReadErr error
-	var supperProxyOutgoingTrafiicSize, supperProxyIncomingTrafiicSize int64
+	var supperProxyOutgoingTrafficSize, supperProxyIncomingTrafficSize int64
 	wg.Add(2)
 	go func() {
-		supperProxyOutgoingTrafiicSize, supperProxyWriteErr = transport.Forward(tunnelConn, conn)
+		supperProxyOutgoingTrafficSize, supperProxyWriteErr = transport.Forward(tunnelConn, conn)
 		wg.Done()
 	}()
 	go func() {
-		supperProxyIncomingTrafiicSize, supperProxyReadErr = transport.Forward(conn, tunnelConn)
+		supperProxyIncomingTrafficSize, supperProxyReadErr = transport.Forward(conn, tunnelConn)
 		wg.Done()
 	}()
 	wg.Wait()
 
-	if supperProxyOutgoingTrafiicSize > 0 {
+	if supperProxyOutgoingTrafficSize > 0 {
 		if usage != nil {
-			usage.AddIncomingSize(uint64(supperProxyOutgoingTrafiicSize))
+			usage.AddIncomingSize(uint64(supperProxyOutgoingTrafficSize))
 		}
 		if superProxy != nil && superProxy.Usage != nil {
-			superProxy.Usage.AddOutgoingSize(uint64(supperProxyOutgoingTrafiicSize))
+			superProxy.Usage.AddOutgoingSize(uint64(supperProxyOutgoingTrafficSize))
 		}
 	}
-	if supperProxyIncomingTrafiicSize > 0 {
+	if supperProxyIncomingTrafficSize > 0 {
 		if usage != nil {
-			usage.AddOutgoingSize(uint64(supperProxyIncomingTrafiicSize))
+			usage.AddOutgoingSize(uint64(supperProxyIncomingTrafficSize))
 		}
 		if superProxy != nil && superProxy.Usage != nil {
-			superProxy.Usage.AddIncomingSize(uint64(supperProxyIncomingTrafiicSize))
+			superProxy.Usage.AddIncomingSize(uint64(supperProxyIncomingTrafficSize))
 		}
 	}
 
