@@ -134,41 +134,41 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 		return util.ErrWrapper(err, "error occurred when handshaking with client")
 	}
 	var wg sync.WaitGroup
-	var err1, err2 error
-	var num1, num2 int64
+	var supperProxyWriteErr, supperProxyReadErr error
+	var supperProxyOutgoingTrafiicSize, supperProxyIncomingTrafiicSize int64
 	wg.Add(2)
 	go func() {
-		num1, err1 = transport.Forward(tunnelConn, conn)
+		supperProxyOutgoingTrafiicSize, supperProxyWriteErr = transport.Forward(tunnelConn, conn)
 		wg.Done()
 	}()
 	go func() {
-		num2, err2 = transport.Forward(conn, tunnelConn)
+		supperProxyIncomingTrafiicSize, supperProxyReadErr = transport.Forward(conn, tunnelConn)
 		wg.Done()
 	}()
 	wg.Wait()
 
-	if num1 > 0 {
+	if supperProxyOutgoingTrafiicSize > 0 {
 		if usage != nil {
-			usage.AddIncomingSize(uint64(num1))
+			usage.AddIncomingSize(uint64(supperProxyOutgoingTrafiicSize))
 		}
 		if superProxy != nil && superProxy.Usage != nil {
-			superProxy.Usage.AddOutgoingSize(uint64(num1))
+			superProxy.Usage.AddOutgoingSize(uint64(supperProxyOutgoingTrafiicSize))
 		}
 	}
-	if num2 > 0 {
+	if supperProxyIncomingTrafiicSize > 0 {
 		if usage != nil {
-			usage.AddOutgoingSize(uint64(num2))
+			usage.AddOutgoingSize(uint64(supperProxyIncomingTrafiicSize))
 		}
 		if superProxy != nil && superProxy.Usage != nil {
-			superProxy.Usage.AddIncomingSize(uint64(num2))
+			superProxy.Usage.AddIncomingSize(uint64(supperProxyIncomingTrafiicSize))
 		}
 	}
 
-	if err1 != nil {
-		return util.ErrWrapper(err1, "error occurred when tunneling client request to client")
+	if supperProxyWriteErr != nil {
+		return util.ErrWrapper(supperProxyWriteErr, "error occurred when tunneling client request to client")
 	}
-	if err2 != nil {
-		return util.ErrWrapper(err2, "error occurred when tunneling client response to client")
+	if supperProxyReadErr != nil {
+		return util.ErrWrapper(supperProxyReadErr, "error occurred when tunneling client response to client")
 	}
 	return nil
 }

@@ -19,7 +19,9 @@ func Dial(addr string) (net.Conn, error) {
 	return dial(addr, false, nil)
 }
 
-//Forward forward remote and local connection
+// Forward forward remote and local connection
+// It returns the number of bytes write to dst
+// and the first error encountered while writing, if any.
 func Forward(dst io.Writer, src io.Reader) (int64, error) {
 	buffer := bytebufferpool.Get()
 	defer bytebufferpool.Put(buffer)
