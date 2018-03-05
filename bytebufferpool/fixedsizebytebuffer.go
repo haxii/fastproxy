@@ -26,6 +26,11 @@ func (b *FixedSizeByteBuffer) Bytes() []byte {
 	return b.B[:b.used]
 }
 
+//Len returns the usage of fixed size byte buffer
+func (b *FixedSizeByteBuffer) Len() int {
+	return b.used
+}
+
 // Write implements io.Writer
 func (b *FixedSizeByteBuffer) Write(p []byte) (int, error) {
 	n := len(b.B) - b.used
