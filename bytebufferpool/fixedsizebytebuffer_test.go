@@ -9,7 +9,7 @@ import (
 func Test_fixedSizeByteBuffer(t *testing.T) {
 	var wrongData []byte
 	wrongData = []byte("1234567")
-	var dataBuffer = MakeByteBuffer(5)
+	var dataBuffer = MakeFixedSizeByteBuffer(5)
 	correctData := []byte("1234")
 
 	writingSize, err := dataBuffer.Write(correctData)
