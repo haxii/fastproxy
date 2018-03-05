@@ -34,6 +34,7 @@ func NewGracefulListener(ln net.Listener, maxWaitTime time.Duration) net.Listene
 	}
 }
 
+// Accept waits for and returns the next connection to the listener.
 func (ln *GracefulNetListener) Accept() (net.Conn, error) {
 	c, err := ln.ln.Accept()
 
@@ -49,6 +50,7 @@ func (ln *GracefulNetListener) Accept() (net.Conn, error) {
 	}, nil
 }
 
+// Addr returns the listener's network address.
 func (ln *GracefulNetListener) Addr() net.Addr {
 	return ln.ln.Addr()
 }

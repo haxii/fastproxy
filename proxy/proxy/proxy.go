@@ -12,7 +12,6 @@ import (
 	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/server"
-	"github.com/haxii/fastproxy/servershutdown"
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/util"
@@ -89,7 +88,7 @@ func (p *Proxy) Serve(ln net.Listener, maxWaitTime time.Duration) error {
 	if e := p.init(); e != nil {
 		return e
 	}
-	gln := servershutdown.NewGracefulListener(ln, maxWaitTime)
+	gln := NewGracefulListener(ln, maxWaitTime)
 	var lastOverflowErrorTime time.Time
 	var lastPerIPErrorTime time.Time
 	var c net.Conn
