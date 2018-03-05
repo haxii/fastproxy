@@ -37,6 +37,10 @@ func Test_fixedSizeByteBuffer(t *testing.T) {
 		t.Fatal("Write data error: write too much data in dataBuffer")
 	}
 
+	if !bytes.Equal(dataBuffer.Bytes(), []byte("12345")) {
+		t.Fatal("Write data error: write data error")
+	}
+
 	dataBuffer.Reset()
 
 	writingSize, err = dataBuffer.Write(correctData)
