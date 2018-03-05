@@ -24,7 +24,7 @@ const (
 	// ProxyTypeSOCKS5 a SOCKS5 proxy
 	ProxyTypeSOCKS5
 
-	//default concurrency
+	//default max concurrency
 	DefaultMaxConcurrency = 2
 )
 
