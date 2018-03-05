@@ -125,10 +125,6 @@ func (p *Proxy) Serve(ln net.Listener) error {
 	}
 	wp.Start()
 
-	if p.Handler.ShouldOpenUsage {
-		p.Usage = usage.NewProxyUsage()
-	}
-
 	for {
 		if c, err = p.acceptConn(ln, &lastPerIPErrorTime); err != nil {
 			wp.Stop()

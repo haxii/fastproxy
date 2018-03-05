@@ -38,9 +38,6 @@ type Handler struct {
 	//http requests and response pool
 	reqPool  http.RequestPool
 	respPool http.ResponsePool
-
-	//set true to open proxy usage
-	ShouldOpenUsage bool
 }
 
 func (h *Handler) handleHTTPConns(c net.Conn, req *http.Request,
