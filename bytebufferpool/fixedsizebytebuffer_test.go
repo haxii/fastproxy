@@ -11,6 +11,7 @@ func Test_fixedSizeByteBuffer(t *testing.T) {
 	wrongData = []byte("1234567")
 	var dataBuffer = MakeByteBuffer(5)
 	correctData := []byte("1234")
+
 	writingSize, err := dataBuffer.Write(correctData)
 	if writingSize != 4 {
 		t.Fatal("write wrong number of data in dataBuffer")
@@ -30,8 +31,16 @@ func Test_fixedSizeByteBuffer(t *testing.T) {
 	if dataBuffer.Len() != 5 {
 		t.Fatal("Write data error: some data didn't write in dataBuffer")
 	}
-	dataBuffer.Reset()
 
+	dataBuffer.Reset()
+	if dataBuffer.Len() != 0 {
+		t.Fatal("Reset data error: data buffer do not reset")
+	}
+	if !bytes.Equal(dataBuffer.Bytes(), []byte("")) {
+		t.Fatal("Reset data error: data buffer bytes do not reset")
+	}
+
+	dataBuffer.Reset()
 	writingSize, err = dataBuffer.Write(wrongData)
 	if err != io.ErrShortBuffer || writingSize != 5 {
 		t.Fatal("Write data error: write too much data in dataBuffer")
