@@ -84,7 +84,7 @@ const DefaultConcurrency = 256 * 1024
 // Serve serves incoming connections from the given listener.
 //
 // Serve blocks until the given listener returns permanent error.
-func (p *Proxy) Serve(ln net.Listener) error {
+func (p *Proxy) Serve(ln net.Listener, maxWaitTime time.Duration) error {
 	if e := p.init(); e != nil {
 		return e
 	}
@@ -94,6 +94,7 @@ func (p *Proxy) Serve(ln net.Listener) error {
 	var c net.Conn
 	var err error
 
+	gln := NewGracefulListener(ln, maxWaitTime)
 	maxWorkersCount := DefaultConcurrency
 	wp := &server.WorkerPool{
 		WorkerFunc:      p.serveConn,
@@ -103,7 +104,7 @@ func (p *Proxy) Serve(ln net.Listener) error {
 	wp.Start()
 
 	for {
-		if c, err = p.acceptConn(ln, &lastPerIPErrorTime); err != nil {
+		if c, err = p.acceptConn(gln, &lastPerIPErrorTime); err != nil {
 			wp.Stop()
 			if err == io.EOF {
 				return nil
