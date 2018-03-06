@@ -1,8 +1,9 @@
 package usage
 
 import (
-	"fmt"
 	"sync/atomic"
+
+	"github.com/haxii/fastproxy/util"
 )
 
 const (
@@ -34,7 +35,7 @@ func (u *ProxyUsage) Start() {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				fmt.Println("Recovered in ProxyUsage.Start", r)
+				util.ErrWrapper(nil, "recover on ProxyUsage.Start: %v", r)
 			}
 		}()
 

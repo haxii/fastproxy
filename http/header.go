@@ -82,17 +82,19 @@ func (header *Header) IsBodyIdentity() bool {
 // by a colon (":"), optional leading whitespace, the field value, and
 // optional trailing whitespace.
 func (header *Header) ParseHeaderFields(reader *bufio.Reader,
-	buffer *bytebufferpool.ByteBuffer) error {
+	buffer *bytebufferpool.ByteBuffer) (int, error) {
 	originalLen := buffer.Len()
 	n := 1
+	readSize := 0
 	for {
-		err := header.tryRead(reader, buffer, n)
+		rn, err := header.tryRead(reader, buffer, n)
+		readSize += rn
 		if err == nil {
-			return nil
+			return readSize, nil
 		}
 		buffer.B = buffer.B[:originalLen]
 		if err != errNeedMore {
-			return err
+			return readSize, err
 		}
 		n = reader.Buffered() + 1
 	}
@@ -101,13 +103,13 @@ func (header *Header) ParseHeaderFields(reader *bufio.Reader,
 var errNeedMore = errors.New("need more data: cannot find trailing lf")
 
 func (header *Header) tryRead(reader *bufio.Reader,
-	buffer *bytebufferpool.ByteBuffer, n int) error {
+	buffer *bytebufferpool.ByteBuffer, n int) (int, error) {
 	//do NOT use reader.ReadBytes here
 	//which would allocate extra byte memory
 	if b, err := reader.Peek(n); err != nil {
-		return err
+		return 0, err
 	} else if len(b) == 0 {
-		return io.EOF
+		return 0, io.EOF
 	}
 	//must read buffed bytes
 	b := util.PeekBuffered(reader)
@@ -115,15 +117,15 @@ func (header *Header) tryRead(reader *bufio.Reader,
 	headersLen, errParse := header.readHeaders(b, buffer)
 	if errParse != nil {
 		if errParse == errNeedMore {
-			return errNeedMore
+			return headersLen, errNeedMore
 		}
-		return errParse
+		return headersLen, errParse
 	}
 	//jump over the header fields
 	if _, err := reader.Discard(headersLen); err != nil {
-		return err
+		return headersLen, err
 	}
-	return nil
+	return headersLen, nil
 }
 
 func (header *Header) readHeaders(buf []byte,
