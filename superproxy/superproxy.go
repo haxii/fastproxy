@@ -10,6 +10,7 @@ import (
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/transport"
+	"github.com/haxii/fastproxy/usage"
 )
 
 // ProxyType type of super proxy
@@ -22,6 +23,9 @@ const (
 	ProxyTypeHTTPS
 	// ProxyTypeSOCKS5 a SOCKS5 proxy
 	ProxyTypeSOCKS5
+
+	//default max concurrency
+	DefaultMaxConcurrency = 2
 )
 
 //SuperProxy chaining proxy
@@ -44,11 +48,17 @@ type SuperProxy struct {
 	// SOCKS5 greetings & auth header
 	socks5Greetings []byte
 	socks5Auth      []byte
+
+	//usage
+	Usage *usage.ProxyUsage
+
+	//concurrency chan
+	concurrencyChan chan struct{}
 }
 
 // NewSuperProxy new a super proxy
 func NewSuperProxy(proxyHost string, proxyPort uint16, proxyType ProxyType,
-	user string, pass string) (*SuperProxy, error) {
+	user string, pass string, shouldOpenUsage bool) (*SuperProxy, error) {
 	// check input vars
 	if len(proxyHost) == 0 {
 		return nil, errors.New("nil host provided")
@@ -75,6 +85,11 @@ func NewSuperProxy(proxyHost string, proxyPort uint16, proxyType ProxyType,
 		s.initSOCKS5GreetingsAndAuth(user, pass)
 	}
 
+	if shouldOpenUsage {
+		s.Usage = usage.NewProxyUsage()
+	}
+
+	s.SetMaxConcurrency(DefaultMaxConcurrency)
 	return s, nil
 }
 
@@ -148,4 +163,36 @@ func (p *SuperProxy) MakeTunnel(pool *bufiopool.Pool,
 		}
 	}
 	return c, nil
+}
+
+//Release releases some resource
+func (p *SuperProxy) Release() {
+	if p.Usage != nil {
+		p.Usage.Stop()
+		p.Usage = nil
+	}
+}
+
+// SetMaxConcurrency sets max concurrency,
+// n should > 0
+func (p *SuperProxy) SetMaxConcurrency(n int) {
+	if n <= 0 {
+		return
+	}
+	p.concurrencyChan = make(chan struct{}, n)
+	for n > 0 {
+		p.concurrencyChan <- struct{}{}
+		n--
+	}
+}
+
+// acquire a token from concurrencyChan,
+// block here if concurrencyChan is empty
+func (p *SuperProxy) AcquireToken() {
+	<-p.concurrencyChan
+}
+
+// push a token back to concurrencyChan
+func (p *SuperProxy) PushBackToken() {
+	p.concurrencyChan <- struct{}{}
 }

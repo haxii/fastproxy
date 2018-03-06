@@ -57,6 +57,18 @@ type Request interface {
 
 	//super proxy
 	GetProxy() *superproxy.SuperProxy
+
+	//get readSize
+	GetReadSize() int
+
+	//get writeSize
+	GetWriteSize() int
+
+	//add read size
+	AddReadSize(n int)
+
+	//add write size
+	AddWriteSize(n int)
 }
 
 //Response http response for response
@@ -69,6 +81,9 @@ type Response interface {
 	//
 	// this determines weather the client reusing the connections
 	ConnectionClose() bool
+
+	//size of header and body
+	GetSize() int
 }
 
 // Client implements http client.
@@ -506,11 +521,13 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request,
 
 	//start line
 	if isReqProxyHTTP {
-		writeRequestLine(bw, true, req.Method(),
+		nw, _ := writeRequestLine(bw, true, req.Method(),
 			req.HostWithPort(), req.PathWithQueryFragment(), req.Protocol())
+		req.AddWriteSize(nw)
 	} else {
-		writeRequestLine(bw, false, req.Method(),
+		nw, _ := writeRequestLine(bw, false, req.Method(),
 			req.HostWithPort(), req.PathWithQueryFragment(), req.Protocol())
+		req.AddWriteSize(nw)
 	}
 
 	//auth header if needed
@@ -521,6 +538,7 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request,
 			} else if nw != len(authHeader) {
 				return io.ErrShortWrite
 			}
+			req.AddWriteSize(len(authHeader))
 		}
 	}
 	//other request headers

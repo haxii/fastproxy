@@ -43,6 +43,12 @@ type Request struct {
 	isTLS         bool
 	tlsServerName string
 	hostWithPort  string
+
+	//byte size read from reader
+	readSize int
+
+	//byte size written to writer
+	writeSize int
 }
 
 //Reset reset request
@@ -55,6 +61,8 @@ func (r *Request) Reset() {
 	r.isTLS = false
 	r.tlsServerName = ""
 	r.hostWithPort = ""
+	r.readSize = 0
+	r.writeSize = 0
 }
 
 // ReadFrom init request with reader
@@ -133,11 +141,15 @@ func (r *Request) WriteHeaderTo(writer *bufio.Writer) error {
 		return errors.New("Empty request, nothing to write")
 	}
 	//read & write the headers
-	return copyHeader(&r.header, r.reader, writer,
+	rn, err := copyHeader(&r.header, r.reader, writer,
 		func(rawHeader []byte) {
+			r.writeSize += len(rawHeader)
 			r.hijackerBodyWriter = r.hijacker.OnRequest(r.header, rawHeader)
 		},
 	)
+
+	r.AddReadSize(rn)
+	return err
 }
 
 //WriteBodyTo write raw http request body to http client
@@ -149,6 +161,8 @@ func (r *Request) WriteBodyTo(writer *bufio.Writer) error {
 	//write the request body (if any)
 	return copyBody(&r.header, &r.body, r.reader, writer,
 		func(rawBody []byte) {
+			r.readSize += len(rawBody)
+			r.writeSize += len(rawBody)
 			if err := util.WriteWithValidation(r.hijackerBodyWriter, rawBody); err != nil {
 				//TODO: log the sniffer error
 			}
@@ -156,11 +170,11 @@ func (r *Request) WriteBodyTo(writer *bufio.Writer) error {
 	)
 }
 
-// ConnectionClose if the request's "Connection" header value is set as "Close".
+// ConnectionClose if the request's "Connection" or "Proxy-Connection" header value is set as "close".
 // this determines how the client reusing the connetions.
 // this func. result is only valid after `WriteTo` method is called
 func (r *Request) ConnectionClose() bool {
-	return r.header.IsConnectionClose()
+	return r.header.IsConnectionClose() || r.header.IsProxyConnectionClose()
 }
 
 //IsTLS is tls requests
@@ -171,6 +185,31 @@ func (r *Request) IsTLS() bool {
 //TLSServerName server name for handshaking
 func (r *Request) TLSServerName() string {
 	return r.tlsServerName
+}
+
+//GetReadSize return readSize
+func (r *Request) GetReadSize() int {
+	return r.readSize
+}
+
+// add read size
+func (r *Request) AddReadSize(n int) {
+	r.readSize += n
+}
+
+//GetWriteSize return writeSize
+func (r *Request) GetWriteSize() int {
+	return r.writeSize
+}
+
+//add write size
+func (r *Request) AddWriteSize(n int) {
+	r.writeSize += n
+}
+
+//return reqline byte size
+func (r *Request) GetReqLineSize() int {
+	return len(r.reqLine.GetRequestLine())
 }
 
 //Response http response implementation of http client
@@ -187,6 +226,14 @@ type Response struct {
 
 	//body http body parser
 	body http.Body
+
+	//totol byte size of header and body
+	size int
+}
+
+//header and body size of per Response
+func (r *Response) GetSize() int {
+	return r.size
 }
 
 //Reset reset response
@@ -194,6 +241,7 @@ func (r *Response) Reset() {
 	r.writer = nil
 	r.respLine.Reset()
 	r.header.Reset()
+	r.size = 0
 }
 
 // WriteTo init response with writer which would write to
@@ -233,11 +281,13 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) error {
 	if err := util.WriteWithValidation(r.writer, respLineBytes); err != nil {
 		return util.ErrWrapper(err, "fail to write start line of response")
 	}
+	r.size += len(respLineBytes)
 
 	//read & write the headers
 	var hijackerBodyWriter io.Writer
-	if err := copyHeader(&r.header, reader, r.writer,
+	if _, err := copyHeader(&r.header, reader, r.writer,
 		func(rawHeader []byte) {
+			r.size += len(rawHeader)
 			hijackerBodyWriter = r.hijacker.OnResponse(
 				r.respLine, r.header, rawHeader)
 		},
@@ -252,6 +302,7 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) error {
 	//write the request body (if any)
 	return copyBody(&r.header, &r.body, reader, r.writer,
 		func(rawBody []byte) {
+			r.size += len(rawBody)
 			if err := util.WriteWithValidation(hijackerBodyWriter, rawBody); err != nil {
 				//TODO: log the sniffer error
 			}
@@ -269,14 +320,16 @@ func (r *Response) ConnectionClose() bool {
 type additionalDst func([]byte)
 
 func copyHeader(header *http.Header,
-	src *bufio.Reader, dst1 io.Writer, dst2 additionalDst) error {
+	src *bufio.Reader, dst1 io.Writer, dst2 additionalDst) (int, error) {
 	//read and write header
 	buffer := bytebufferpool.Get()
 	defer bytebufferpool.Put(buffer)
-	if err := header.ParseHeaderFields(src, buffer); err != nil {
-		return util.ErrWrapper(err, "fail to parse http headers")
+	var rn int
+	var err error
+	if rn, err = header.ParseHeaderFields(src, buffer); err != nil {
+		return rn, util.ErrWrapper(err, "fail to parse http headers")
 	}
-	return parallelWrite(dst1, dst2, buffer.B)
+	return rn, parallelWrite(dst1, dst2, buffer.B)
 }
 
 func copyBody(header *http.Header, body *http.Body,
