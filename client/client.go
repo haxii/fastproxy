@@ -58,10 +58,10 @@ type Request interface {
 	//super proxy
 	GetProxy() *superproxy.SuperProxy
 
-	//size of header and body readed
+	//get readSize
 	GetReadSize() int
 
-	//size of header and body to write
+	//get writeSize
 	GetWriteSize() int
 
 	//add read size

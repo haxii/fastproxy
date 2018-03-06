@@ -187,7 +187,7 @@ func (r *Request) TLSServerName() string {
 	return r.tlsServerName
 }
 
-//header and body size read from reader
+//GetReadSize return readSize
 func (r *Request) GetReadSize() int {
 	return r.readSize
 }
@@ -197,7 +197,7 @@ func (r *Request) AddReadSize(n int) {
 	r.readSize += n
 }
 
-//header and body size written to writer
+//GetWriteSize return writeSize
 func (r *Request) GetWriteSize() int {
 	return r.writeSize
 }
