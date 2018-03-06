@@ -2,7 +2,7 @@
 
 ## Benchmark With Socks SuperProxy
 
-Test with a local socks5 server
+Test with a local socks5 proxy server and a local http server
 
 ### Fastproxy
 
