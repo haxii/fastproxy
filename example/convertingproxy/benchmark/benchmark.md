@@ -12,7 +12,7 @@ Test with a local socks5 proxy server and a local http server
 wrk -t4 -c16 -d10s http://127.0.0.1:8080 -s proxy.lua http://localhost:9090
 ```
 
-```bash
+```
 Running 10s test @ http://127.0.0.1:8080
   4 threads and 16 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
@@ -26,16 +26,13 @@ Transfer/sec:    221.49KB
 
 ### Privoxy
 
-#### Rewrite the rows in the privoxy config file
+#### Config
 
-```text
-#      To chain Privoxy and Tor, both running on the same system, you
-#      would use something like:
-#
-       forward-socks5   /               127.0.0.1:9099 .
+```ini
+forward-socks5   /               127.0.0.1:9099 .
 ```
 
-#### Privoxy benchmark with wrk
+#### Benchmark with wrk
 
 ```bash
 wrk -t4 -c16 -d10s http://127.0.0.1:8118 -s proxy.lua http://localhost:9090
@@ -56,28 +53,21 @@ Transfer/sec:    283.14KB
 
 ### Polipo
 
-#### Rewrite the rows in the polipo config file
+#### Config
 
-```text
-# Uncomment this if you want to use a parent SOCKS proxy:
-
+```ini
 socksParentProxy = "127.0.0.1:9099"
 socksProxyType = socks5
-```
-
-```text
-# Uncomment this if you want to disable the on-disk cache:
-
 diskCacheRoot = ""
 ```
 
-#### Polipo benchmark with wrk
+#### Benchmark with wrk
 
 ```bash
 wrk -t4 -c16 -d10s http://127.0.0.1:8123 -s proxy.lua http://localhost:9090
 ```
 
-```bash
+```
 Running 10s test @ http://127.0.0.1:8123
   4 threads and 16 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
@@ -90,34 +80,40 @@ Transfer/sec:     75.84KB
 
 ### V2ray
 
-#### Rewrite v2ray config inbound and outbound properties
+#### Config
 
-"inbound" property
+`inbound` property
 
 ```json
-"port": 5000,
-"listen": "127.0.0.1",
-"protocol": "http",
-"settings": {
-  "auth": "noauth",
-  "udp": false,
-  "ip": "127.0.0.1"
+{
+    "port":5000,
+    "listen":"127.0.0.1",
+    "protocol":"http",
+    "settings":{
+        "auth":"noauth",
+        "udp":false,
+        "ip":"127.0.0.1"
+    }
 }
 ```
 
-"outbound" property
+`outbound` property
 
 ```json
-"protocol": "socks",
-"settings": {
-"servers": [{
-  "address": "127.0.0.1",
-  "port": 9099
-  }]
+{
+    "protocol":"socks",
+    "settings":{
+        "servers":[
+            {
+                "address":"127.0.0.1",
+                "port":9099
+            }
+        ]
+    }
 }
 ```
 
-#### V2ray benchmark with wrk
+#### Benchmark with wrk
 
 ```bash
 wrk -t4 -c16 -d10s http://127.0.0.1:5000 -s proxy.lua http://localhost:9090
