@@ -6,6 +6,8 @@ Test with a local socks5 proxy server and a local http server
 
 ### Fastproxy
 
+#### Fastproxy benchmark with wrk
+
 ```bash
 wrk -t4 -c16 -d10s http://127.0.0.1:8080 -s proxy.lua http://localhost:9090
 ```
@@ -23,6 +25,17 @@ Transfer/sec:    221.49KB
 ```
 
 ### Privoxy
+
+#### Rewrite privoxy file line
+
+```text
+#      To chain Privoxy and Tor, both running on the same system, you
+#      would use something like:
+#
+       forward-socks5   /               127.0.0.1:9099 .
+```
+
+#### Privoxy benchmark with wrk
 
 ```bash
 wrk -t4 -c16 -d10s http://127.0.0.1:8118 -s proxy.lua http://localhost:9090
@@ -43,6 +56,23 @@ Transfer/sec:    283.14KB
 
 ### Polipo
 
+#### Rewrite polipo config file line
+
+```text
+# Uncomment this if you want to use a parent SOCKS proxy:
+
+socksParentProxy = "127.0.0.1:9099"
+socksProxyType = socks5
+```
+
+```text
+# Uncomment this if you want to disable the on-disk cache:
+
+diskCacheRoot = ""
+```
+
+#### Polipo benchmark with wrk
+
 ```bash
 wrk -t4 -c16 -d10s http://127.0.0.1:8123 -s proxy.lua http://localhost:9090
 ```
@@ -59,6 +89,35 @@ Transfer/sec:     75.84KB
 ```
 
 ### V2ray
+
+#### Rewrite v2ray config
+
+"inbound" property
+
+```json
+"port": 5000,
+"listen": "127.0.0.1",
+"protocol": "http",
+"settings": {
+  "auth": "noauth",
+  "udp": false,
+  "ip": "127.0.0.1"
+}
+```
+
+"outbound" property
+
+```json
+"protocol": "socks",
+"settings": {
+"servers": [{
+  "address": "127.0.0.1",
+  "port": 9099
+  }]
+}
+```
+
+#### V2ray benchmark with wrk
 
 ```bash
 wrk -t4 -c16 -d10s http://127.0.0.1:5000 -s proxy.lua http://localhost:9090
