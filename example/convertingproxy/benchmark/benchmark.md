@@ -51,11 +51,11 @@ wrk -t4 -c16 -d10s http://127.0.0.1:8123 -s proxy.lua http://localhost:9090
 Running 10s test @ http://127.0.0.1:8123
   4 threads and 16 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency   619.81us  426.42us   3.82ms   63.42%
-    Req/Sec     6.68k   180.68     7.20k    70.30%
-  268559 requests in 10.10s, 44.06MB read
-Requests/sec:  26591.35
-Transfer/sec:      4.36MB
+    Latency    61.78ms   93.19ms 746.39ms   90.80%
+    Req/Sec   123.58    122.62   400.00     76.78%
+  4724 requests in 10.04s, 761.19KB read
+Requests/sec:    470.64
+Transfer/sec:     75.84KB
 ```
 
 ### V2ray
