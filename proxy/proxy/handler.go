@@ -106,18 +106,26 @@ func (h *Handler) handleHTTPSConns(c net.Conn, hostWithPort string,
 	return h.tunnelConnect(c, bufioPool, hostWithPort, usage)
 }
 
+const (
+	httpTunnelMadeOk    = "HTTP/1.1 200 OK\r\n\r\n"
+	httpTunnelMadeError = "HTTP/1.1 501 Bad Gateway\r\n\r\n"
+)
+
+var (
+	httpTunnelMadeOkBytes    = []byte(httpTunnelMadeOk)
+	httpTunnelMadeErrorBytes = []byte(httpTunnelMadeError)
+
+	httpTunnelMadeOkSize    = uint64(len(httpTunnelMadeOkBytes))
+	httpTunnelMadeErrorSize = uint64(len(httpTunnelMadeErrorBytes))
+)
+
 func (h *Handler) sendHTTPSProxyStatusOK(c net.Conn) (err error) {
-	return util.WriteWithValidation(c, []byte("HTTP/1.1 200 OK\r\n\r\n"))
+	return util.WriteWithValidation(c, httpTunnelMadeOkBytes)
 }
 
 func (h *Handler) sendHTTPSProxyStatusBadGateway(c net.Conn) (err error) {
-	return util.WriteWithValidation(c, []byte("HTTP/1.1 501 Bad Gateway\r\n\r\n"))
+	return util.WriteWithValidation(c, httpTunnelMadeErrorBytes)
 }
-
-var (
-	HttpOkByteSize         = uint64(len([]byte("HTTP/1.1 200 OK\r\n\r\n")))
-	HttpBadGatewayByteSize = uint64(len([]byte("HTTP/1.1 501 Bad Gateway\r\n\r\n")))
-)
 
 //proxy https traffic directly
 func (h *Handler) tunnelConnect(conn net.Conn,
@@ -145,7 +153,7 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 	if err != nil {
 		h.sendHTTPSProxyStatusBadGateway(conn)
 		if usage != nil {
-			usage.AddOutgoingSize(HttpBadGatewayByteSize)
+			usage.AddOutgoingSize(httpTunnelMadeErrorSize)
 		}
 		return util.ErrWrapper(err, "error occurred when dialing to host "+hostWithPort)
 	}
@@ -156,7 +164,7 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 		return util.ErrWrapper(err, "error occurred when handshaking with client")
 	}
 	if usage != nil {
-		usage.AddOutgoingSize(HttpOkByteSize)
+		usage.AddOutgoingSize(httpTunnelMadeOkSize)
 	}
 
 	var wg sync.WaitGroup
@@ -210,7 +218,7 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	if err != nil {
 		h.sendHTTPSProxyStatusBadGateway(c)
 		if usage != nil {
-			usage.AddOutgoingSize(HttpBadGatewayByteSize)
+			usage.AddOutgoingSize(httpTunnelMadeErrorSize)
 		}
 		return util.ErrWrapper(err, "fail to sign fake certificate for client")
 	}
@@ -230,7 +238,7 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 			return nil, util.ErrWrapper(err, "proxy fails to handshake with client")
 		}
 		if usage != nil {
-			usage.AddOutgoingSize(HttpOkByteSize)
+			usage.AddOutgoingSize(httpTunnelMadeOkSize)
 		}
 		//make the tls handshake in https
 		conn := tls.Server(c, fakeTargetServerTLSConfig)
