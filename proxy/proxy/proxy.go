@@ -210,6 +210,10 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			return util.ErrWrapper(err, "fail to read http request header")
 		}
 
+		if p.Usage != nil {
+			p.Usage.AddIncomingSize(uint64(req.GetReqLineSize()))
+		}
+
 		if len(req.HostWithPort()) == 0 {
 			if e := p.writeFastError(c, http.StatusBadRequest,
 				"This is a proxy server. Does not respond to non-proxy requests.\n"); e != nil {
@@ -225,11 +229,19 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			if err != nil {
 				return util.ErrWrapper(err, "error HTTP traffic %s ", req.HostWithPort())
 			}
+			req.Reset()
 		} else {
+			//some header may not be read, but buffered in reader, such as "Host", "Proxy-Connection",
+			//should add the buffered size to incoming size
+			if p.Usage != nil {
+				p.Usage.AddIncomingSize(uint64(reader.Buffered()))
+			}
+
 			//handle https proxy request
 			//here I make a copy of the host
-			//then release the request immediately
+			//then reset the request immediately
 			host := strings.Repeat(req.HostWithPort(), 1)
+			req.Reset()
 			//make the requests
 			if err := p.Handler.handleHTTPSConns(c, host,
 				p.BufioPool, &p.Client, p.Usage); err != nil {
@@ -242,7 +254,6 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		}
 
 		reader.Reset(c)
-		req.Reset()
 		currentTime = servertime.CoarseTimeNow()
 	}
 

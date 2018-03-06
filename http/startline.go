@@ -163,6 +163,11 @@ func (l *RequestLine) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
+//GetRequestLine get full request line
+func (l *RequestLine) GetRequestLine() []byte {
+	return l.fullLine
+}
+
 //Reset reset request line to nil
 func (l *RequestLine) Reset() {
 	l.fullLine = l.fullLine[:0]
