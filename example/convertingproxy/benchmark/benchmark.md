@@ -26,7 +26,7 @@ Transfer/sec:    221.49KB
 
 ### Privoxy
 
-#### Rewrite privoxy file line
+#### Rewrite the rows in the privoxy config file
 
 ```text
 #      To chain Privoxy and Tor, both running on the same system, you
@@ -56,7 +56,7 @@ Transfer/sec:    283.14KB
 
 ### Polipo
 
-#### Rewrite polipo config file line
+#### Rewrite the rows in the polipo config file
 
 ```text
 # Uncomment this if you want to use a parent SOCKS proxy:
@@ -90,7 +90,7 @@ Transfer/sec:     75.84KB
 
 ### V2ray
 
-#### Rewrite v2ray config
+#### Rewrite v2ray config inbound and outbound properties
 
 "inbound" property
 
