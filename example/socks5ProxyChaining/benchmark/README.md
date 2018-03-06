@@ -26,12 +26,6 @@ Transfer/sec:    221.49KB
 wrk -t4 -c16 -d10s http://127.0.0.1:8118 -s proxy.lua http://localhost:9090
 ```
 
-with config
-
-```ini
-forward-socks5   /               127.0.0.1:9099 .
-```
-
 ```bash
 Running 10s test @ http://127.0.0.1:8118
   4 threads and 16 connections
@@ -45,18 +39,16 @@ Requests/sec:   1621.60
 Transfer/sec:    283.14KB
 ```
 
+with config
+
+```ini
+forward-socks5   /               127.0.0.1:9099 .
+```
+
 ## Polipo
 
 ```bash
 wrk -t4 -c16 -d10s http://127.0.0.1:8123 -s proxy.lua http://localhost:9090
-```
-
-with config
-
-```ini
-socksParentProxy = "127.0.0.1:9099"
-socksProxyType = socks5
-diskCacheRoot = ""
 ```
 
 ```
@@ -70,23 +62,19 @@ Requests/sec:    470.64
 Transfer/sec:     75.84KB
 ```
 
+with config
+
+```ini
+socksParentProxy = "127.0.0.1:9099"
+socksProxyType = socks5
+diskCacheRoot = ""
+```
+
+
 ## V2ray
 
 ```bash
 wrk -t4 -c16 -d10s http://127.0.0.1:5000 -s proxy.lua http://localhost:9090
-```
-
-with config
-
-```JSON
-{
-    "log":{"loglevel":"debug"},
-    "inbound":{"port":5000,"listen":"127.0.0.1","protocol":"http","settings":{"auth":"noauth","udp":false,"ip":"127.0.0.1"}},
-    "outbound":{"protocol":"socks","settings":{"servers":[{"address":"127.0.0.1","port":9099}]}},
-    "policy":{"levels":{"0":{"uplinkOnly":0}}},
-    "outboundDetour":[{"protocol":"freedom","tag":"direct","settings":{}}],
-    "routing":{"strategy":"rules","settings":{"domainStrategy":"IPOnDemand","rules":[{"type":"field","ip":["0.0.0.0/8","10.0.0.0/8","100.64.0.0/10","127.0.0.0/8","169.254.0.0/16","172.16.0.0/12","192.0.0.0/24","192.0.2.0/24","192.168.0.0/16","198.18.0.0/15","198.51.100.0/24","203.0.113.0/24","::1/128","fc00::/7","fe80::/10"],"outboundTag":"direct"}]}}
-}
 ```
 
 ```
@@ -100,4 +88,17 @@ Running 10s test @ http://127.0.0.1:5000
   Non-2xx or 3xx responses: 129
 Requests/sec:    832.53
 Transfer/sec:    174.94KB
+```
+
+with config
+
+```JSON
+{
+    "log":{"loglevel":"debug"},
+    "inbound":{"port":5000,"listen":"127.0.0.1","protocol":"http","settings":{"auth":"noauth","udp":false,"ip":"127.0.0.1"}},
+    "outbound":{"protocol":"socks","settings":{"servers":[{"address":"127.0.0.1","port":9099}]}},
+    "policy":{"levels":{"0":{"uplinkOnly":0}}},
+    "outboundDetour":[{"protocol":"freedom","tag":"direct","settings":{}}],
+    "routing":{"strategy":"rules","settings":{"domainStrategy":"IPOnDemand","rules":[{"type":"field","ip":["0.0.0.0/8","10.0.0.0/8","100.64.0.0/10","127.0.0.0/8","169.254.0.0/16","172.16.0.0/12","192.0.0.0/24","192.0.2.0/24","192.168.0.0/16","198.18.0.0/15","198.51.100.0/24","203.0.113.0/24","::1/128","fc00::/7","fe80::/10"],"outboundTag":"direct"}]}}
+}
 ```
