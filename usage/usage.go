@@ -1,10 +1,7 @@
 package usage
 
 import (
-	"log"
 	"sync/atomic"
-
-	"github.com/haxii/fastproxy/util"
 )
 
 const (
@@ -35,9 +32,7 @@ func (u *ProxyUsage) Start() {
 	u.stop = make(chan struct{})
 	go func() {
 		defer func() {
-			if r := recover(); r != nil {
-				log.Println(util.ErrWrapper(nil, "recover on ProxyUsage.Start: %v", r))
-			}
+			recover()
 		}()
 
 		var n uint64
