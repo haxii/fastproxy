@@ -43,6 +43,7 @@ type Request struct {
 	isTLS         bool
 	tlsServerName string
 	hostWithPort  string
+	ipWithPort    string
 
 	//byte size read from reader
 	readSize int
@@ -61,6 +62,7 @@ func (r *Request) Reset() {
 	r.isTLS = false
 	r.tlsServerName = ""
 	r.hostWithPort = ""
+	r.ipWithPort = ""
 	r.readSize = 0
 	r.writeSize = 0
 }
@@ -122,6 +124,20 @@ func (r *Request) HostWithPort() string {
 //SetHostWithPort set host with port hardly
 func (r *Request) SetHostWithPort(hostWithPort string) {
 	r.hostWithPort = hostWithPort
+}
+
+//IpOrDomainWithPort returns ipWithPort,
+//if ipWithPort nil, returns hostWithPort
+func (r *Request) IpOrDomainWithPort() string {
+	if len(r.ipWithPort) > 0 {
+		return r.ipWithPort
+	}
+	return r.hostWithPort
+}
+
+//SetIpWithPort set ip with port hardly
+func (r *Request) SetIpWithPort(ipWithPort string) {
+	r.ipWithPort = ipWithPort
 }
 
 //PathWithQueryFragment request path with query and fragment

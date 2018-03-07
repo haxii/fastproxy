@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"strings"
 	"sync"
 
 	"github.com/haxii/fastproxy/bufiopool"
@@ -27,6 +28,10 @@ type Handler struct {
 
 	//URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
 	URLProxy func(hostWithPort string, path []byte) *superproxy.SuperProxy
+
+	//LookupIP returns ip string,
+	//should not block for long time
+	LookupIP func(domain string) string
 
 	//hijacker pool for making a hijacker for every incoming request
 	HijackerPool hijack.HijackerPool
@@ -78,6 +83,11 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 	superProxy := h.URLProxy(req.HostWithPort(), req.PathWithQueryFragment())
 	req.SetProxy(superProxy)
 	if superProxy != nil {
+		ipWithPort := h.lookupIpWithPort(req.HostWithPort())
+		if len(ipWithPort) > 0 {
+			req.SetIpWithPort(ipWithPort)
+		}
+
 		superProxy.AcquireToken()
 		defer func() {
 			superProxy.PushBackToken()
@@ -131,7 +141,14 @@ func (h *Handler) sendHTTPSProxyStatusBadGateway(c net.Conn) (err error) {
 func (h *Handler) tunnelConnect(conn net.Conn,
 	bufioPool *bufiopool.Pool, hostWithPort string, usage *usage.ProxyUsage) error {
 	superProxy := h.URLProxy(hostWithPort, nil)
+
+	ipWithPort := hostWithPort
 	if superProxy != nil {
+		_ipWithPort := h.lookupIpWithPort(hostWithPort)
+		if len(_ipWithPort) > 0 {
+			ipWithPort = _ipWithPort
+		}
+
 		superProxy.AcquireToken()
 		defer func() {
 			superProxy.PushBackToken()
@@ -144,7 +161,7 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 	)
 	if superProxy != nil {
 		//acquire server conn to target host
-		tunnelConn, err = superProxy.MakeTunnel(bufioPool, hostWithPort)
+		tunnelConn, err = superProxy.MakeTunnel(bufioPool, ipWithPort)
 	} else {
 		//acquire server conn to target host
 		tunnelConn, err = transport.Dial(hostWithPort)
@@ -267,6 +284,11 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	if err := req.ReadFrom(reader); err != nil {
 		return util.ErrWrapper(err, "fail to read fake tls server request header")
 	}
+
+	if usage != nil {
+		usage.AddIncomingSize(uint64(req.GetReqLineSize()))
+	}
+
 	req.SetTLS(targetServerName)
 	//mandatory for tls request cause non hosts provided in request header
 	req.SetHostWithPort(hostWithPort)
@@ -284,4 +306,31 @@ func (h *Handler) signFakeCert(mitmCACert *tls.Certificate, host string) (*tls.C
 		return nil, err2
 	}
 	return cert, nil
+}
+
+//resolve domain to ip
+func (h *Handler) lookupIpWithPort(hostWithPort string) string {
+	if h.LookupIP == nil {
+		return ""
+	}
+	host, port, _ := net.SplitHostPort(hostWithPort)
+	if len(host) == 0 {
+		return ""
+	}
+	if net.ParseIP(host) != nil {
+		return ""
+	}
+
+	ip := h.LookupIP(host)
+	if len(ip) == 0 {
+		return ""
+	}
+
+	if !strings.Contains(ip, ":") {
+		return ip + ":" + port
+	} else {
+		//todo, ipv6
+	}
+
+	return ""
 }

@@ -34,6 +34,8 @@ type Request interface {
 	Method() []byte
 	//HostWithPort
 	HostWithPort() string
+	//IpOrDomainWithPort, if no ip with port, returns host with port
+	IpOrDomainWithPort() string
 	//Path request relative path
 	PathWithQueryFragment() []byte
 	//Protocol HTTP/1.0, HTTP/1.1 etc.
@@ -392,7 +394,7 @@ func (c *HostClient) do(req Request, resp Response,
 		case requestProxyHTTPS:
 			fallthrough
 		case requestProxySOCKS5:
-			tunnelConn, err := req.GetProxy().MakeTunnel(c.BufioPool, req.HostWithPort())
+			tunnelConn, err := req.GetProxy().MakeTunnel(c.BufioPool, req.IpOrDomainWithPort())
 			if err != nil {
 				return nil, err
 			}
@@ -522,7 +524,7 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request,
 	//start line
 	if isReqProxyHTTP {
 		nw, _ := writeRequestLine(bw, true, req.Method(),
-			req.HostWithPort(), req.PathWithQueryFragment(), req.Protocol())
+			req.IpOrDomainWithPort(), req.PathWithQueryFragment(), req.Protocol())
 		req.AddWriteSize(nw)
 	} else {
 		nw, _ := writeRequestLine(bw, false, req.Method(),
