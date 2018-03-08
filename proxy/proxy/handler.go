@@ -28,6 +28,10 @@ type Handler struct {
 	//URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
 	URLProxy func(hostWithPort string, path []byte) *superproxy.SuperProxy
 
+	//LookupIP returns ip string,
+	//should not block for long time
+	LookupIP func(domain string) net.IP
+
 	//hijacker pool for making a hijacker for every incoming request
 	HijackerPool hijack.HijackerPool
 	//hijacker client for make hijacked response if available
@@ -59,7 +63,7 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 
 	//set requests hijacker
 	hijacker := h.HijackerPool.Get(c.RemoteAddr(),
-		req.HostWithPort(), req.Method(), req.PathWithQueryFragment())
+		req.HostInfo().HostWithPort(), req.Method(), req.PathWithQueryFragment())
 	defer h.HijackerPool.Put(hijacker)
 
 	//set request & response hijacker
@@ -75,9 +79,15 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 	}
 
 	//set requests proxy
-	superProxy := h.URLProxy(req.HostWithPort(), req.PathWithQueryFragment())
+	superProxy := h.URLProxy(req.HostInfo().HostWithPort(), req.PathWithQueryFragment())
 	req.SetProxy(superProxy)
 	if superProxy != nil {
+		domain := req.HostInfo().Domain()
+		if len(domain) > 0 {
+			ip := h.lookupIp(domain)
+			req.HostInfo().SetIP(ip)
+		}
+
 		superProxy.AcquireToken()
 		defer func() {
 			superProxy.PushBackToken()
@@ -131,7 +141,17 @@ func (h *Handler) sendHTTPSProxyStatusBadGateway(c net.Conn) (err error) {
 func (h *Handler) tunnelConnect(conn net.Conn,
 	bufioPool *bufiopool.Pool, hostWithPort string, usage *usage.ProxyUsage) error {
 	superProxy := h.URLProxy(hostWithPort, nil)
+
+	targetWithPort := hostWithPort
 	if superProxy != nil {
+		host, port, _ := net.SplitHostPort(hostWithPort)
+		if len(host) > 0 && net.ParseIP(host) == nil {
+			ip := h.lookupIp(host)
+			if ip != nil {
+				targetWithPort = ip.String() + ":" + port
+			}
+		}
+		//limit concurrency
 		superProxy.AcquireToken()
 		defer func() {
 			superProxy.PushBackToken()
@@ -144,7 +164,7 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 	)
 	if superProxy != nil {
 		//acquire server conn to target host
-		tunnelConn, err = superProxy.MakeTunnel(bufioPool, hostWithPort)
+		tunnelConn, err = superProxy.MakeTunnel(bufioPool, targetWithPort)
 	} else {
 		//acquire server conn to target host
 		tunnelConn, err = transport.Dial(hostWithPort)
@@ -267,6 +287,11 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	if err := req.ReadFrom(reader); err != nil {
 		return util.ErrWrapper(err, "fail to read fake tls server request header")
 	}
+
+	if usage != nil {
+		usage.AddIncomingSize(uint64(req.GetReqLineSize()))
+	}
+
 	req.SetTLS(targetServerName)
 	//mandatory for tls request cause non hosts provided in request header
 	req.SetHostWithPort(hostWithPort)
@@ -284,4 +309,12 @@ func (h *Handler) signFakeCert(mitmCACert *tls.Certificate, host string) (*tls.C
 		return nil, err2
 	}
 	return cert, nil
+}
+
+//resolve domain to ip
+func (h *Handler) lookupIp(domain string) net.IP {
+	if h.LookupIP == nil {
+		return nil
+	}
+	return h.LookupIP(domain)
 }
