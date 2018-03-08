@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
-	"strings"
 	"sync"
 
 	"github.com/haxii/fastproxy/bufiopool"
@@ -83,8 +82,11 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 	superProxy := h.URLProxy(req.HostInfo().HostWithPort(), req.PathWithQueryFragment())
 	req.SetProxy(superProxy)
 	if superProxy != nil {
-		ip := h.lookupIp(req.HostInfo().Host())
-		req.HostInfo().SetIp(ip)
+		domain := req.HostInfo().Domain()
+		if len(domain) > 0 {
+			ip := h.lookupIp(domain)
+			req.HostInfo().SetIP(ip)
+		}
 
 		superProxy.AcquireToken()
 		defer func() {
@@ -142,11 +144,11 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 
 	targetWithPort := hostWithPort
 	if superProxy != nil {
-		arr := strings.Split(hostWithPort, ":")
-		if len(arr) == 2 {
-			ip := h.lookupIp(arr[0])
+		host, port, _ := net.SplitHostPort(hostWithPort)
+		if len(host) > 0 && net.ParseIP(host) == nil {
+			ip := h.lookupIp(host)
 			if ip != nil {
-				targetWithPort = ip.String() + ":" + arr[1]
+				targetWithPort = ip.String() + ":" + port
 			}
 		}
 		//limit concurrency
@@ -310,12 +312,9 @@ func (h *Handler) signFakeCert(mitmCACert *tls.Certificate, host string) (*tls.C
 }
 
 //resolve domain to ip
-func (h *Handler) lookupIp(host string) net.IP {
+func (h *Handler) lookupIp(domain string) net.IP {
 	if h.LookupIP == nil {
 		return nil
 	}
-	if net.ParseIP(host) != nil {
-		return nil
-	}
-	return h.LookupIP(host)
+	return h.LookupIP(domain)
 }
