@@ -365,10 +365,11 @@ func parallelWrite(dst1 io.Writer, dst2 additionalDst, data []byte) error {
 }
 
 type HostInfo struct {
-	host           string
-	ip             net.IP
-	port           string
-	hostWithPort   string
+	host         string
+	ip           net.IP
+	port         string
+	hostWithPort string
+	//ip with port if ip not nil, else host with port
 	targetWithPort string
 }
 
@@ -384,14 +385,17 @@ func (h *HostInfo) IP() net.IP {
 	return h.ip
 }
 
+//HostWithPort return hostWithPort
 func (h *HostInfo) HostWithPort() string {
 	return h.hostWithPort
 }
 
+//TargetWithPort return targetWithPort
 func (h *HostInfo) TargetWithPort() string {
 	return h.targetWithPort
 }
 
+//ParseHostWithPort parse host with port, and set host, port, hostWithPort, targetWithPort
 func (h *HostInfo) ParseHostWithPort(hostWithPort string) {
 	arr := strings.Split(hostWithPort, ":")
 	if len(arr) != 2 {
@@ -403,6 +407,7 @@ func (h *HostInfo) ParseHostWithPort(hostWithPort string) {
 	h.targetWithPort = hostWithPort
 }
 
+//SetIp set ip and update targetWithPort
 func (h *HostInfo) SetIp(ip net.IP) {
 	if ip == nil {
 		return
