@@ -13,6 +13,7 @@ import (
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/bytebufferpool"
 	"github.com/haxii/fastproxy/cert"
+	"github.com/haxii/fastproxy/proxy/http"
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
@@ -32,8 +33,8 @@ var ErrConnectionClosed = errors.New("the server closed connection before return
 type Request interface {
 	//Method request method in UPPER case
 	Method() []byte
-	//HostWithPort
-	HostWithPort() string
+	//HostInfo
+	HostInfo() *http.HostInfo
 	//Path request relative path
 	PathWithQueryFragment() []byte
 	//Protocol HTTP/1.0, HTTP/1.1 etc.
@@ -189,7 +190,7 @@ func (c *Client) Do(req Request, resp Response) error {
 			return errors.New("nil superproxy proxy host provided")
 		}
 	} else {
-		hostWithPort = req.HostWithPort()
+		hostWithPort = req.HostInfo().HostWithPort()
 		if len(hostWithPort) == 0 {
 			return errors.New("nil target host provided")
 		}
@@ -371,7 +372,7 @@ func (c *HostClient) do(req Request, resp Response,
 	//set https tls config
 	if c.tlsServerConfig == nil {
 		if reqType == requestDirectHTTPS {
-			c.tlsServerConfig = cert.MakeClientTLSConfig(req.HostWithPort(), req.TLSServerName())
+			c.tlsServerConfig = cert.MakeClientTLSConfig(req.HostInfo().HostWithPort(), req.TLSServerName())
 		} else if reqType == requestProxyHTTPS {
 			c.tlsServerConfig = &tls.Config{
 				ClientSessionCache: tls.NewLRUClientSessionCache(0),
@@ -384,15 +385,15 @@ func (c *HostClient) do(req Request, resp Response,
 	dialer := func() (net.Conn, error) {
 		switch reqType {
 		case requestDirectHTTP:
-			return transport.Dial(req.HostWithPort())
+			return transport.Dial(req.HostInfo().HostWithPort())
 		case requestDirectHTTPS:
-			return transport.DialTLS(req.HostWithPort(), c.tlsServerConfig)
+			return transport.DialTLS(req.HostInfo().HostWithPort(), c.tlsServerConfig)
 		case requestProxyHTTP:
 			return transport.Dial(req.GetProxy().HostWithPort())
 		case requestProxyHTTPS:
 			fallthrough
 		case requestProxySOCKS5:
-			tunnelConn, err := req.GetProxy().MakeTunnel(c.BufioPool, req.HostWithPort())
+			tunnelConn, err := req.GetProxy().MakeTunnel(c.BufioPool, req.HostInfo().TargetWithPort())
 			if err != nil {
 				return nil, err
 			}
@@ -522,11 +523,11 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request,
 	//start line
 	if isReqProxyHTTP {
 		nw, _ := writeRequestLine(bw, true, req.Method(),
-			req.HostWithPort(), req.PathWithQueryFragment(), req.Protocol())
+			req.HostInfo().TargetWithPort(), req.PathWithQueryFragment(), req.Protocol())
 		req.AddWriteSize(nw)
 	} else {
 		nw, _ := writeRequestLine(bw, false, req.Method(),
-			req.HostWithPort(), req.PathWithQueryFragment(), req.Protocol())
+			req.HostInfo().HostWithPort(), req.PathWithQueryFragment(), req.Protocol())
 		req.AddWriteSize(nw)
 	}
 
