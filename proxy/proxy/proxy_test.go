@@ -23,7 +23,10 @@ func TestProxyServe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
-
+	_, err = ln.Accept()
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
 	fmt.Fprintf(conn, "GET / HTTP/1.1\r\n\r\n")
 	status, err := bufio.NewReader(conn).ReadString('\n')
 	if err != nil {
