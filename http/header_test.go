@@ -2,6 +2,7 @@ package http
 
 import (
 	"bufio"
+	"io"
 	"strings"
 	"testing"
 
@@ -9,14 +10,32 @@ import (
 )
 
 func TestParseHeaderFields(t *testing.T) {
+	testParseHeader(t, "GET / HTTP/1.1\r\n\r\n", nil, "", false, false)
+	testParseHeader(t, "GET / HTTP/1.1\n\n", nil, "", false, false)
+	testParseHeader(t, "GET / HTTP/1.1\r\n", io.EOF, "", false, false)
+	testParseHeader(t, "GET / HTTP/1.1\r\nConnection: close\r\n\r\n", nil, "", true, false)
+	testParseHeader(t, "GET / HTTP/1.1\r\nProxy-Connection: close\r\n\r\n", nil, "", false, true)
+	testParseHeader(t, "GET / HTTP/1.1\r\nContent-Type: text/plain\r\n\r\n", nil, "text/plain", false, false)
+
+}
+
+func testParseHeader(t *testing.T, s string, expErr error, expContentType string, expConnBoolen bool, expProxyConnBoolen bool) {
 	var err error
 	header := &Header{}
 	header.Reset()
-	s := "GET / HTTP/1.0\r\nHost: foobar\r\nConnection: keep-alive\r\n\r\n"
 	br := bufio.NewReader(strings.NewReader(s))
 	bf := bytebufferpool.Get()
-	err = header.ParseHeaderFields(br, bf)
-	if err != nil {
+	_, err = header.ParseHeaderFields(br, bf)
+	if err != expErr {
 		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	if header.IsConnectionClose() != expConnBoolen {
+		t.Fatalf("Connection status is error")
+	}
+	if header.IsProxyConnectionClose() != expProxyConnBoolen {
+		t.Fatalf("Proxy Connection status is error")
+	}
+	if header.ContentType() != expContentType {
+		t.Fatalf("Content type is error")
 	}
 }

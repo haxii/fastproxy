@@ -3,13 +3,15 @@ package client
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
-	"net/http"
+	"net"
+	nethttp "net/http"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
+	"github.com/haxii/fastproxy/http"
 	proxyhttp "github.com/haxii/fastproxy/proxy/http"
 )
 
@@ -20,14 +22,19 @@ func TestClientDo(t *testing.T) {
 		BufioPool: bPool,
 	}
 	go func() {
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		nethttp.HandleFunc("/", func(w nethttp.ResponseWriter, r *nethttp.Request) {
 			fmt.Fprintf(w, "Hello world,tteterete%s!\r\n", r.URL.Path[1:])
 		})
-		log.Fatal(http.ListenAndServe(":10000", nil))
+		log.Fatal(nethttp.ListenAndServe(":10000", nil))
 	}()
 	s := "GET / HTTP/1.1\r\n" +
 		"\r\n"
 	req := &proxyhttp.Request{}
+	sHijacker := &hijacker{}
+	addr := testAddr{netWork: "tcp", clientAddr: "127.0.0.1:10000"}
+	var clientAddr net.Addr = &addr
+	sHijacker.Set(clientAddr, "localhost", []byte("GET"), []byte("/"))
+	req.SetHijacker(sHijacker)
 	br := bufio.NewReader(strings.NewReader(s))
 	err = req.ReadFrom(br)
 	if err != nil {
@@ -35,15 +42,47 @@ func TestClientDo(t *testing.T) {
 	}
 	req.SetHostWithPort("localhost:10000")
 	resp := &proxyhttp.Response{}
-	for i := 0; i < 10; i++ {
-		err = c.Do(req, resp)
-		if err != nil {
-			t.Fatalf("unexpected error on iteration %d: %s", i, err)
-		}
-
-		// sleep for a while, so the connection to the host may expire.
-		if i%5 == 0 {
-			time.Sleep(30 * time.Millisecond)
-		}
+	err = c.Do(req, resp)
+	if err != nil {
+		t.Fatalf("unexpected error : %s", err)
 	}
+}
+
+type testAddr struct {
+	clientAddr string
+	netWork    string
+}
+
+func (a *testAddr) String() string {
+	return a.clientAddr
+}
+
+func (a *testAddr) Network() string {
+	return a.netWork
+}
+
+type hijacker struct {
+	clientAddr, targetHost string
+	method, path           []byte
+}
+
+func (s *hijacker) Set(clientAddr net.Addr,
+	host string, method, path []byte) {
+	s.clientAddr = clientAddr.String()
+	s.targetHost = host
+	s.method = method
+	s.path = path
+}
+
+func (s *hijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
+	return nil
+}
+
+func (s *hijacker) HijackResponse() io.Reader {
+	return nil
+}
+
+func (s *hijacker) OnResponse(respLine http.ResponseLine,
+	header http.Header, rawHeader []byte) io.Writer {
+	return nil
 }
