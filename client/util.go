@@ -37,66 +37,80 @@ var (
 const defaultHTTPPort = "80"
 
 func writeRequestLine(bw *bufio.Writer, fullURL bool,
-	method []byte, hostWithPort string, path, protocol []byte) error {
+	method []byte, hostWithPort string, path, protocol []byte) (int, error) {
 	host, port, err := net.SplitHostPort(hostWithPort)
 	if err != nil {
-		return err
+		return 0, err
 	}
+	writeSize := 0
 	write := func(b []byte) error {
-		if nw, err := bw.Write(b); err != nil {
+		var nw int
+		var err error
+		if nw, err = bw.Write(b); err != nil {
 			return err
 		} else if nw != len(b) {
 			return io.ErrShortWrite
 		}
+		writeSize += nw
 		return nil
 	}
 	writeStr := func(s string) error {
-		if nw, err := bw.WriteString(s); err != nil {
+		var nw int
+		var err error
+		if nw, err = bw.WriteString(s); err != nil {
 			return err
 		} else if nw != len(s) {
 			return io.ErrShortWrite
 		}
+		writeSize += nw
 		return nil
 	}
 	if err := write(method); err != nil {
-		return err
+		return writeSize, err
 	}
 	if err := bw.WriteByte(startLineSP); err != nil {
-		return err
+		return writeSize, err
 	}
+	writeSize += 1
 	if fullURL {
 		if err := write(startLineScheme); err != nil {
-			return err
+			return writeSize, err
 		}
 		if port != defaultHTTPPort {
 			if err := writeStr(hostWithPort); err != nil {
-				return err
+				return writeSize, err
 			}
 		} else {
 			if err := writeStr(host); err != nil {
-				return err
+				return writeSize, err
 			}
 		}
 	}
 	if len(path) == 0 {
 		if err := bw.WriteByte(startLinePathSep); err != nil {
-			return err
+			return writeSize, err
 		}
 	} else {
 		if path[0] != startLinePathSep {
 			if err := bw.WriteByte(startLinePathSep); err != nil {
-				return err
+				return writeSize, err
 			}
 		}
 		if err := write(path); err != nil {
-			return err
+			return writeSize, err
 		}
 	}
 	if err := bw.WriteByte(startLineSP); err != nil {
-		return err
+		return writeSize, err
 	}
+	writeSize += 1
 	if err := write(protocol); err != nil {
-		return err
+		return writeSize, err
 	}
-	return write(startLineCRLF)
+
+	if err := write(startLineCRLF); err != nil {
+		return writeSize, err
+	}
+
+	return writeSize, nil
 }

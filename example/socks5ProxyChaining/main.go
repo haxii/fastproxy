@@ -1,71 +1,55 @@
-package proxy
+package main
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"net"
 	"strings"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/hijack"
 	"github.com/haxii/fastproxy/http"
+	"github.com/haxii/fastproxy/proxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/log"
 )
 
-func TestProxyServe(t *testing.T) {
-	go func() {
-		ln, err := net.Listen("tcp4", "0.0.0.0:5050")
-		if err != nil {
-			return
-		}
-		superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8081, superproxy.ProxyTypeSOCKS5, "", "", false)
-		proxy := Proxy{
-			BufioPool:   &bufiopool.Pool{},
-			Client:      client.Client{},
-			ProxyLogger: &log.DefaultLogger{},
-			Handler: Handler{
-				ShouldAllowConnection: func(conn net.Addr) bool {
-					fmt.Printf("allowed connection from %s\n", conn.String())
-					return true
-				},
-				ShouldDecryptHost: func(hostWithPort string) bool {
-					return true
-				},
-				URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
-					if strings.Contains(hostWithPort, "lumtest") {
-						return nil
-					}
-					if len(uri) == 0 {
-						//this is a connections should not decrypt
-						fmt.Println(hostWithPort)
-					}
-					return superProxy
-				},
-				HijackerPool: &SimpleHijackerPool{},
+func main() {
+	ln, err := net.Listen("tcp4", "0.0.0.0:8080")
+	if err != nil {
+		return
+	}
+	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 9099, superproxy.ProxyTypeSOCKS5, "", "", false)
+	proxy := proxy.Proxy{
+		BufioPool:   &bufiopool.Pool{},
+		Client:      client.Client{},
+		ProxyLogger: &log.DefaultLogger{},
+		Handler: proxy.Handler{
+			ShouldAllowConnection: func(conn net.Addr) bool {
+				fmt.Printf("allowed connection from %s\n", conn.String())
+				return true
 			},
-		}
-		if err := proxy.Serve(ln, 30*time.Second); err != nil {
-			panic(err)
-		}
-	}()
-
-	conn, err := net.Dial("tcp", "0.0.0.0:5050")
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
+			ShouldDecryptHost: func(hostWithPort string) bool {
+				return true
+			},
+			URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
+				if strings.Contains(hostWithPort, "lumtest") {
+					return nil
+				}
+				if len(uri) == 0 {
+					//this is a connections should not decrypt
+					fmt.Println(hostWithPort)
+				}
+				return superProxy
+			},
+			HijackerPool: &SimpleHijackerPool{},
+		},
 	}
-	fmt.Fprintf(conn, "GET / HTTP/1.1\r\n\r\n")
-	status, err := bufio.NewReader(conn).ReadString('\n')
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if status != "HTTP/1.1 400 Bad Request\r\n" {
-		t.Fatalf("an error occurred when send get request")
+	if err := proxy.Serve(ln, 30*time.Second); err != nil {
+		panic(err)
 	}
 }
 

@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/client"
@@ -14,6 +16,7 @@ import (
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/proxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
+	"github.com/haxii/fastproxy/usage"
 	"github.com/haxii/log"
 )
 
@@ -22,7 +25,9 @@ func main() {
 	if err != nil {
 		return
 	}
-	superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8081, superproxy.ProxyTypeSOCKS5, "", "")
+	superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8081, superproxy.ProxyTypeHTTP, "", "", true)
+	superProxy.SetMaxConcurrency(20)
+
 	proxy := proxy.Proxy{
 		BufioPool:   &bufiopool.Pool{},
 		Client:      client.Client{},
@@ -46,9 +51,19 @@ func main() {
 				return superProxy
 			},
 			HijackerPool: &SimpleHijackerPool{},
+			LookupIP: func(domain string) net.IP {
+				ips, err := net.LookupIP(domain)
+				if err != nil || len(ips) == 0 {
+					return nil
+				}
+				randInt := rand.Intn(len(ips))
+				return ips[randInt]
+			},
 		},
+		Usage: usage.NewProxyUsage(),
 	}
-	if err := proxy.Serve(ln); err != nil {
+
+	if err := proxy.Serve(ln, 30*time.Second); err != nil {
 		panic(err)
 	}
 }
