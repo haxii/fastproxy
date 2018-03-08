@@ -104,10 +104,10 @@ func TestClientDo(t *testing.T) {
 		})
 		log.Fatal(http.ListenAndServe(":10000", nil))
 	}()
-	s := `GET / HTTP/1.1
-	Content-Length: 521
-	Content-Type: multipart/form-data
-	`
+	s := "GET / HTTP/1.1\r\n" +
+		"Content-Length: 72\r\n" +
+		"Content-Type: multipart/form-data\r\n" +
+		"\r\n"
 	req := &proxyhttp.Request{}
 	br := bufio.NewReader(strings.NewReader(s))
 	err = req.ReadFrom(br)
