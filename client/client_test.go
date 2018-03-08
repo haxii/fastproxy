@@ -13,85 +13,6 @@ import (
 	proxyhttp "github.com/haxii/fastproxy/proxy/http"
 )
 
-/*
-func TestClientDo(t *testing.T) {
-	ln, err := net.Listen("tcp", "0.0.0.0:5050")
-	if err != nil {
-		t.Fatalf("unexpect error: %s", err)
-	}
-	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
-	c := &Client{
-		BufioPool: bPool,
-	}
-
-	uri := "/foo/bar/baz?a=b&cd=12"
-	body := "request body"
-
-	ch := make(chan error)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			ch <- fmt.Errorf("cannot accept client connection: %s", err)
-			return
-		}
-		br := bufio.NewReader(conn)
-
-		var req proxyhttp.Request
-		if err = req.ReadFrom(br); err != nil {
-			ch <- fmt.Errorf("cannot read client request: %s", err)
-			return
-		}
-		if string(req.Method()) != "POST" {
-			ch <- fmt.Errorf("unexpected request method: %q. Expecting %q", req.Method(), "POST")
-			return
-		}
-		reqURI := req.PathWithQueryFragment()
-		if string(reqURI) != uri {
-			ch <- fmt.Errorf("unexpected request uri: %q. Expecting %q", reqURI, uri)
-			return
-		}
-		contentLength := req.GetSize()
-		if contentLength != len(body) {
-			ch <- fmt.Errorf("unexpected content-length %d. Expecting %d", contentLength, len(body))
-			return
-		}
-		//TODO: body test
-
-		var resp proxyhttp.Response
-		bw := bufio.NewWriter(conn)
-		if err = resp.WriteTo(bw); err != nil {
-			ch <- fmt.Errorf("cannot send response: %s", err)
-			return
-		}
-		if err = bw.Flush(); err != nil {
-			ch <- fmt.Errorf("cannot flush response: %s", err)
-			return
-		}
-		ch <- nil
-	}()
-
-	conn, err := net.Dial("tcp", "127.0.0.1:5050")
-	if err != nil {
-		t.Fatalf("error when connect: %s", err)
-	}
-	bufioReader := bufio.NewReader(conn)
-	req := &proxyhttp.Request{}
-	resp := &proxyhttp.Response{}
-	err = req.ReadFrom(bufioReader)
-	if err != nil {
-		t.Fatalf("error when readFrom request: %s", err)
-	}
-	err = c.Do(req, resp)
-	if err != nil {
-		t.Fatalf("error when doing request: %s", err)
-	}
-	select {
-	case <-ch:
-	case <-time.After(5 * time.Second):
-		t.Fatalf("timeout")
-	}
-}*/
-
 func TestClientDo(t *testing.T) {
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
@@ -105,8 +26,6 @@ func TestClientDo(t *testing.T) {
 		log.Fatal(http.ListenAndServe(":10000", nil))
 	}()
 	s := "GET / HTTP/1.1\r\n" +
-		"Content-Length: 72\r\n" +
-		"Content-Type: multipart/form-data\r\n" +
 		"\r\n"
 	req := &proxyhttp.Request{}
 	br := bufio.NewReader(strings.NewReader(s))

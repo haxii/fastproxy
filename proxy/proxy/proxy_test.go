@@ -4,7 +4,10 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
+	nethttp "net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -24,7 +27,6 @@ func TestProxyServe(t *testing.T) {
 		if err != nil {
 			return
 		}
-		superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8081, superproxy.ProxyTypeSOCKS5, "", "", false)
 		proxy := Proxy{
 			BufioPool:   &bufiopool.Pool{},
 			Client:      client.Client{},
@@ -45,7 +47,7 @@ func TestProxyServe(t *testing.T) {
 						//this is a connections should not decrypt
 						fmt.Println(hostWithPort)
 					}
-					return superProxy
+					return nil
 				},
 				HijackerPool: &SimpleHijackerPool{},
 			},
@@ -55,7 +57,7 @@ func TestProxyServe(t *testing.T) {
 		}
 	}()
 
-	conn, err := net.Dial("tcp", "0.0.0.0:5050")
+	conn, err := net.Dial("tcp4", "0.0.0.0:5050")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -66,6 +68,78 @@ func TestProxyServe(t *testing.T) {
 	}
 	if status != "HTTP/1.1 400 Bad Request\r\n" {
 		t.Fatalf("an error occurred when send get request")
+	}
+}
+
+func TestFastProxyAsProxyServe(t *testing.T) {
+	go func() {
+		nethttp.HandleFunc("/", func(w nethttp.ResponseWriter, r *nethttp.Request) {
+			fmt.Fprintf(w, "Hello world%s!\r\n", r.URL.Path[1:])
+		})
+		nethttp.ListenAndServe(":9990", nil)
+	}()
+	go func() {
+		ln, err := net.Listen("tcp4", "0.0.0.0:5050")
+		if err != nil {
+			return
+		}
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+		proxy := Proxy{
+			BufioPool:   &bufiopool.Pool{},
+			Client:      client.Client{},
+			ProxyLogger: &log.DefaultLogger{},
+			Handler: Handler{
+				ShouldAllowConnection: func(conn net.Addr) bool {
+					fmt.Printf("allowed connection from %s\n", conn.String())
+					return true
+				},
+				ShouldDecryptHost: func(hostWithPort string) bool {
+					return true
+				},
+				URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
+					if strings.Contains(hostWithPort, "lumtest") {
+						return nil
+					}
+					if len(uri) == 0 {
+						//this is a connections should not decrypt
+						fmt.Println(hostWithPort)
+					}
+					return nil
+				},
+				HijackerPool: &SimpleHijackerPool{},
+			},
+		}
+		if err := proxy.Serve(ln, 30*time.Second); err != nil {
+			panic(err)
+		}
+	}()
+	proxy := func(r *nethttp.Request) (*url.URL, error) {
+		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5050))
+		//set auth
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+		return proxyURL, err
+
+	}
+	transport := &nethttp.Transport{Proxy: proxy}
+	c := nethttp.Client{
+		Transport: transport,
+		Timeout:   10 * time.Second,
+	}
+	req, err := nethttp.NewRequest("GET", "http://localhost:9990", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if string(body) != "Hello world!\r\n" {
+		t.Fatal("An error occurred: proxy can't send request")
 	}
 }
 
