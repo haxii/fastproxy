@@ -31,7 +31,7 @@ type Handler struct {
 
 	//LookupIP returns ip string,
 	//should not block for long time
-	LookupIP func(domain string) string
+	LookupIP func(domain string) net.IP
 
 	//hijacker pool for making a hijacker for every incoming request
 	HijackerPool hijack.HijackerPool
@@ -64,7 +64,7 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 
 	//set requests hijacker
 	hijacker := h.HijackerPool.Get(c.RemoteAddr(),
-		req.HostWithPort(), req.Method(), req.PathWithQueryFragment())
+		req.HostInfo().HostWithPort(), req.Method(), req.PathWithQueryFragment())
 	defer h.HijackerPool.Put(hijacker)
 
 	//set request & response hijacker
@@ -80,13 +80,11 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 	}
 
 	//set requests proxy
-	superProxy := h.URLProxy(req.HostWithPort(), req.PathWithQueryFragment())
+	superProxy := h.URLProxy(req.HostInfo().HostWithPort(), req.PathWithQueryFragment())
 	req.SetProxy(superProxy)
 	if superProxy != nil {
-		ipWithPort := h.lookupIpWithPort(req.HostWithPort())
-		if len(ipWithPort) > 0 {
-			req.SetIpWithPort(ipWithPort)
-		}
+		ip := h.lookupIp(req.HostInfo().Host())
+		req.HostInfo().SetIp(ip)
 
 		superProxy.AcquireToken()
 		defer func() {
@@ -142,13 +140,16 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 	bufioPool *bufiopool.Pool, hostWithPort string, usage *usage.ProxyUsage) error {
 	superProxy := h.URLProxy(hostWithPort, nil)
 
-	ipWithPort := hostWithPort
+	targetWithPort := hostWithPort
 	if superProxy != nil {
-		_ipWithPort := h.lookupIpWithPort(hostWithPort)
-		if len(_ipWithPort) > 0 {
-			ipWithPort = _ipWithPort
+		arr := strings.Split(hostWithPort, ":")
+		if len(arr) == 2 {
+			ip := h.lookupIp(arr[0])
+			if ip != nil {
+				targetWithPort = ip.String() + ":" + arr[1]
+			}
 		}
-
+		//limit concurrency
 		superProxy.AcquireToken()
 		defer func() {
 			superProxy.PushBackToken()
@@ -161,7 +162,7 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 	)
 	if superProxy != nil {
 		//acquire server conn to target host
-		tunnelConn, err = superProxy.MakeTunnel(bufioPool, ipWithPort)
+		tunnelConn, err = superProxy.MakeTunnel(bufioPool, targetWithPort)
 	} else {
 		//acquire server conn to target host
 		tunnelConn, err = transport.Dial(hostWithPort)
@@ -309,28 +310,12 @@ func (h *Handler) signFakeCert(mitmCACert *tls.Certificate, host string) (*tls.C
 }
 
 //resolve domain to ip
-func (h *Handler) lookupIpWithPort(hostWithPort string) string {
+func (h *Handler) lookupIp(host string) net.IP {
 	if h.LookupIP == nil {
-		return ""
-	}
-	host, port, _ := net.SplitHostPort(hostWithPort)
-	if len(host) == 0 {
-		return ""
+		return nil
 	}
 	if net.ParseIP(host) != nil {
-		return ""
+		return nil
 	}
-
-	ip := h.LookupIP(host)
-	if len(ip) == 0 {
-		return ""
-	}
-
-	if !strings.Contains(ip, ":") {
-		return ip + ":" + port
-	} else {
-		//todo, ipv6
-	}
-
-	return ""
+	return h.LookupIP(host)
 }

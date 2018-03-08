@@ -214,7 +214,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			p.Usage.AddIncomingSize(uint64(req.GetReqLineSize()))
 		}
 
-		if len(req.HostWithPort()) == 0 {
+		if len(req.HostInfo().HostWithPort()) == 0 {
 			if e := p.writeFastError(c, http.StatusBadRequest,
 				"This is a proxy server. Does not respond to non-proxy requests.\n"); e != nil {
 				return util.ErrWrapper(e, "fail to response non-proxy request")
@@ -227,7 +227,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			err := p.Handler.handleHTTPConns(c, req,
 				p.BufioPool, &p.Client, p.Usage)
 			if err != nil {
-				return util.ErrWrapper(err, "error HTTP traffic %s ", req.HostWithPort())
+				return util.ErrWrapper(err, "error HTTP traffic %s ", req.HostInfo().HostWithPort())
 			}
 			req.Reset()
 		} else {
@@ -240,7 +240,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			//handle https proxy request
 			//here I make a copy of the host
 			//then reset the request immediately
-			host := strings.Repeat(req.HostWithPort(), 1)
+			host := strings.Repeat(req.HostInfo().HostWithPort(), 1)
 			req.Reset()
 			//make the requests
 			if err := p.Handler.handleHTTPSConns(c, host,

@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"errors"
 	"io"
+	"net"
+	"strings"
 	"sync"
 
 	"github.com/haxii/fastproxy/bytebufferpool"
@@ -42,8 +44,7 @@ type Request struct {
 	//TLS request settings
 	isTLS         bool
 	tlsServerName string
-	hostWithPort  string
-	ipWithPort    string
+	hostInfo      *HostInfo
 
 	//byte size read from reader
 	readSize int
@@ -61,8 +62,7 @@ func (r *Request) Reset() {
 	r.proxy = nil
 	r.isTLS = false
 	r.tlsServerName = ""
-	r.hostWithPort = ""
-	r.ipWithPort = ""
+	r.hostInfo = nil
 	r.readSize = 0
 	r.writeSize = 0
 }
@@ -81,7 +81,8 @@ func (r *Request) ReadFrom(reader *bufio.Reader) error {
 		return util.ErrWrapper(err, "fail to read start line of request")
 	}
 	r.reader = reader
-	r.hostWithPort = r.reqLine.HostWithPort()
+	r.hostInfo = &HostInfo{}
+	r.hostInfo.ParseHostWithPort(r.reqLine.HostWithPort())
 	return nil
 }
 
@@ -116,28 +117,14 @@ func (r *Request) Method() []byte {
 	return r.reqLine.Method()
 }
 
-//HostWithPort host/addr target
-func (r *Request) HostWithPort() string {
-	return r.hostWithPort
+//HostInfo returns host info
+func (r *Request) HostInfo() *HostInfo {
+	return r.hostInfo
 }
 
-//SetHostWithPort set host with port hardly
+//SetHostWithPort set host with port
 func (r *Request) SetHostWithPort(hostWithPort string) {
-	r.hostWithPort = hostWithPort
-}
-
-//IpOrDomainWithPort returns ipWithPort,
-//if ipWithPort nil, returns hostWithPort
-func (r *Request) IpOrDomainWithPort() string {
-	if len(r.ipWithPort) > 0 {
-		return r.ipWithPort
-	}
-	return r.hostWithPort
-}
-
-//SetIpWithPort set ip with port hardly
-func (r *Request) SetIpWithPort(ipWithPort string) {
-	r.ipWithPort = ipWithPort
+	r.hostInfo.ParseHostWithPort(hostWithPort)
 }
 
 //PathWithQueryFragment request path with query and fragment
@@ -375,4 +362,51 @@ func parallelWrite(dst1 io.Writer, dst2 additionalDst, data []byte) error {
 		return util.ErrWrapper(err, "error occurred when write to dst")
 	}
 	return nil
+}
+
+type HostInfo struct {
+	host           string
+	ip             net.IP
+	port           string
+	hostWithPort   string
+	targetWithPort string
+}
+
+func (h *HostInfo) Host() string {
+	return h.host
+}
+
+func (h *HostInfo) Port() string {
+	return h.port
+}
+
+func (h *HostInfo) IP() net.IP {
+	return h.ip
+}
+
+func (h *HostInfo) HostWithPort() string {
+	return h.hostWithPort
+}
+
+func (h *HostInfo) TargetWithPort() string {
+	return h.targetWithPort
+}
+
+func (h *HostInfo) ParseHostWithPort(hostWithPort string) {
+	arr := strings.Split(hostWithPort, ":")
+	if len(arr) != 2 {
+		return
+	}
+	h.host = arr[0]
+	h.port = arr[1]
+	h.hostWithPort = hostWithPort
+	h.targetWithPort = hostWithPort
+}
+
+func (h *HostInfo) SetIp(ip net.IP) {
+	if ip == nil {
+		return
+	}
+	h.ip = ip
+	h.targetWithPort = ip.String() + ":" + h.port
 }

@@ -51,13 +51,13 @@ func main() {
 				return superProxy
 			},
 			HijackerPool: &SimpleHijackerPool{},
-			LookupIP: func(domain string) string {
+			LookupIP: func(domain string) net.IP {
 				ips, err := net.LookupIP(domain)
 				if err != nil || len(ips) == 0 {
-					return ""
+					return nil
 				}
 				randInt := rand.Intn(len(ips))
-				return ips[randInt].String()
+				return ips[randInt]
 			},
 		},
 		Usage: usage.NewProxyUsage(),
