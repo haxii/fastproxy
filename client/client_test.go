@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/haxii/fastproxy/bufiopool"
+	"github.com/haxii/fastproxy/bytebufferpool"
 	"github.com/haxii/fastproxy/http"
 	proxyhttp "github.com/haxii/fastproxy/proxy/http"
 )
@@ -28,6 +29,7 @@ func TestClientDo(t *testing.T) {
 		log.Fatal(nethttp.ListenAndServe(":10000", nil))
 	}()
 	s := "GET / HTTP/1.1\r\n" +
+		"Host: localhost:10000\t\n" +
 		"\r\n"
 	req := &proxyhttp.Request{}
 	sHijacker := &hijacker{}
@@ -38,13 +40,20 @@ func TestClientDo(t *testing.T) {
 	br := bufio.NewReader(strings.NewReader(s))
 	err = req.ReadFrom(br)
 	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
+		t.Fatalf("unexpected error: %s", err.Error())
 	}
 	req.SetHostWithPort("localhost:10000")
 	resp := &proxyhttp.Response{}
+	byteBuffer := bytebufferpool.MakeFixedSizeByteBuffer(100)
+	bw := bufio.NewWriter(byteBuffer)
+	err = resp.WriteTo(bw)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	resp.SetHijacker(sHijacker)
 	err = c.Do(req, resp)
 	if err != nil {
-		t.Fatalf("unexpected error : %s", err)
+		t.Fatalf("unexpected error : %s", err.Error())
 	}
 }
 
