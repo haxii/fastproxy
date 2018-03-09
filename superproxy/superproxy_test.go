@@ -81,19 +81,18 @@ func TestNewSuperProxyWithSocksType(t *testing.T) {
 	defer conn.Close()
 }
 
-/*
 func TestNewSuperProxyWithHTTPSProxy(t *testing.T) {
 	go func() {
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.HandleFunc("/https", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(201)
 		})
-		http.ListenAndServe(":9999", nil)
+		http.ListenAndServe(":8000", nil)
 	}()
 	superProxy, err := NewSuperProxy("localhost", uint16(3128), ProxyTypeHTTPS, "", "", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
-	if superProxy.GetProxyType() != ProxyTypeSOCKS5 {
+	if superProxy.GetProxyType() != ProxyTypeHTTPS {
 		t.Fatalf("unexpected proxy type")
 	}
 	if superProxy.HostWithPort() != "localhost:3128" {
@@ -104,11 +103,11 @@ func TestNewSuperProxyWithHTTPSProxy(t *testing.T) {
 	}
 
 	pool := bufiopool.New(1, 1)
-	conn, err := superProxy.MakeTunnel(pool, "localhost:9999")
+	conn, err := superProxy.MakeTunnel(pool, "localhost:8000")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
-	if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
+	if _, err = conn.Write([]byte("GET /https HTTP/1.1\r\nHost: localhost:8000\r\n\r\n")); err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
 	result := make([]byte, 1000)
@@ -120,4 +119,3 @@ func TestNewSuperProxyWithHTTPSProxy(t *testing.T) {
 	}
 	defer conn.Close()
 }
-*/
