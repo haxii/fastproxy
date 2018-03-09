@@ -29,7 +29,7 @@ func TestClientDo(t *testing.T) {
 		log.Fatal(nethttp.ListenAndServe(":10000", nil))
 	}()
 	s := "GET / HTTP/1.1\r\n" +
-		"Host: localhost:10000\t\n" +
+		"Host: localhost:10000\r\n" +
 		"\r\n"
 	req := &proxyhttp.Request{}
 	sHijacker := &hijacker{}
