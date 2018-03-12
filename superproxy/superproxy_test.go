@@ -108,8 +108,7 @@ func TestNewSuperProxyWithHTTPSProxy(t *testing.T) {
 		t.Fatalf("unexpected host with port bytes")
 	}
 
-	pool := bufiopool.New(1, 1)
-	conn, err := superProxy.MakeTunnel(pool, "localhost:8000")
+	conn, err := net.Dial("tcp4", "localhost:8000")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
