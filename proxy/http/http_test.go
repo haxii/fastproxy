@@ -6,7 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fastfork/fastproxy/bytebufferpool"
+	"github.com/haxii/fastproxy/bufiopool"
+	"github.com/haxii/fastproxy/bytebufferpool"
 )
 
 func TestHttpRequest(t *testing.T) {
@@ -35,21 +36,20 @@ func TestHttpRequest(t *testing.T) {
 }
 
 func TestHttpResponse(t *testing.T) {
-	//s := "HTTP/1.1 200 ok\r\n" + "\r\n"
+	s := "HTTP/1.1 200 ok\r\n" +
+		"Cache-Control:no-cache\r\n" +
+		"\r\n"
 	resp := &Response{}
-	//br := bufio.NewReader(strings.NewReader(s))
+	bPool := bufiopool.New(1, 1)
+	br := bPool.AcquireReader(strings.NewReader(s))
 	byteBuffer := bytebufferpool.MakeFixedSizeByteBuffer(100)
+	err := resp.ReadFrom(true, br)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
 	bw := bufio.NewWriter(byteBuffer)
-	err := resp.WriteTo(bw)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	/*err = resp.ReadFrom(false, br)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
 	err = resp.WriteTo(bw)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
-	}*/
+	}
 }
