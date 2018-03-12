@@ -24,7 +24,7 @@ const (
 	// ProxyTypeSOCKS5 a SOCKS5 proxy
 	ProxyTypeSOCKS5
 
-	//default max concurrency
+	// DefaultMaxConcurrency a max concurrency setting for super proxy by default
 	DefaultMaxConcurrency = 2
 )
 
@@ -186,13 +186,13 @@ func (p *SuperProxy) SetMaxConcurrency(n int) {
 	}
 }
 
-// acquire a token from concurrencyChan,
+// AcquireToken acquire a token from concurrencyChan,
 // block here if concurrencyChan is empty
 func (p *SuperProxy) AcquireToken() {
 	<-p.concurrencyChan
 }
 
-// push a token back to concurrencyChan
+// PushBackToken push a token back to concurrencyChan
 func (p *SuperProxy) PushBackToken() {
 	p.concurrencyChan <- struct{}{}
 }
