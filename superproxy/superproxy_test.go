@@ -10,6 +10,8 @@ import (
 	"github.com/haxii/fastproxy/bufiopool"
 )
 
+var selfSignedCA = "/Users/xiangyu/Documents/workstation/nginx-forward-proxy/etc/server.crt"
+
 func TestNewSuperProxyWithHTTPType(t *testing.T) {
 	go func() {
 		http.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
@@ -17,7 +19,7 @@ func TestNewSuperProxyWithHTTPType(t *testing.T) {
 		})
 		http.ListenAndServe(":9090", nil)
 	}()
-	superProxy, err := NewSuperProxy("localhost", uint16(5080), ProxyTypeHTTP, "", "", false, false)
+	superProxy, err := NewSuperProxy("localhost", uint16(5080), ProxyTypeHTTP, "", "", false, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
@@ -55,7 +57,7 @@ func TestNewSuperProxyWithSocksType(t *testing.T) {
 		})
 		http.ListenAndServe(":9999", nil)
 	}()
-	superProxy, err := NewSuperProxy("localhost", uint16(9099), ProxyTypeSOCKS5, "", "", false, false)
+	superProxy, err := NewSuperProxy("localhost", uint16(9099), ProxyTypeSOCKS5, "", "", false, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
@@ -94,7 +96,7 @@ func TestNewSuperProxyWithHTTPSProxy(t *testing.T) {
 		})
 		http.ListenAndServe(":8000", nil)
 	}()
-	superProxy, err := NewSuperProxy("localhost", uint16(443), ProxyTypeHTTPS, "", "", false, true)
+	superProxy, err := NewSuperProxy("localhost", uint16(443), ProxyTypeHTTPS, "", "", false, selfSignedCA)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
