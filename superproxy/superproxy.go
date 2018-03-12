@@ -58,7 +58,7 @@ type SuperProxy struct {
 
 // NewSuperProxy new a super proxy
 func NewSuperProxy(proxyHost string, proxyPort uint16, proxyType ProxyType,
-	user string, pass string, shouldOpenUsage, isSelfSignedCACertificate bool) (*SuperProxy, error) {
+	user string, pass string, shouldOpenUsage bool, selfSignedCACertificate string) (*SuperProxy, error) {
 	// check input vars
 	if len(proxyHost) == 0 {
 		return nil, errors.New("nil host provided")
@@ -80,7 +80,7 @@ func NewSuperProxy(proxyHost string, proxyPort uint16, proxyType ProxyType,
 	copy(s.hostWithPortBytes, []byte(s.hostWithPort))
 
 	if proxyType != ProxyTypeSOCKS5 {
-		s.initHTTPCertAndAuth(proxyType == ProxyTypeHTTPS, proxyHost, user, pass, isSelfSignedCACertificate)
+		s.initHTTPCertAndAuth(proxyType == ProxyTypeHTTPS, proxyHost, user, pass, selfSignedCACertificate)
 	} else {
 		s.initSOCKS5GreetingsAndAuth(user, pass)
 	}

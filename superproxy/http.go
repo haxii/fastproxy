@@ -2,7 +2,6 @@ package superproxy
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -23,17 +22,15 @@ var (
 )
 
 func (p *SuperProxy) initHTTPCertAndAuth(isSSL bool, host string,
-	user string, pass string, isSelfSignedCACertificate bool) {
+	user string, pass string, selfSignedCACertificate string) {
 	// make HTTP/HTTPS proxy auth header
 	basicAuth := func(username, password string) string {
 		auth := username + ":" + password
 		return base64.StdEncoding.EncodeToString([]byte(auth))
 	}
 	if isSSL {
-		if isSelfSignedCACertificate {
-			p.tlsConfig = &tls.Config{}
-			p.tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(0)
-			p.tlsConfig.InsecureSkipVerify = true
+		if len(selfSignedCACertificate) > 0 {
+			p.tlsConfig = cert.MakeClientTLSConfigByCA(selfSignedCACertificate)
 		} else {
 			p.tlsConfig = cert.MakeClientTLSConfig(host, "")
 		}

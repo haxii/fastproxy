@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"io/ioutil"
 	"math/big"
 	"net"
 	"strings"
@@ -133,5 +134,25 @@ func MakeClientTLSConfig(host, serverName string) *tls.Config {
 	} else {
 		tlsConfig.ServerName = serverName
 	}
+	return tlsConfig
+}
+
+// MakeClientTLSConfigByCA make a client TLS config based on self-signed ca certificate
+func MakeClientTLSConfigByCA(filePath string) *tls.Config {
+	selfCertificate, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return nil
+	}
+	newCert := &tls.Certificate{}
+	key, err := genKeyPair()
+	if err != nil {
+		return nil
+	}
+	newCert.Certificate = append(newCert.Certificate, selfCertificate)
+	newCert.PrivateKey = key
+	newCert.Leaf, _ = x509.ParseCertificate(selfCertificate)
+
+	tlsConfig := &tls.Config{}
+	tlsConfig.Certificates = append(tlsConfig.Certificates, *newCert)
 	return tlsConfig
 }
