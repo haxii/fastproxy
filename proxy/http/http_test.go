@@ -92,6 +92,7 @@ func TestHostInfo(t *testing.T) {
 	if hostInfo.Port() != "8080" {
 		t.Fatal("Parsing port is wrong")
 	}
+
 }
 
 type testAddr struct {
