@@ -17,7 +17,7 @@ func TestNewSuperProxyWithHTTPType(t *testing.T) {
 		})
 		http.ListenAndServe(":9090", nil)
 	}()
-	superProxy, err := NewSuperProxy("localhost", uint16(5080), ProxyTypeHTTP, "", "", false)
+	superProxy, err := NewSuperProxy("localhost", uint16(5080), ProxyTypeHTTP, "", "", false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
@@ -55,7 +55,7 @@ func TestNewSuperProxyWithSocksType(t *testing.T) {
 		})
 		http.ListenAndServe(":9999", nil)
 	}()
-	superProxy, err := NewSuperProxy("localhost", uint16(9099), ProxyTypeSOCKS5, "", "", false)
+	superProxy, err := NewSuperProxy("localhost", uint16(9099), ProxyTypeSOCKS5, "", "", false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
@@ -94,7 +94,7 @@ func TestNewSuperProxyWithHTTPSProxy(t *testing.T) {
 		})
 		http.ListenAndServe(":8000", nil)
 	}()
-	superProxy, err := NewSuperProxy("localhost", uint16(443), ProxyTypeHTTPS, "", "", false)
+	superProxy, err := NewSuperProxy("localhost", uint16(443), ProxyTypeHTTPS, "", "", false, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
