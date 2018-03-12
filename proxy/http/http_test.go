@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/haxii/fastproxy/bufiopool"
-	"github.com/haxii/fastproxy/bytebufferpool"
+	"github.com/fastfork/fastproxy/bufiopool"
+	"github.com/fastfork/fastproxy/bytebufferpool"
 	"github.com/haxii/fastproxy/http"
 )
 
-func TestHttpRequest(t *testing.T) {
+func TestHTTPRequest(t *testing.T) {
 	s := "GET / HTTP/1.1\r\n" +
 		"Host: localhost:10000\r\n" +
 		"\r\n"
@@ -32,13 +32,20 @@ func TestHttpRequest(t *testing.T) {
 	if !bytes.Equal(req.Protocol(), []byte("HTTP/1.1")) {
 		t.Fatalf("Protocol parse error")
 	}
+	if req.ConnectionClose() {
+		t.Fatal("Response connection close is wrong")
+	}
+	if req.IsTLS() {
+		t.Fatal("This is not TLS")
+	}
 	req.Reset()
 	if bytes.Equal(req.Method(), []byte("GET")) {
 		t.Fatalf("Reset error")
 	}
+
 }
 
-func TestHttpResponse(t *testing.T) {
+func TestHTTPResponse(t *testing.T) {
 	s := "HTTP/1.1 200 ok\r\n" +
 		"Cache-Control:no-cache\r\n" +
 		"\r\n"
