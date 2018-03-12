@@ -66,6 +66,7 @@ func TestHttpResponse(t *testing.T) {
 	if resp.ConnectionClose() {
 		t.Fatal("Response connection close is wrong")
 	}
+	defer bw.Flush()
 }
 
 type testAddr struct {

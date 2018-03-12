@@ -55,6 +55,7 @@ func TestClientDo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error : %s", err.Error())
 	}
+	defer bw.Flush()
 }
 
 type testAddr struct {
