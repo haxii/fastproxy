@@ -144,7 +144,6 @@ func TestByteBufferCopy(t *testing.T) {
 	dst.Reset()
 	s := "1234567"
 	nReader := strings.NewReader(s)
-	//bw := bufio.NewWriter(b)
 	writen, err := b.Copy(dst, nReader)
 	if err != nil {
 		t.Fatalf("unexpected err: %s", err.Error())
