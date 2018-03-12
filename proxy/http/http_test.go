@@ -76,6 +76,24 @@ func TestHTTPResponse(t *testing.T) {
 	defer bw.Flush()
 }
 
+func TestHostInfo(t *testing.T) {
+	hostInfo := &HostInfo{}
+	hostInfo.ParseHostWithPort("127.0.0.1:8080")
+	hostInfo.SetIP([]byte("114.114.114.114"))
+
+	if hostInfo.HostWithPort() != "127.0.0.1:8080" {
+		t.Fatal("Host with port is wrong")
+	}
+
+	if !bytes.Equal(hostInfo.IP(), []byte("114.114.114.114")) {
+		t.Fatal("Setting IP is wrong")
+	}
+
+	if hostInfo.Port() != "8080" {
+		t.Fatal("Parsing port is wrong")
+	}
+}
+
 type testAddr struct {
 	clientAddr string
 	netWork    string
