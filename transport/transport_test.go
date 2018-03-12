@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/haxii/fastproxy/cert"
 )
 
 func TestTransportForwordAndDial(t *testing.T) {
@@ -48,4 +50,24 @@ func TestTransportForwordAndDial(t *testing.T) {
 		t.Fatal("transport error")
 	}
 	defer connDst.Close()
+}
+
+func TestTransportDialTLS(t *testing.T) {
+	cfg := cert.MakeClientTLSConfig("127.0.0.1", "server")
+	conn, err := DialTLS("127.0.0.1:443", cfg)
+	if err != nil {
+		t.Fatalf("Dial error: %s", err.Error())
+	}
+	_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: 127.0.0.1:443\r\n\r\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	result := make([]byte, 1000)
+	_, err = conn.Read(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	if !strings.Contains(string(result), "HTTP/1.1 500") {
+		t.Fatal("DialTLS doesn't work")
+	}
 }
