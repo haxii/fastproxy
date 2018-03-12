@@ -132,19 +132,19 @@ func (s *simpleHijacker) HijackResponse() io.Reader {
 func (s *simpleHijacker) OnResponse(respLine http.ResponseLine,
 	header http.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
-	************************
-	addr: %s, host: %s
-	************************
-	%s %s
-	************************
-	%s %d %s
-	************************
-	content length: %d
-	content type: %s
-	************************
-	%s
-	************************
-	`,
+************************
+addr: %s, host: %s
+************************
+%s %s
+************************
+%s %d %s
+************************
+content length: %d
+content type: %s
+************************
+%s
+************************
+`,
 		s.clientAddr, s.targetHost, s.method, s.path,
 		respLine.GetProtocol(), respLine.GetStatusCode(), respLine.GetStatusMessage(),
 		header.ContentLength(), header.ContentType(), rawHeader)
