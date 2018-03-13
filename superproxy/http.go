@@ -30,7 +30,7 @@ func (p *SuperProxy) initHTTPCertAndAuth(isSSL bool, host string,
 	}
 	if isSSL {
 		if len(selfSignedCACertificate) > 0 {
-			p.tlsConfig = cert.MakeClientTLSConfigByCA(selfSignedCACertificate)
+			p.tlsConfig = cert.MakeClientTLSConfigByCA(host, "", selfSignedCACertificate)
 		} else {
 			p.tlsConfig = cert.MakeClientTLSConfig(host, "")
 		}
