@@ -253,7 +253,7 @@ func TestHostClientPendingRequests(t *testing.T) {
 
 	pendingRequests = c.PendingRequests()
 	if pendingRequests != 0 {
-		t.Fatalf("unexpected pendingRequests: %d. Expecting %d", pendingRequests, concurrency)
+		t.Fatalf("non-zero pendingRequests: %d", pendingRequests)
 	}
 }
 
