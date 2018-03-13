@@ -203,6 +203,60 @@ func testClientDoTimeoutError(t *testing.T, c *Client, n int) {
 
 }
 
+func TestHostClientPendingRequests(t *testing.T) {
+	concurrency := 10
+	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+	c := &HostClient{
+		BufioPool: bPool,
+	}
+	pendingRequests := c.PendingRequests()
+	if pendingRequests != 0 {
+		t.Fatalf("non-zero pendingRequests: %d", pendingRequests)
+	}
+	s := "GET / HTTP/1.1\r\n" +
+		"Host: localhost:10000\r\n" +
+		"\r\n"
+
+	for i := 0; i < concurrency; i++ {
+		req := &proxyhttp.Request{}
+		sHijacker := &hijacker{}
+		addr := testAddr{netWork: "tcp", clientAddr: "127.0.0.1:10000"}
+		var clientAddr net.Addr = &addr
+		sHijacker.Set(clientAddr, "localhost", []byte("GET"), []byte("/"))
+		req.SetHijacker(sHijacker)
+		br := bufio.NewReader(strings.NewReader(s))
+		err := req.ReadFrom(br)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+		req.SetHostWithPort("localhost:10000")
+		resp := &proxyhttp.Response{}
+		byteBuffer := bytebufferpool.MakeFixedSizeByteBuffer(100)
+		bw := bufio.NewWriter(byteBuffer)
+		err = resp.WriteTo(bw)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+		resp.SetHijacker(sHijacker)
+
+		if err := c.Do(req, resp); err != nil {
+			fmt.Println("ERROR")
+			t.Fatal(err.Error())
+			return
+		}
+
+		if resp.GetSize() == 0 {
+			t.Fatal("Response can't be empty")
+			return
+		}
+	}
+
+	pendingRequests = c.PendingRequests()
+	if pendingRequests != 0 {
+		t.Fatalf("unexpected pendingRequests: %d. Expecting %d", pendingRequests, concurrency)
+	}
+}
+
 type testAddr struct {
 	clientAddr string
 	netWork    string
