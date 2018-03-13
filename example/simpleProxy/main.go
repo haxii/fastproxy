@@ -25,7 +25,7 @@ func main() {
 	if err != nil {
 		return
 	}
-	superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8081, superproxy.ProxyTypeHTTP, "", "", true)
+	superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8081, superproxy.ProxyTypeHTTP, "", "", true, "")
 	superProxy.SetMaxConcurrency(20)
 
 	proxy := proxy.Proxy{
