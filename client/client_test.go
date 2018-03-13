@@ -29,6 +29,9 @@ func TestClientDo(t *testing.T) {
 	testClientDoWithSuperProxy(t, nil)
 	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 5080, superproxy.ProxyTypeHTTP, "", "", true, "")
 	testClientDoWithSuperProxy(t, superProxy)
+	testClientDoReadTimeoutErrorConcurrent(t)
+	testClientDoWithErrorParamters(t)
+	testClientDoWithEmptyRequestAndResponse(t)
 }
 
 func testClientDoWithSuperProxy(t *testing.T, superProxy *superproxy.SuperProxy) {
@@ -76,7 +79,7 @@ func testClientDoWithSuperProxy(t *testing.T, superProxy *superproxy.SuperProxy)
 	defer bw.Flush()
 }
 
-func TestClientDoReadTimeoutErrorConcurrent(t *testing.T) {
+func testClientDoReadTimeoutErrorConcurrent(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool:       bPool,
@@ -95,7 +98,7 @@ func TestClientDoReadTimeoutErrorConcurrent(t *testing.T) {
 	wg.Wait()
 }
 
-func TestClientDoWithErrorParamters(t *testing.T) {
+func testClientDoWithErrorParamters(t *testing.T) {
 	s := "GET / HTTP/1.1\r\n" +
 		"Host: localhost:10000\r\n" +
 		"\r\n"
@@ -124,12 +127,12 @@ func TestClientDoWithErrorParamters(t *testing.T) {
 	}
 	resp.SetHijacker(sHijacker)
 
-	testClientDoWithErrorParamters(t, nil, req, resp, s, "nil buffer io pool")
-	testClientDoWithErrorParamters(t, bPool, req, resp, errS, "nil target host provided")
+	testClientDoWithErrorParamter(t, nil, req, resp, s, "nil buffer io pool")
+	testClientDoWithErrorParamter(t, bPool, req, resp, errS, "nil target host provided")
 
 }
 
-func testClientDoWithErrorParamters(t *testing.T, bPool *bufiopool.Pool, req *proxyhttp.Request, resp *proxyhttp.Response, s, expErr string) {
+func testClientDoWithErrorParamter(t *testing.T, bPool *bufiopool.Pool, req *proxyhttp.Request, resp *proxyhttp.Response, s, expErr string) {
 	c := &Client{
 		BufioPool: bPool,
 	}
@@ -143,7 +146,7 @@ func testClientDoWithErrorParamters(t *testing.T, bPool *bufiopool.Pool, req *pr
 
 }
 
-func TestClientDoWithEmptyRequestAndResponse(t *testing.T) {
+func testClientDoWithEmptyRequestAndResponse(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 
 	req := &proxyhttp.Request{}
