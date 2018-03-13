@@ -25,7 +25,7 @@ func TestClientDo(t *testing.T) {
 		log.Fatal(nethttp.ListenAndServe(":10000", nil))
 	}()
 	testClientDo(t, nil)
-	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 5080, superproxy.ProxyTypeHTTP, "", "", true, "")
+	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 5080, superproxy.ProxyTypeHTTP, "", "", true)
 	testClientDo(t, superProxy)
 }
 
