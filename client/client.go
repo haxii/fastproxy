@@ -417,7 +417,6 @@ func (c *HostClient) do(req Request, resp Response,
 		return false, err
 	}
 	conn := cc.Get()
-
 	//pre-setup
 	if c.WriteTimeout > 0 {
 		// Optimization: update write deadline only if more than 25%
@@ -438,7 +437,6 @@ func (c *HostClient) do(req Request, resp Response,
 		!req.ConnectionClose() {
 		resetConnection = true
 	}
-
 	//write request
 	shouldCacheReqForRetry := (reqCacheForRetry != nil) && isHeadOrGet(req.Method())
 	isCachedReqAvailable := func() bool { return shouldCacheReqForRetry && (reqCacheForRetry.Len() > 0) }
@@ -494,13 +492,13 @@ func (c *HostClient) do(req Request, resp Response,
 	} else if len(b) == 0 {
 		return true, io.EOF
 	}
+
 	if err = resp.ReadFrom(isHead(req.Method()), br); err != nil {
 		c.BufioPool.ReleaseReader(br)
 		c.ConnManager.CloseConn(cc)
 		return false, err
 	}
 	c.BufioPool.ReleaseReader(br)
-
 	//release or close connection
 	if viaProxy || resetConnection || req.ConnectionClose() || resp.ConnectionClose() {
 		c.ConnManager.CloseConn(cc)
