@@ -92,20 +92,12 @@ func TestFastProxyAsProxyServe(t *testing.T) {
 			ProxyLogger: &log.DefaultLogger{},
 			Handler: Handler{
 				ShouldAllowConnection: func(conn net.Addr) bool {
-					fmt.Printf("allowed connection from %s\n", conn.String())
 					return true
 				},
 				ShouldDecryptHost: func(hostWithPort string) bool {
 					return true
 				},
 				URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
-					if strings.Contains(hostWithPort, "lumtest") {
-						return nil
-					}
-					if len(uri) == 0 {
-						//this is a connections should not decrypt
-						fmt.Println(hostWithPort)
-					}
 					return nil
 				},
 				HijackerPool: &SimpleHijackerPool{},
@@ -117,7 +109,6 @@ func TestFastProxyAsProxyServe(t *testing.T) {
 	}()
 	proxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5050))
-		//set auth
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
 		}
@@ -158,7 +149,6 @@ func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
 	} else {
 		h = v.(*simpleHijacker)
 	}
-	h.Set(clientAddr, targetHost, method, path)
 	return h
 }
 
@@ -167,18 +157,7 @@ func (p *SimpleHijackerPool) Put(s hijack.Hijacker) {
 	p.pool.Put(s)
 }
 
-type simpleHijacker struct {
-	clientAddr, targetHost string
-	method, path           []byte
-}
-
-func (s *simpleHijacker) Set(clientAddr net.Addr,
-	host string, method, path []byte) {
-	s.clientAddr = clientAddr.String()
-	s.targetHost = host
-	s.method = method
-	s.path = path
-}
+type simpleHijacker struct{}
 
 func (s *simpleHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
 	return nil

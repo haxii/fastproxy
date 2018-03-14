@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"io"
-	"net"
 	"strings"
 	"testing"
 
@@ -60,10 +59,6 @@ func TestHTTPResponse(t *testing.T) {
 	}
 
 	sHijacker := &hijacker{}
-	addr := testAddr{netWork: "tcp", clientAddr: "127.0.0.1:10000"}
-	var clientAddr net.Addr = &addr
-	sHijacker.Set(clientAddr, "localhost", []byte("GET"), []byte("/"))
-
 	resp.SetHijacker(sHijacker)
 
 	err = resp.ReadFrom(false, br)
@@ -108,18 +103,7 @@ func (a *testAddr) Network() string {
 	return a.netWork
 }
 
-type hijacker struct {
-	clientAddr, targetHost string
-	method, path           []byte
-}
-
-func (s *hijacker) Set(clientAddr net.Addr,
-	host string, method, path []byte) {
-	s.clientAddr = clientAddr.String()
-	s.targetHost = host
-	s.method = method
-	s.path = path
-}
+type hijacker struct{}
 
 func (s *hijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
 	return nil
