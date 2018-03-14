@@ -207,6 +207,9 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		}
 
 		if err := req.ReadFrom(reader); err != nil {
+			if err == io.EOF {
+				return nil
+			}
 			return util.ErrWrapper(err, "fail to read http request header")
 		}
 

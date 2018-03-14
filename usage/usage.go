@@ -5,9 +5,11 @@ import (
 )
 
 const (
-	DEFAULT_CHAN_CAP = 1000
+	// DefaultChanCap ...
+	DefaultChanCap = 1000
 )
 
+// ProxyUsage a struct for counting the size of the data incoming and outgoing
 type ProxyUsage struct {
 	Incoming uint64 //byte size
 	Outgoing uint64 //byte size
@@ -27,8 +29,8 @@ func NewProxyUsage() *ProxyUsage {
 
 //Start inits chans and starts a goroutine to receive data
 func (u *ProxyUsage) Start() {
-	u.incomingChan = make(chan uint64, DEFAULT_CHAN_CAP)
-	u.outgoingChan = make(chan uint64, DEFAULT_CHAN_CAP)
+	u.incomingChan = make(chan uint64, DefaultChanCap)
+	u.outgoingChan = make(chan uint64, DefaultChanCap)
 	u.stop = make(chan struct{})
 	go func() {
 		defer func() {

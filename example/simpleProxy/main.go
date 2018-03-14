@@ -25,7 +25,7 @@ func main() {
 	if err != nil {
 		return
 	}
-	superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8081, superproxy.ProxyTypeHTTP, "", "", true)
+	superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8081, superproxy.ProxyTypeHTTP, "", "", true, "")
 	superProxy.SetMaxConcurrency(20)
 
 	proxy := proxy.Proxy{
@@ -107,16 +107,16 @@ func (s *simpleHijacker) Set(clientAddr net.Addr,
 
 func (s *simpleHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
-************************
-addr: %s, host: %s
-************************
-%s %s
-************************
-content length: %d
-************************
-%s
-************************
-`,
+	************************
+	addr: %s, host: %s
+	************************
+	%s %s
+	************************
+	content length: %d
+	************************
+	%s
+	************************
+	`,
 		s.clientAddr, s.targetHost, s.method, s.path,
 		header.ContentLength(), rawHeader)
 	return os.Stdout
@@ -124,7 +124,7 @@ content length: %d
 
 func (s *simpleHijacker) HijackResponse() io.Reader {
 	if strings.Contains(s.targetHost, "douban") {
-		return strings.NewReader("HTTP/1.1 501 Response Hijacked\r\n\r\n")
+		return strings.NewReader("HTTP/1.1 501 Response Hijacked\r\nContent-Length:0\r\n\r\n")
 	}
 	return nil
 }
@@ -132,19 +132,19 @@ func (s *simpleHijacker) HijackResponse() io.Reader {
 func (s *simpleHijacker) OnResponse(respLine http.ResponseLine,
 	header http.Header, rawHeader []byte) io.Writer {
 	fmt.Printf(`
-************************
-addr: %s, host: %s
-************************
-%s %s
-************************
-%s %d %s
-************************
-content length: %d
-content type: %s
-************************
-%s
-************************
-`,
+	************************
+	addr: %s, host: %s
+	************************
+	%s %s
+	************************
+	%s %d %s
+	************************
+	content length: %d
+	content type: %s
+	************************
+	%s
+	************************
+	`,
 		s.clientAddr, s.targetHost, s.method, s.path,
 		respLine.GetProtocol(), respLine.GetStatusCode(), respLine.GetStatusMessage(),
 		header.ContentLength(), header.ContentType(), rawHeader)

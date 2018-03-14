@@ -20,5 +20,6 @@ func (p *FixedSizeByteBufferPool) Get() *FixedSizeByteBuffer {
 
 // Put put a bytebuffer into pool
 func (p *FixedSizeByteBufferPool) Put(byteBuffer *FixedSizeByteBuffer) {
+	byteBuffer.Reset()
 	p.pool.Put(byteBuffer)
 }

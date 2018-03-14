@@ -71,7 +71,7 @@ func writeRequestLine(bw *bufio.Writer, fullURL bool,
 	if err := bw.WriteByte(startLineSP); err != nil {
 		return writeSize, err
 	}
-	writeSize += 1
+	writeSize++
 	if fullURL {
 		if err := write(startLineScheme); err != nil {
 			return writeSize, err
@@ -103,7 +103,7 @@ func writeRequestLine(bw *bufio.Writer, fullURL bool,
 	if err := bw.WriteByte(startLineSP); err != nil {
 		return writeSize, err
 	}
-	writeSize += 1
+	writeSize++
 	if err := write(protocol); err != nil {
 		return writeSize, err
 	}
