@@ -2,6 +2,7 @@ package client
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"log"
@@ -18,7 +19,7 @@ import (
 func TestClientDo(t *testing.T) {
 	go func() {
 		nethttp.HandleFunc("/", func(w nethttp.ResponseWriter, r *nethttp.Request) {
-			fmt.Fprint(w, "Hello world!\r\n")
+			fmt.Fprint(w, "Hello world!")
 		})
 		log.Fatal(nethttp.ListenAndServe(":10000", nil))
 	}()
@@ -53,6 +54,53 @@ func testClientDoByDefaultParamters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error : %s", err.Error())
 	}
+	if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
+		t.Fatal("Response body is wrong")
+	}
+}
+
+func testClientDoConcurrentWithLargeNumber(t *testing.T) {
+	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+	c := &Client{
+		BufioPool:       bPool,
+		MaxConnsPerHost: 50,
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 51; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			testClientDoTimeoutFailure(t, c, 1000)
+		}()
+	}
+	wg.Wait()
+}
+
+func testClientDoTimeoutFailure(t *testing.T, c *Client, n int) {
+	var err error
+	if c == nil {
+		bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+		c = &Client{
+			BufioPool:   bPool,
+			ReadTimeout: time.Second,
+		}
+	}
+	for i := 0; i < n; i++ {
+		req := &SimpleRequest{}
+		req.SetTargetWithPort("127.0.0.1:10000")
+		resp := &SimpleResponse{}
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+
+		err = c.Do(req, resp)
+		if err != nil {
+			t.Fatalf("unexpecting error: %s", err.Error())
+		}
+		if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
+			t.Fatal("Response body is wrong")
+		}
+	}
 }
 
 func testClientDoConcurrent(t *testing.T) {
@@ -63,11 +111,11 @@ func testClientDoConcurrent(t *testing.T) {
 		ReadTimeout:     time.Second,
 	}
 	var wg sync.WaitGroup
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 50; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			testClientDoTimeoutSuccess(t, c, 10)
+			testClientDoTimeoutSuccess(t, c, 1)
 		}()
 	}
 	wg.Wait()
@@ -93,14 +141,18 @@ func testClientDoTimeoutSuccess(t *testing.T, c *Client, n int) {
 		if err != nil {
 			t.Fatalf("unexpecting error: %s", err.Error())
 		}
+		if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
+			t.Fatal("Response body is wrong")
+		}
 	}
 }
+
 func testClientDoReadTimeoutErrorConcurrent(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool:       bPool,
 		MaxConnsPerHost: 1000,
-		ReadTimeout:     time.Millisecond,
+		ReadTimeout:     10 * time.Millisecond,
 	}
 
 	var wg sync.WaitGroup
@@ -115,22 +167,17 @@ func testClientDoReadTimeoutErrorConcurrent(t *testing.T) {
 }
 
 func testClientDoWithErrorParamters(t *testing.T) {
-	s := "GET / HTTP/1.1\r\n" +
-		"Host: localhost:10000\r\n" +
-		"\r\n"
-	errS := "GET / HTTP/1.1\r\n" +
-		"\r\n"
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 
 	req := &SimpleRequest{}
 	resp := &SimpleResponse{}
 
-	testClientDoWithErrorParamter(t, nil, req, resp, s, errNilBufiopool)
-	testClientDoWithErrorParamter(t, bPool, req, resp, errS, errNilTargetHost)
+	testClientDoWithErrorParamter(t, nil, req, resp, errNilBufiopool)
+	testClientDoWithErrorParamter(t, bPool, req, resp, errNilTargetHost)
 
 }
 
-func testClientDoWithErrorParamter(t *testing.T, bPool *bufiopool.Pool, req *SimpleRequest, resp *SimpleResponse, s string, expErr error) {
+func testClientDoWithErrorParamter(t *testing.T, bPool *bufiopool.Pool, req *SimpleRequest, resp *SimpleResponse, expErr error) {
 	c := &Client{
 		BufioPool: bPool,
 	}
@@ -174,7 +221,7 @@ func testClientDoTimeoutError(t *testing.T, c *Client, n int) {
 		bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 		c = &Client{
 			BufioPool:   bPool,
-			ReadTimeout: time.Millisecond,
+			ReadTimeout: 10 * time.Millisecond,
 		}
 	}
 	for i := 0; i < n; i++ {
@@ -183,9 +230,6 @@ func testClientDoTimeoutError(t *testing.T, c *Client, n int) {
 		resp := &SimpleResponse{}
 
 		err = c.Do(req, resp)
-		if err == nil {
-			t.Fatal("expecting error")
-		}
 		if !strings.Contains(err.Error(), "timeout") {
 			t.Fatalf("unexpected error: %s", err.Error())
 		}
@@ -227,6 +271,9 @@ func testClientDoIsIdempotent(t *testing.T) {
 		if resp.GetSize() != resultSize {
 			t.Fatalf("Corrent response is not equal with previous response")
 		}
+		if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
+			t.Fatal("Response body is wrong")
+		}
 	}
 }
 
@@ -265,6 +312,10 @@ func testHostClientPendingRequests(t *testing.T) {
 
 			if resp.GetSize() == 0 {
 				resultCh <- fmt.Errorf("Response can't be empty")
+				return
+			}
+			if bytes.Equal(resp.GetBody(), []byte("Hello world!")) {
+				resultCh <- fmt.Errorf("Response body is wrong")
 				return
 			}
 			resultCh <- nil
@@ -368,15 +419,21 @@ func (r *SimpleRequest) AddWriteSize(n int) {}
 
 type SimpleResponse struct {
 	size int
+	body []byte
 }
 
 func (r *SimpleResponse) ReadFrom(discardBody bool, br *bufio.Reader) error {
 	b, err := br.ReadBytes('!')
-	r.size = len(b)
 	if err != nil {
 		return err
 	}
+	r.size = len(b)
+	r.body = b
 	return nil
+}
+
+func (r *SimpleResponse) GetBody() []byte {
+	return r.body
 }
 
 func (r *SimpleResponse) ConnectionClose() bool {
