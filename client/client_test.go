@@ -337,6 +337,7 @@ func (r *SimpleRequest) WriteHeaderTo(w *bufio.Writer) error {
 func (r *SimpleRequest) WriteBodyTo(w *bufio.Writer) error {
 	return nil
 }
+
 func (r *SimpleRequest) ConnectionClose() bool {
 	return false
 }
@@ -344,6 +345,7 @@ func (r *SimpleRequest) ConnectionClose() bool {
 func (r *SimpleRequest) IsTLS() bool {
 	return false
 }
+
 func (r *SimpleRequest) TLSServerName() string {
 	return ""
 }
