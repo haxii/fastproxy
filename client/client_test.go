@@ -14,13 +14,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fastfork/fastproxy/http"
-	"github.com/fastfork/fastproxy/uri"
-	"github.com/fastfork/fastproxy/util"
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/bytebufferpool"
+	"github.com/haxii/fastproxy/http"
 	proxyhttp "github.com/haxii/fastproxy/proxy/http"
 	"github.com/haxii/fastproxy/superproxy"
+	"github.com/haxii/fastproxy/uri"
+	"github.com/haxii/fastproxy/util"
 )
 
 func TestClientDo(t *testing.T) {
