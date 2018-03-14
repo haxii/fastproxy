@@ -5,14 +5,12 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
-	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/bytebufferpool"
-	"github.com/haxii/fastproxy/cert"
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
@@ -28,7 +26,7 @@ import (
 var ErrConnectionClosed = errors.New("the server closed connection before returning the first response byte. " +
 	"Make sure the server returns 'Connection: close' response header before closing the connection")
 
-//Request http request for request
+// Request http request used for client
 type Request interface {
 	//Method request method in UPPER case
 	Method() []byte
@@ -71,7 +69,7 @@ type Request interface {
 	AddWriteSize(n int)
 }
 
-//Response http response for response
+// Response http response used for client
 type Response interface {
 	//ReadFrom read the http response from the buffer IO reader
 	ReadFrom(discardBody bool, br *bufio.Reader) error
@@ -122,45 +120,6 @@ type Client struct {
 
 type hostClients map[string]*HostClient
 
-type requestType int
-
-func (r *requestType) Value() int {
-	return int(*r)
-}
-
-func parseRequestType(superProxy *superproxy.SuperProxy, isHTTPS bool) requestType {
-	var rt requestType
-	if superProxy == nil {
-		if !isHTTPS {
-			rt = requestDirectHTTP
-		} else {
-			rt = requestDirectHTTPS
-		}
-	} else {
-		switch superProxy.GetProxyType() {
-		case superproxy.ProxyTypeSOCKS5:
-			rt = requestProxySOCKS5
-		case superproxy.ProxyTypeHTTP:
-			fallthrough
-		case superproxy.ProxyTypeHTTPS:
-			if !isHTTPS {
-				rt = requestProxyHTTP
-			} else {
-				rt = requestProxyHTTPS
-			}
-		}
-	}
-	return rt
-}
-
-const (
-	requestDirectHTTP requestType = iota
-	requestDirectHTTPS
-	requestProxyHTTP
-	requestProxyHTTPS
-	requestProxySOCKS5
-)
-
 // Do performs the given http request and fills the given http response.
 //
 // The function doesn't follow redirects.
@@ -179,7 +138,7 @@ func (c *Client) Do(req Request, resp Response) error {
 	}
 	//fetch request type
 	viaProxy := (req.GetProxy() != nil)
-	reqType := parseRequestType(req.GetProxy(), req.IsTLS())
+	reqType := parseRequestType(req)
 
 	//get target dialing host with port
 	hostWithPort := ""
@@ -366,45 +325,9 @@ func (c *HostClient) do(req Request, resp Response,
 
 	//analysis request type
 	viaProxy := (req.GetProxy() != nil)
-	reqType := parseRequestType(req.GetProxy(), req.IsTLS())
-
-	//set https tls config
-	if c.tlsServerConfig == nil {
-		if reqType == requestDirectHTTPS {
-			c.tlsServerConfig = cert.MakeClientTLSConfig(req.HostWithPort(), req.TLSServerName())
-		} else if reqType == requestProxyHTTPS {
-			c.tlsServerConfig = &tls.Config{
-				ClientSessionCache: tls.NewLRUClientSessionCache(0),
-				InsecureSkipVerify: true, //TODO: cache every host config in more safe way in a concurrent map
-			}
-		}
-	}
 
 	//get the connection
-	dialer := func() (net.Conn, error) {
-		switch reqType {
-		case requestDirectHTTP:
-			return transport.Dial(req.HostWithPort())
-		case requestDirectHTTPS:
-			return transport.DialTLS(req.HostWithPort(), c.tlsServerConfig)
-		case requestProxyHTTP:
-			return transport.Dial(req.GetProxy().HostWithPort())
-		case requestProxyHTTPS:
-			fallthrough
-		case requestProxySOCKS5:
-			tunnelConn, err := req.GetProxy().MakeTunnel(c.BufioPool, req.HostWithPort())
-			if err != nil {
-				return nil, err
-			}
-			if reqType == requestProxyHTTPS {
-				conn := tls.Client(tunnelConn, c.tlsServerConfig)
-				return conn, nil
-			}
-			return tunnelConn, nil
-		}
-		return nil, errors.New("request type not implemented")
-	}
-	cc, err := c.ConnManager.AcquireConn(dialer)
+	cc, err := c.ConnManager.AcquireConn(c.makeDialer(req))
 	if err != nil {
 		return false, err
 	}
@@ -442,8 +365,7 @@ func (c *HostClient) do(req Request, resp Response,
 		} else {
 			reqWriteToTarget = conn
 		}
-		if err := c.readFromReqAndWriteToIOWriter(req,
-			reqType == requestProxyHTTP, reqWriteToTarget); err != nil {
+		if err := c.readFromReqAndWriteToIOWriter(req, reqWriteToTarget); err != nil {
 			if shouldCacheReqForRetry {
 				reqCacheForRetry.Reset()
 			}
@@ -514,11 +436,10 @@ func (c *HostClient) writeData(data []byte, w io.Writer) error {
 	return bw.Flush()
 }
 
-func (c *HostClient) readFromReqAndWriteToIOWriter(req Request,
-	isReqProxyHTTP bool, w io.Writer) error {
+func (c *HostClient) readFromReqAndWriteToIOWriter(req Request, w io.Writer) error {
 	bw := c.BufioPool.AcquireWriter(w)
 	defer c.BufioPool.ReleaseWriter(bw)
-
+	isReqProxyHTTP := (parseRequestType(req) == requestProxyHTTP)
 	//start line
 	if isReqProxyHTTP {
 		nw, _ := writeRequestLine(bw, true, req.Method(),
