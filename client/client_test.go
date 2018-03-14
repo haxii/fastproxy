@@ -36,6 +36,8 @@ func TestClientDo(t *testing.T) {
 	testClientDoTimeoutError(t, nil, 10)
 	testClientDoReadTimeoutErrorConcurrent(t)
 
+	testClientDoConcurrentWithLargeNumber(t)
+
 	testClientDoIsIdempotent(t)
 
 	testHostClientPendingRequests(t)
@@ -72,7 +74,7 @@ func testClientDoConcurrentWithLargeNumber(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			req := &SimpleRequest{}
-			req.SetTargetWithPort("127.0.0.1:9999")
+			req.SetTargetWithPort("127.0.0.1:10000")
 			resp := &SimpleResponse{}
 			if err := c.Do(req, resp); err != nil {
 				resultCh <- fmt.Errorf("unexpected error: %s", err)
