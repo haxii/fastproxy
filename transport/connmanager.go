@@ -59,8 +59,11 @@ var (
 	ErrTimeout = errors.New("timeout")
 )
 
+// Dialer returns a connection
+type Dialer func() (net.Conn, error)
+
 //AcquireConn acquire a connection
-func (c *ConnManager) AcquireConn(dialer func() (net.Conn, error)) (*Conn, error) {
+func (c *ConnManager) AcquireConn(dialer Dialer) (*Conn, error) {
 	var cc *Conn
 	createConn := false
 	startCleaner := false
