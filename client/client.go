@@ -11,7 +11,6 @@ import (
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/bytebufferpool"
-	"github.com/haxii/fastproxy/proxy/http"
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
@@ -31,8 +30,10 @@ var ErrConnectionClosed = errors.New("the server closed connection before return
 type Request interface {
 	//Method request method in UPPER case
 	Method() []byte
-	//HostInfo
-	HostInfo() *http.HostInfo
+	//HostWithPort
+	HostWithPort() string
+	//TargetWithPort, expected ip with port, if not, domain with port
+	TargetWithPort() string
 	//Path request relative path
 	PathWithQueryFragment() []byte
 	//Protocol HTTP/1.0, HTTP/1.1 etc.
@@ -149,7 +150,7 @@ func (c *Client) Do(req Request, resp Response) error {
 			return errors.New("nil superproxy proxy host provided")
 		}
 	} else {
-		hostWithPort = req.HostInfo().HostWithPort()
+		hostWithPort = req.HostWithPort()
 		if len(hostWithPort) == 0 {
 			return errors.New("nil target host provided")
 		}
@@ -444,11 +445,11 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request, w io.Writer) err
 	//start line
 	if isReqProxyHTTP {
 		nw, _ := writeRequestLine(bw, true, req.Method(),
-			req.HostInfo().TargetWithPort(), req.PathWithQueryFragment(), req.Protocol())
+			req.TargetWithPort(), req.PathWithQueryFragment(), req.Protocol())
 		req.AddWriteSize(nw)
 	} else {
 		nw, _ := writeRequestLine(bw, false, req.Method(),
-			req.HostInfo().HostWithPort(), req.PathWithQueryFragment(), req.Protocol())
+			req.HostWithPort(), req.PathWithQueryFragment(), req.Protocol())
 		req.AddWriteSize(nw)
 	}
 
