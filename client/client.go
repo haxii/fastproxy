@@ -30,8 +30,6 @@ var ErrConnectionClosed = errors.New("the server closed connection before return
 type Request interface {
 	//Method request method in UPPER case
 	Method() []byte
-	//HostWithPort
-	HostWithPort() string
 	//TargetWithPort, expected ip with port, if not, domain with port
 	TargetWithPort() string
 	//Path request relative path
@@ -150,7 +148,7 @@ func (c *Client) Do(req Request, resp Response) error {
 			return errors.New("nil superproxy proxy host provided")
 		}
 	} else {
-		hostWithPort = req.HostWithPort()
+		hostWithPort = req.TargetWithPort()
 		if len(hostWithPort) == 0 {
 			return errors.New("nil target host provided")
 		}
@@ -449,7 +447,7 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request, w io.Writer) err
 		req.AddWriteSize(nw)
 	} else {
 		nw, _ := writeRequestLine(bw, false, req.Method(),
-			req.HostWithPort(), req.PathWithQueryFragment(), req.Protocol())
+			"", req.PathWithQueryFragment(), req.Protocol())
 		req.AddWriteSize(nw)
 	}
 
