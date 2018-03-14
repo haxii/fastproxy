@@ -56,12 +56,12 @@ func (c *HostClient) makeDialer(req Request) transport.Dialer {
 	//set https tls config
 	switch reqType {
 	case requestDirectHTTP:
-		return dialerWrapper(transport.Dial(req.HostWithPort()))
+		return dialerWrapper(transport.Dial(req.HostInfo().HostWithPort()))
 	case requestDirectHTTPS:
 		if c.tlsServerConfig == nil {
-			c.tlsServerConfig = cert.MakeClientTLSConfig(req.HostWithPort(), req.TLSServerName())
+			c.tlsServerConfig = cert.MakeClientTLSConfig(req.HostInfo().HostWithPort(), req.TLSServerName())
 		}
-		return dialerWrapper(transport.DialTLS(req.HostWithPort(), c.tlsServerConfig))
+		return dialerWrapper(transport.DialTLS(req.HostInfo().HostWithPort(), c.tlsServerConfig))
 	case requestProxyHTTP:
 		return dialerWrapper(transport.Dial(req.GetProxy().HostWithPort()))
 	case requestProxyHTTPS:
@@ -73,7 +73,7 @@ func (c *HostClient) makeDialer(req Request) transport.Dialer {
 		}
 		fallthrough
 	case requestProxySOCKS5:
-		tunnelConn, err := req.GetProxy().MakeTunnel(c.BufioPool, req.HostWithPort())
+		tunnelConn, err := req.GetProxy().MakeTunnel(c.BufioPool, req.HostInfo().TargetWithPort())
 		if err != nil {
 			return dialerWrapper(nil, err)
 		}
