@@ -112,7 +112,7 @@ func GenCA(name string) (certPEM, keyPEM []byte, err error) {
 //servername is 1st used to generate the config then from client tls
 func MakeClientTLSConfig(host, serverName string) *tls.Config {
 	tlsServerName := func(addr string) string {
-		if addr == "" {
+		if len(addr) == 0 {
 			return "*"
 		}
 		if !strings.Contains(addr, ":") {
