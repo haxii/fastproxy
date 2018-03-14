@@ -38,10 +38,7 @@ const defaultHTTPPort = "80"
 
 func writeRequestLine(bw *bufio.Writer, fullURL bool,
 	method []byte, hostWithPort string, path, protocol []byte) (int, error) {
-	host, port, err := net.SplitHostPort(hostWithPort)
-	if err != nil {
-		return 0, err
-	}
+
 	writeSize := 0
 	write := func(b []byte) error {
 		var nw int
@@ -73,6 +70,11 @@ func writeRequestLine(bw *bufio.Writer, fullURL bool,
 	}
 	writeSize++
 	if fullURL {
+		host, port, err := net.SplitHostPort(hostWithPort)
+		if err != nil {
+			return 0, err
+		}
+
 		if err := write(startLineScheme); err != nil {
 			return writeSize, err
 		}

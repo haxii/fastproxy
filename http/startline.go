@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"io"
 	"strconv"
 
 	"github.com/haxii/fastproxy/uri"
@@ -199,6 +200,9 @@ func (l *RequestLine) HostWithPort() string {
 func parseStartline(reader *bufio.Reader) ([]byte, error) {
 	startLineWithCRLF, err := reader.ReadBytes('\n')
 	if err != nil {
+		if err == io.EOF {
+			return nil, err
+		}
 		return nil, util.ErrWrapper(err, "fail to read start line")
 	}
 	if len(startLineWithCRLF) <= 2 {

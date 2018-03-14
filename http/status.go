@@ -146,7 +146,7 @@ var (
 // StatusMessage returns HTTP status message for the given status code.
 func StatusMessage(statusCode int) string {
 	s := statusMessages[statusCode]
-	if s == "" {
+	if len(s) == 0 {
 		s = "Unknown Status Code"
 	}
 	return s
