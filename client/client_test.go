@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	nethttp "net/http"
 	"strings"
 	"sync"
@@ -16,7 +15,6 @@ import (
 	"github.com/haxii/fastproxy/bytebufferpool"
 	"github.com/haxii/fastproxy/http"
 	proxyhttp "github.com/haxii/fastproxy/proxy/http"
-	"github.com/haxii/fastproxy/superproxy"
 )
 
 func TestClientDo(t *testing.T) {
@@ -26,15 +24,24 @@ func TestClientDo(t *testing.T) {
 		})
 		log.Fatal(nethttp.ListenAndServe(":10000", nil))
 	}()
-	testClientDoWithSuperProxy(t, nil)
-	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 5080, superproxy.ProxyTypeHTTP, "", "", true, "")
-	testClientDoWithSuperProxy(t, superProxy)
-	testClientDoReadTimeoutErrorConcurrent(t)
+	testClientDoByDefaultParamters(t)
+
 	testClientDoWithErrorParamters(t)
+
 	testClientDoWithEmptyRequestAndResponse(t)
+
+	testClientDoTimeoutSuccess(t, nil, 10)
+	testClientDoConcurrent(t)
+
+	testClientDoTimeoutError(t, nil, 10)
+	testClientDoReadTimeoutErrorConcurrent(t)
+
+	testClientDoIsIdempotent(t)
+
+	testHostClientPendingRequests(t)
 }
 
-func testClientDoWithSuperProxy(t *testing.T, superProxy *superproxy.SuperProxy) {
+func testClientDoByDefaultParamters(t *testing.T) {
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
@@ -44,13 +51,7 @@ func testClientDoWithSuperProxy(t *testing.T, superProxy *superproxy.SuperProxy)
 		"Host: localhost:10000\r\n" +
 		"\r\n"
 	req := &proxyhttp.Request{}
-	if superProxy != nil {
-		req.SetProxy(superProxy)
-	}
 	sHijacker := &hijacker{}
-	addr := testAddr{netWork: "tcp", clientAddr: "127.0.0.1:10000"}
-	var clientAddr net.Addr = &addr
-	sHijacker.Set(clientAddr, "localhost", []byte("GET"), []byte("/"))
 	req.SetHijacker(sHijacker)
 	br := bufio.NewReader(strings.NewReader(s))
 	err = req.ReadFrom(br)
@@ -79,6 +80,61 @@ func testClientDoWithSuperProxy(t *testing.T, superProxy *superproxy.SuperProxy)
 	defer bw.Flush()
 }
 
+func testClientDoConcurrent(t *testing.T) {
+	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+	c := &Client{
+		BufioPool:       bPool,
+		MaxConnsPerHost: 50,
+		ReadTimeout:     time.Second,
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			testClientDoTimeoutSuccess(t, c, 10)
+		}()
+	}
+	wg.Wait()
+}
+func testClientDoTimeoutSuccess(t *testing.T, c *Client, n int) {
+	var err error
+	s := "GET / HTTP/1.1\r\n" +
+		"Host: localhost:10000\r\n" +
+		"\r\n"
+	if c == nil {
+		bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+		c = &Client{
+			BufioPool:   bPool,
+			ReadTimeout: time.Second,
+		}
+	}
+	for i := 0; i < n; i++ {
+		req := &proxyhttp.Request{}
+		sHijacker := &hijacker{}
+		req.SetHijacker(sHijacker)
+		br := bufio.NewReader(strings.NewReader(s))
+		err = req.ReadFrom(br)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+		req.SetHostWithPort("localhost:10000")
+		resp := &proxyhttp.Response{}
+		byteBuffer := bytebufferpool.MakeFixedSizeByteBuffer(100)
+		bw := bufio.NewWriter(byteBuffer)
+		err = resp.WriteTo(bw)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+		resp.SetHijacker(sHijacker)
+
+		err = c.Do(req, resp)
+		if err != nil {
+			t.Fatalf("unexpecting error: %s", err.Error())
+		}
+		defer bw.Flush()
+	}
+}
 func testClientDoReadTimeoutErrorConcurrent(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
@@ -88,11 +144,11 @@ func testClientDoReadTimeoutErrorConcurrent(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			testClientDoTimeoutError(t, c, 10)
+			testClientDoTimeoutError(t, c, 100)
 		}()
 	}
 	wg.Wait()
@@ -108,16 +164,12 @@ func testClientDoWithErrorParamters(t *testing.T) {
 
 	req := &proxyhttp.Request{}
 	sHijacker := &hijacker{}
-	addr := testAddr{netWork: "tcp", clientAddr: "127.0.0.1:10000"}
-	var clientAddr net.Addr = &addr
-	sHijacker.Set(clientAddr, "localhost", []byte("GET"), []byte("/"))
 	req.SetHijacker(sHijacker)
 	br := bufio.NewReader(strings.NewReader(s))
 	err := req.ReadFrom(br)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
-	//req.SetHostWithPort("localhost:10000")
 	resp := &proxyhttp.Response{}
 	byteBuffer := bytebufferpool.MakeFixedSizeByteBuffer(100)
 	bw := bufio.NewWriter(byteBuffer)
@@ -127,12 +179,12 @@ func testClientDoWithErrorParamters(t *testing.T) {
 	}
 	resp.SetHijacker(sHijacker)
 
-	testClientDoWithErrorParamter(t, nil, req, resp, s, "nil buffer io pool")
-	testClientDoWithErrorParamter(t, bPool, req, resp, errS, "nil target host provided")
+	testClientDoWithErrorParamter(t, nil, req, resp, s, errNilBufiopool)
+	testClientDoWithErrorParamter(t, bPool, req, resp, errS, errNilTargetHost)
 
 }
 
-func testClientDoWithErrorParamter(t *testing.T, bPool *bufiopool.Pool, req *proxyhttp.Request, resp *proxyhttp.Response, s, expErr string) {
+func testClientDoWithErrorParamter(t *testing.T, bPool *bufiopool.Pool, req *proxyhttp.Request, resp *proxyhttp.Response, s string, expErr error) {
 	c := &Client{
 		BufioPool: bPool,
 	}
@@ -140,7 +192,7 @@ func testClientDoWithErrorParamter(t *testing.T, bPool *bufiopool.Pool, req *pro
 	if err == nil {
 		t.Fatal("expecting error")
 	}
-	if !strings.Contains(err.Error(), expErr) {
+	if err != expErr {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
 
@@ -158,9 +210,15 @@ func testClientDoWithEmptyRequestAndResponse(t *testing.T) {
 	if err == nil {
 		t.Fatal("expecting error")
 	}
+	if err != errNilReq {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
 	err = c.Do(req, nil)
 	if err == nil {
 		t.Fatal("expecting error")
+	}
+	if err != errNilResp {
+		t.Fatalf("unexpected error: %s", err.Error())
 	}
 }
 
@@ -169,12 +227,16 @@ func testClientDoTimeoutError(t *testing.T, c *Client, n int) {
 	s := "GET / HTTP/1.1\r\n" +
 		"Host: localhost:10000\r\n" +
 		"\r\n"
+	if c == nil {
+		bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+		c = &Client{
+			BufioPool:   bPool,
+			ReadTimeout: time.Millisecond,
+		}
+	}
 	for i := 0; i < n; i++ {
 		req := &proxyhttp.Request{}
 		sHijacker := &hijacker{}
-		addr := testAddr{netWork: "tcp", clientAddr: "127.0.0.1:10000"}
-		var clientAddr net.Addr = &addr
-		sHijacker.Set(clientAddr, "localhost", []byte("GET"), []byte("/"))
 		req.SetHijacker(sHijacker)
 		br := bufio.NewReader(strings.NewReader(s))
 		err = req.ReadFrom(br)
@@ -200,10 +262,77 @@ func testClientDoTimeoutError(t *testing.T, c *Client, n int) {
 		}
 		defer bw.Flush()
 	}
-
 }
 
-func TestHostClientPendingRequests(t *testing.T) {
+func testClientDoIsIdempotent(t *testing.T) {
+	s := "GET / HTTP/1.1\r\n" +
+		"Host: localhost:10000\r\n" +
+		"\r\n"
+	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+	c := &Client{
+		BufioPool: bPool,
+	}
+	req := &proxyhttp.Request{}
+	sHijacker := &hijacker{}
+	req.SetHijacker(sHijacker)
+	br := bufio.NewReader(strings.NewReader(s))
+	err := req.ReadFrom(br)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	req.SetHostWithPort("localhost:10000")
+	resp := &proxyhttp.Response{}
+	byteBuffer := bytebufferpool.MakeFixedSizeByteBuffer(100)
+	bw := bufio.NewWriter(byteBuffer)
+	err = resp.WriteTo(bw)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	resp.SetHijacker(sHijacker)
+	err = c.Do(req, resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	if resp.GetSize() == 0 {
+		t.Fatal("Response can't be empty")
+	}
+	resultSize := resp.GetSize()
+	for i := 0; i < 10; i++ {
+		req.Reset()
+		resp.Reset()
+
+		req.SetHijacker(sHijacker)
+		br := bufio.NewReader(strings.NewReader(s))
+		err := req.ReadFrom(br)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+		req.SetHostWithPort("localhost:10000")
+
+		err = resp.WriteTo(bw)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+		resp.SetHijacker(sHijacker)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+
+		err = c.Do(req, resp)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+		if resp.GetSize() == 0 {
+			t.Fatal("Response can't be empty")
+		}
+		if resp.GetSize() != resultSize {
+			t.Fatalf("Corrent response is not equal with previous response")
+		}
+	}
+	defer bw.Flush()
+}
+
+func testHostClientPendingRequests(t *testing.T) {
 	concurrency := 10
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &HostClient{
@@ -220,9 +349,6 @@ func TestHostClientPendingRequests(t *testing.T) {
 	for i := 0; i < concurrency; i++ {
 		req := &proxyhttp.Request{}
 		sHijacker := &hijacker{}
-		addr := testAddr{netWork: "tcp", clientAddr: "127.0.0.1:10000"}
-		var clientAddr net.Addr = &addr
-		sHijacker.Set(clientAddr, "localhost", []byte("GET"), []byte("/"))
 		req.SetHijacker(sHijacker)
 		br := bufio.NewReader(strings.NewReader(s))
 		err := req.ReadFrom(br)
@@ -240,7 +366,6 @@ func TestHostClientPendingRequests(t *testing.T) {
 		resp.SetHijacker(sHijacker)
 
 		if err := c.Do(req, resp); err != nil {
-			fmt.Println("ERROR")
 			t.Fatal(err.Error())
 			return
 		}
@@ -270,18 +395,7 @@ func (a *testAddr) Network() string {
 	return a.netWork
 }
 
-type hijacker struct {
-	clientAddr, targetHost string
-	method, path           []byte
-}
-
-func (s *hijacker) Set(clientAddr net.Addr,
-	host string, method, path []byte) {
-	s.clientAddr = clientAddr.String()
-	s.targetHost = host
-	s.method = method
-	s.path = path
-}
+type hijacker struct{}
 
 func (s *hijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
 	return nil
