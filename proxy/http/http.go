@@ -77,6 +77,9 @@ func (r *Request) ReadFrom(reader *bufio.Reader) error {
 		return errors.New("nil reader provided")
 	}
 	if err := r.reqLine.Parse(reader); err != nil {
+		if err == io.EOF {
+			return err
+		}
 		return util.ErrWrapper(err, "fail to read start line of request")
 	}
 	r.reader = reader
@@ -123,6 +126,11 @@ func (r *Request) HostInfo() *HostInfo {
 //SetHostWithPort set host with port
 func (r *Request) SetHostWithPort(hostWithPort string) {
 	r.hostInfo.ParseHostWithPort(hostWithPort)
+}
+
+// TargetWithPort returns tartgetWithPort
+func (r *Request) TargetWithPort() string {
+	return r.hostInfo.TargetWithPort()
 }
 
 //PathWithQueryFragment request path with query and fragment

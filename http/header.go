@@ -129,7 +129,7 @@ func (header *Header) tryRead(reader *bufio.Reader,
 }
 
 func (header *Header) readHeaders(buf []byte,
-	buffer *bytebufferpool.ByteBuffer) (_headerLength int, _err error) {
+	buffer *bytebufferpool.ByteBuffer) (headerLength int, err error) {
 	parseThenWriteBuffer := func(rawHeaderLine []byte) error {
 		// Connection, Authenticate and Authorization are single hop Header:
 		// http://www.w3.org/Protocols/rfc2616/rfc2616.txt
@@ -195,7 +195,8 @@ func (header *Header) readHeaders(buf []byte,
 		return 0, errNeedMore
 	}
 	if (n == 1 && buf[0] == '\r') || n == 0 {
-		// empty headers
+		// empty headers, write \n or \r\n
+		util.WriteWithValidation(buffer, buf[:n+1])
 		return n + 1, nil
 	}
 	n++
