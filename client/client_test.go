@@ -66,41 +66,44 @@ func testClientDoConcurrentWithLargeNumber(t *testing.T) {
 		MaxConnsPerHost: 50,
 	}
 	var wg sync.WaitGroup
+	resultCh := make(chan error, 51)
 	for i := 0; i < 51; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			testClientDoTimeoutFailure(t, c, 1000)
+			req := &SimpleRequest{}
+			req.SetTargetWithPort("127.0.0.1:9999")
+			resp := &SimpleResponse{}
+			if err := c.Do(req, resp); err != nil {
+				resultCh <- fmt.Errorf("unexpected error: %s", err)
+				return
+			}
+
+			if resp.GetSize() == 0 {
+				resultCh <- fmt.Errorf("Response can't be empty")
+				return
+			}
+			if bytes.Equal(resp.GetBody(), []byte("Hello world!")) {
+				resultCh <- fmt.Errorf("Response body is wrong")
+				return
+			}
+			resultCh <- nil
 		}()
 	}
+	for i := 0; i < 51; i++ {
+		select {
+		case err := <-resultCh:
+			if err != nil && i != 51 {
+				t.Fatalf("unexpected error: %s", err)
+			}
+			if err == nil && i == 51 {
+				t.Fatal("expected error: i/o timeout")
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("timeout")
+		}
+	}
 	wg.Wait()
-}
-
-func testClientDoTimeoutFailure(t *testing.T, c *Client, n int) {
-	var err error
-	if c == nil {
-		bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
-		c = &Client{
-			BufioPool:   bPool,
-			ReadTimeout: time.Second,
-		}
-	}
-	for i := 0; i < n; i++ {
-		req := &SimpleRequest{}
-		req.SetTargetWithPort("127.0.0.1:10000")
-		resp := &SimpleResponse{}
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err.Error())
-		}
-
-		err = c.Do(req, resp)
-		if err != nil {
-			t.Fatalf("unexpecting error: %s", err.Error())
-		}
-		if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
-			t.Fatal("Response body is wrong")
-		}
-	}
 }
 
 func testClientDoConcurrent(t *testing.T) {
