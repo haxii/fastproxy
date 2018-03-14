@@ -128,11 +128,6 @@ func (r *Request) SetHostWithPort(hostWithPort string) {
 	r.hostInfo.ParseHostWithPort(hostWithPort)
 }
 
-// HostWithPort returns hostWithPort
-func (r *Request) HostWithPort() string {
-	return r.hostInfo.HostWithPort()
-}
-
 // TargetWithPort returns tartgetWithPort
 func (r *Request) TargetWithPort() string {
 	return r.hostInfo.TargetWithPort()
