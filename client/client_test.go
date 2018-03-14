@@ -313,6 +313,7 @@ type SimpleRequest struct {
 func (r *SimpleRequest) Method() []byte {
 	return []byte("GET")
 }
+
 func (r *SimpleRequest) TargetWithPort() string {
 	return r.targetwithport
 }
