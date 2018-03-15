@@ -3,6 +3,7 @@ package client
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io"
 	"net"
 )
@@ -36,6 +37,8 @@ var (
 
 const defaultHTTPPort = "80"
 
+var errNilBufioWriter = errors.New("nil bufio writer")
+
 func writeRequestLine(bw *bufio.Writer, fullURL bool,
 	method []byte, hostWithPort string, path, protocol []byte) (int, error) {
 
@@ -44,7 +47,7 @@ func writeRequestLine(bw *bufio.Writer, fullURL bool,
 		var nw int
 		var err error
 		if bw == nil {
-			return errNilBufiopool
+			return errNilBufioWriter
 		}
 		if nw, err = bw.Write(b); err != nil {
 			return err

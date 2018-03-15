@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	nethttp "net/http"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -26,27 +27,47 @@ func TestClientDo(t *testing.T) {
 		log.Fatal(nethttp.ListenAndServe(":10000", nil))
 	}()
 	time.Sleep(time.Second)
+
+	//test client do with default paramters
 	testClientDoByDefaultParamters(t)
 
+	// test client do with wrong paramters
 	testClientDoWithErrorParamters(t)
 
+	// test client do with nil request or response
 	testClientDoWithEmptyRequestAndResponse(t)
-
+	// test client do with timeout can be success
 	testClientDoTimeoutSuccess(t, nil, 10)
+
+	// test client do 50 concurrent
 	testClientDoConcurrent(t)
 
+	// test client do timeout
 	testClientDoTimeoutError(t, nil, 10)
-	testClientDoReadTimeoutErrorConcurrent(t)
 
+	// test client do with 1000 concurrent will timeout
+	testClientDoTimeoutErrorConcurrent(t)
+
+	// test client do with 51 concurrent but default is 50 expected one error
 	testClientDoConcurrentWithLargeNumber(t)
 
+	// test client do is idempotent
 	testClientDoIsIdempotent(t)
 
+	// test host client pending requests
 	testHostClientPendingRequests(t)
+
+	// test client do with https request
 	testClientDoWithHTTPSRequest(t)
 
+	// test client do with post request
 	testClientDoWithPostRequest(t)
-	testClinetDoWithSameConnection(t)
+
+	// test client do with same connection using get method
+	testClientDoWithSameConnectionGetMethod(t)
+
+	// test client do with get method at first and then post method
+	testClientDoWithSameConnectionPostMethod(t)
 }
 
 func TestClientDoWithBigHeaderOrBody(t *testing.T) {
@@ -191,7 +212,7 @@ func testClientDoTimeoutSuccess(t *testing.T, c *Client, n int) {
 	}
 }
 
-func testClientDoReadTimeoutErrorConcurrent(t *testing.T) {
+func testClientDoTimeoutErrorConcurrent(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool:       bPool,
@@ -289,7 +310,7 @@ func testClientDoIsIdempotent(t *testing.T) {
 		}
 		nethttp.HandleFunc("/idempotent", func(w nethttp.ResponseWriter, r *nethttp.Request) {
 			i++
-			if i != 5 {
+			if i < 5 {
 				conn, _, _ := w.(nethttp.Hijacker).Hijack()
 				conn.Close()
 			} else {
@@ -317,12 +338,6 @@ func testClientDoIsIdempotent(t *testing.T) {
 	if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
 		t.Fatalf("Idempotent test error")
 	}
-	req.SetMethod([]byte("POST"))
-	newResp := &SimpleResponse{}
-	err = c.Do(req, newResp)
-	if err != ErrConnectionClosed {
-		t.Fatalf("expected error: %s", ErrConnectionClosed.Error())
-	}
 }
 
 func testClientDoWithBigBodyResponse(t *testing.T) {
@@ -344,7 +359,7 @@ func testClientDoWithBigBodyResponse(t *testing.T) {
 }
 
 func testHostClientPendingRequests(t *testing.T) {
-	concurrency := 5
+	concurrency := 3
 	doneCh := make(chan struct{})
 	readyCh := make(chan struct{}, concurrency)
 	go func() {
@@ -357,8 +372,7 @@ func testHostClientPendingRequests(t *testing.T) {
 
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &HostClient{
-		BufioPool:   bPool,
-		ReadTimeout: 2 * time.Second,
+		BufioPool: bPool,
 	}
 	pendingRequests := c.PendingRequests()
 	if pendingRequests != 0 {
@@ -423,11 +437,57 @@ func testClientDoWithHTTPSRequest(t *testing.T) {
 			w.Header().Set("Content-Type", "text/plain")
 			w.Write([]byte("Hello world!"))
 		})
-		err := nethttp.ListenAndServeTLS(":443", "./certificate/server.crt", "./certificate/server.key", nil)
+		serverCrt := `-----BEGIN CERTIFICATE-----
+MIICnzCCAggCCQDbF8N9hzgLKTANBgkqhkiG9w0BAQUFADCBkzELMAkGA1UEBhMC
+c2gxGjAYBgNVBAgMEXNoYW5naGFpIGluIENoaW5hMREwDwYDVQQHDAhzaGFuZ2hh
+aTEOMAwGA1UECgwFaGF4aWkxEDAOBgNVBAsMB3NlY3Rpb24xEjAQBgNVBAMMCWxv
+Y2FsaG9zdDEfMB0GCSqGSIb3DQEJARYQNDkzODg1NTk3QHFxLmNvbTAeFw0xODAz
+MDEwMzU4NDRaFw0xODAzMzEwMzU4NDRaMIGTMQswCQYDVQQGEwJzaDEaMBgGA1UE
+CAwRc2hhbmdoYWkgaW4gY2hpbmExETAPBgNVBAcMCHNoYW5naGFpMQ4wDAYDVQQK
+DAVoYXhpaTEQMA4GA1UECwwHc2VjdGlvbjESMBAGA1UEAwwJbG9jYWxob3N0MR8w
+HQYJKoZIhvcNAQkBFhA0OTM4ODU1OTdAcXEuY29tMIGfMA0GCSqGSIb3DQEBAQUA
+A4GNADCBiQKBgQCpavxAydg6qDcSHhzwcebD5v/o2yItY1a6cA8t4cd+8661TAQr
+//YRISpIwUZ7TOLVdmnMuyUzxGABZQ5iwiKDqbl5GLxB/f3NRWv5Cr8vT4izFNP0
+toIky5oEkDq/xBZvVnshBO6fpx1vulnow+3Y3WeriwVXvuQAQw5N8qod/QIDAQAB
+MA0GCSqGSIb3DQEBBQUAA4GBAG45K4B2N8lEeCimTyYuS9yGRQINMfdZksL2aDyq
+OL95JiCMKM1iFulom/fth3oxi1w95VRFaM4tO8qIBtKuFyWs8x1MMpTJlEamHFTe
+H1Id2JuKgDgi4AmxfKPjh+j+U6iNbMgjwo6scfaWcpteGK0FA5jn4cmMmlwhkjCA
+L/ib
+-----END CERTIFICATE-----
+`
+		serverKey := `-----BEGIN RSA PRIVATE KEY-----
+MIICXQIBAAKBgQCpavxAydg6qDcSHhzwcebD5v/o2yItY1a6cA8t4cd+8661TAQr
+//YRISpIwUZ7TOLVdmnMuyUzxGABZQ5iwiKDqbl5GLxB/f3NRWv5Cr8vT4izFNP0
+toIky5oEkDq/xBZvVnshBO6fpx1vulnow+3Y3WeriwVXvuQAQw5N8qod/QIDAQAB
+AoGAdoPnDxOkdfQzAjOanwGvIyA3qZeSIxo5E5dMpxYozsB9WUpiKL2YT4dZ4yeB
+vMOecyGxBY1tivc3CgK9u4x/Q2RWQqG4n6d++RKKWEk5Znvi5H35gOcWbQgnOLfe
+VJKonqZwhDxWBjlIdKHRdlMY2qXY0rftDthas2zfLIWmSmkCQQDSX5zFhN1U3dAo
+cni5Qx3zBCGGw8aoFAH4bUPuvtb7LTnDb+xJDcxhC9pIy+5e3PcSa7cVN0DJpXEo
+QPMHp8jHAkEAziluenyR98PoJ2W/D8Cphuc5FvsRXOkGrcLdj397BZzTQhTrEPEr
+/qhn2uC4PqGBuS+GV1zgjTf4ocAz7TGHGwJBAKQ7pm0A07V8URQygZLIFepxMCdA
+UadHr14dFyqca8K9RNoRV1qU3hhpI2kvY5FFWdFUrCJw9zA060kso043q2MCQQCN
+bdDTiGeeoC+/70XeKZ5i5Ha+tCgaI+YoB/l0utCLbiVjPPRxn/E9dwwgFG9wz90t
+TFQN1LJbTp1rYW599q8nAkBDbXVZIDjwuL0SyUgnGJUKMILk0aanNE2E885wyuZm
+PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
+-----END RSA PRIVATE KEY-----
+`
+		f, err := os.Create(".server.crt")
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+		f.Write([]byte(serverCrt))
+		f.Close()
+
+		f, err = os.Create(".server.key")
+		f.Write([]byte(serverKey))
+		f.Close()
+
+		err = nethttp.ListenAndServeTLS(":443", ".server.crt", ".server.key", nil)
 		if err != nil {
 			log.Fatal("ListenAndServe: ", err)
 		}
 	}()
+	time.Sleep(time.Second)
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
@@ -441,6 +501,51 @@ func testClientDoWithHTTPSRequest(t *testing.T) {
 	}
 	if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
 		t.Fatal("Response body is wrong")
+	}
+}
+func testClientDoWithSameConnectionPostMethod(t *testing.T) {
+	go func() {
+		ln, err := net.Listen("tcp4", "0.0.0.0:10002")
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+		i := 0
+		nethttp.HandleFunc("/closetest", func(w nethttp.ResponseWriter, r *nethttp.Request) {
+			if i < 1 {
+				conn, _, _ := w.(nethttp.Hijacker).Hijack()
+				conn.Write([]byte("Connection will close!"))
+				conn.Close()
+				i++
+			} else {
+				fmt.Fprintf(w, "Hello, world!")
+			}
+		})
+		nethttp.Serve(ln, nil)
+	}()
+	var err error
+	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+	c := &Client{
+		BufioPool: bPool,
+	}
+	req := &IdempotentRequest{}
+	req.SetMethod([]byte("GET"))
+	req.SetTargetWithPort("127.0.0.1:10002")
+	req.SetPathWithQueryFragment([]byte("/closetest"))
+	resp := &SimpleResponse{}
+	err = c.Do(req, resp)
+	if err != nil {
+		t.Fatalf("Unexpected error: %s", err.Error())
+	}
+	if !bytes.Contains(resp.GetBody(), []byte("Connection will close!")) {
+		t.Fatalf("Connection closed by peer, Client can't get any data")
+	}
+	req.SetMethod([]byte("POST"))
+	err = c.Do(req, resp)
+	if err == nil {
+		t.Fatalf("expected error: %s", ErrConnectionClosed)
+	}
+	if err != ErrConnectionClosed {
+		t.Fatalf("expected error: %s, but unexpected error: %s", ErrConnectionClosed, err)
 	}
 }
 
@@ -464,7 +569,7 @@ func testClientDoWithPostRequest(t *testing.T) {
 	}
 }
 
-func testClinetDoWithSameConnection(t *testing.T) {
+func testClientDoWithSameConnectionGetMethod(t *testing.T) {
 	go func() {
 		ln, err := net.Listen("tcp4", "0.0.0.0:10001")
 		if err != nil {
@@ -472,7 +577,7 @@ func testClinetDoWithSameConnection(t *testing.T) {
 		}
 		i := 0
 		nethttp.HandleFunc("/close", func(w nethttp.ResponseWriter, r *nethttp.Request) {
-			if i < 3 {
+			if i < 1 {
 				conn, _, _ := w.(nethttp.Hijacker).Hijack()
 				conn.Write([]byte("Connection will close!"))
 				conn.Close()
@@ -489,16 +594,16 @@ func testClinetDoWithSameConnection(t *testing.T) {
 		BufioPool: bPool,
 	}
 	req := &IdempotentRequest{}
-	req.SetMethod([]byte("POST"))
+	req.SetMethod([]byte("GET"))
 	req.SetTargetWithPort("127.0.0.1:10001")
 	req.SetPathWithQueryFragment([]byte("/close"))
 	resp := &SimpleResponse{}
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 2; i++ {
 		err = c.Do(req, resp)
 		if err != nil {
 			t.Fatalf("Unexpected error: %s", err.Error())
 		}
-		if i < 3 {
+		if i == 0 {
 			if !bytes.Contains(resp.GetBody(), []byte("Connection will close!")) {
 				t.Fatalf("Connection closed by peer, Client can't get any data")
 			}

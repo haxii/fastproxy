@@ -45,7 +45,7 @@ func TestWriteRequestLine(t *testing.T) {
 	bw.Reset(w)
 
 	_, err = writeRequestLine(nil, false, []byte("GET"), "127.0.0.1:8080", []byte("/"), []byte("HTTP/1.1"))
-	if err != errNilBufiopool {
+	if err != errNilBufioWriter {
 		t.Fatalf("Expected error is nil pool, but get unexpected errror: %s", err.Error())
 	}
 	bw.Reset(w)
