@@ -26,7 +26,7 @@ func TestClientDo(t *testing.T) {
 		log.Fatal(nethttp.ListenAndServe(":10000", nil))
 	}()
 	time.Sleep(time.Second)
-	/*testClientDoByDefaultParamters(t)
+	testClientDoByDefaultParamters(t)
 
 	testClientDoWithErrorParamters(t)
 
@@ -42,8 +42,10 @@ func TestClientDo(t *testing.T) {
 
 	testClientDoIsIdempotent(t)
 
-	testHostClientPendingRequests(t)*/
-	//testClientDoWithHTTPSRequest(t)
+	testHostClientPendingRequests(t)
+	testClientDoWithHTTPSRequest(t)
+
+	testClientDoWithPostRequest(t)
 }
 
 func TestClientDoWithBigHeaderOrBody(t *testing.T) {
@@ -298,11 +300,11 @@ func testClientDoIsIdempotent(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool: bPool,
-		//WriteTimeout: time.Second,
 	}
 	req := &IdempotentRequest{}
 	req.SetMethod([]byte("GET"))
 	req.SetTargetWithPort("127.0.0.1:8080")
+	req.SetPathWithQueryFragment([]byte("/idempotent"))
 	resp := &SimpleResponse{}
 	err := c.Do(req, resp)
 	if err != nil {
@@ -355,7 +357,7 @@ func testHostClientPendingRequests(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &HostClient{
 		BufioPool:   bPool,
-		ReadTimeout: time.Second,
+		ReadTimeout: 2 * time.Second,
 	}
 	pendingRequests := c.PendingRequests()
 	if pendingRequests != 0 {
@@ -431,6 +433,26 @@ func testClientDoWithHTTPSRequest(t *testing.T) {
 		BufioPool: bPool,
 	}
 	req := &HTTPSRequest{}
+	resp := &SimpleResponse{}
+	err = c.Do(req, resp)
+	if err != nil {
+		t.Fatalf("unexpected error : %s", err.Error())
+	}
+	if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
+		t.Fatal("Response body is wrong")
+	}
+}
+
+func testClientDoWithPostRequest(t *testing.T) {
+	var err error
+	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+	c := &Client{
+		BufioPool: bPool,
+	}
+	req := &IdempotentRequest{}
+	req.SetMethod([]byte("POST"))
+	req.SetTargetWithPort("127.0.0.1:10000")
+	req.SetPathWithQueryFragment([]byte("/"))
 	resp := &SimpleResponse{}
 	err = c.Do(req, resp)
 	if err != nil {
@@ -638,8 +660,9 @@ func (r *BigBodyResponse) GetSize() int {
 }
 
 type IdempotentRequest struct {
-	method         []byte
-	targetwithport string
+	method                []byte
+	targetwithport        string
+	pathWithQueryFragment []byte
 }
 
 func (r *IdempotentRequest) Method() []byte {
@@ -657,7 +680,11 @@ func (r *IdempotentRequest) SetTargetWithPort(s string) {
 }
 
 func (r *IdempotentRequest) PathWithQueryFragment() []byte {
-	return []byte("/idempotent")
+	return r.pathWithQueryFragment
+}
+
+func (r *IdempotentRequest) SetPathWithQueryFragment(p []byte) {
+	r.pathWithQueryFragment = p
 }
 
 func (r *IdempotentRequest) Protocol() []byte {
@@ -773,7 +800,7 @@ func (r *HTTPSRequest) IsTLS() bool {
 }
 
 func (r *HTTPSRequest) TLSServerName() string {
-	return "localhost"
+	return ""
 }
 
 func (r *HTTPSRequest) GetProxy() *superproxy.SuperProxy {

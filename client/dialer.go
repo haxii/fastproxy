@@ -60,7 +60,6 @@ func (c *HostClient) makeDialer(req Request) transport.Dialer {
 	case requestDirectHTTPS:
 		if c.tlsServerConfig == nil {
 			c.tlsServerConfig = cert.MakeClientTLSConfig("", req.TLSServerName())
-			c.tlsServerConfig.InsecureSkipVerify = true
 		}
 		return dialerWrapper(transport.DialTLS(req.TargetWithPort(), c.tlsServerConfig))
 	case requestProxyHTTP:
