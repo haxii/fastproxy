@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	nethttp "net/http"
 	"strings"
@@ -43,6 +44,23 @@ func TestClientDo(t *testing.T) {
 	testHostClientPendingRequests(t)
 }
 
+func TestClientDoWithBigHeaderOrBody(t *testing.T) {
+	go func() {
+		nethttp.HandleFunc("/test", func(w nethttp.ResponseWriter, r *nethttp.Request) {
+			bodyData := ""
+			for i := 0; i < 100000; i++ {
+				bodyData += "test"
+			}
+			bodyData += "!"
+			fmt.Fprint(w, bodyData)
+		})
+		log.Fatal(nethttp.ListenAndServe(":8888", nil))
+	}()
+	time.Sleep(time.Second)
+	testClientDoWithBigHeader(t)
+	testClientDoWithBigBodyResponse(t)
+}
+
 func testClientDoByDefaultParamters(t *testing.T) {
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
@@ -58,6 +76,21 @@ func testClientDoByDefaultParamters(t *testing.T) {
 	}
 	if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
 		t.Fatal("Response body is wrong")
+	}
+}
+
+func testClientDoWithBigHeader(t *testing.T) {
+	var err error
+	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+	c := &Client{
+		BufioPool: bPool,
+	}
+	req := &BigHeaderRequest{}
+	req.SetTargetWithPort("0.0.0.0:8888")
+	resp := &SimpleResponse{}
+	err = c.Do(req, resp)
+	if err == nil {
+		t.Fatalf("unexpected error : %s", io.ErrShortWrite.Error())
 	}
 }
 
@@ -92,14 +125,15 @@ func testClientDoConcurrentWithLargeNumber(t *testing.T) {
 			resultCh <- nil
 		}()
 	}
+	j := 0
 	for i := 0; i < 51; i++ {
 		select {
 		case err := <-resultCh:
-			if err != nil && i != 51 {
-				t.Fatalf("unexpected error: %s", err)
-			}
-			if err == nil && i == 51 {
-				t.Fatal("expected error: i/o timeout")
+			if err != nil {
+				j++
+				if j != 1 {
+					t.Fatal("unexpected error: one client should have no free connections available to host")
+				}
 			}
 		case <-time.After(time.Second):
 			t.Fatalf("timeout")
@@ -259,9 +293,6 @@ func testClientDoIsIdempotent(t *testing.T) {
 	}
 	resultSize := resp.GetSize()
 	for i := 0; i < 10; i++ {
-		req := &SimpleRequest{}
-		req.SetTargetWithPort("127.0.0.1:10000")
-		resp := &SimpleResponse{}
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err.Error())
 		}
@@ -279,6 +310,25 @@ func testClientDoIsIdempotent(t *testing.T) {
 		if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
 			t.Fatal("Response body is wrong")
 		}
+	}
+}
+
+func testClientDoWithBigBodyResponse(t *testing.T) {
+	var err error
+	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+	c := &Client{
+		BufioPool: bPool,
+	}
+	req := &BigHeaderRequest{}
+	req.SetTargetWithPort("0.0.0.0:8888")
+	resp := &BigBodyResponse{}
+	err = c.Do(req, resp)
+	fmt.Println(err)
+	if err == nil {
+		t.Fatalf("unexpected error: %s", io.ErrShortWrite.Error())
+	}
+	if err != io.ErrShortWrite {
+		t.Fatalf("unexpected error: %s", err.Error())
 	}
 }
 
@@ -446,5 +496,102 @@ func (r *SimpleResponse) ConnectionClose() bool {
 }
 
 func (r *SimpleResponse) GetSize() int {
+	return r.size
+}
+
+type BigHeaderRequest struct {
+	readSize       int
+	targetwithport string
+}
+
+func (r *BigHeaderRequest) Method() []byte {
+	return []byte("GET")
+}
+
+func (r *BigHeaderRequest) TargetWithPort() string {
+	return r.targetwithport
+}
+func (r *BigHeaderRequest) SetTargetWithPort(s string) {
+	r.targetwithport = s
+}
+
+func (r *BigHeaderRequest) PathWithQueryFragment() []byte {
+	return []byte("/test")
+}
+
+func (r *BigHeaderRequest) Protocol() []byte {
+	return []byte("HTTP/1.1")
+}
+
+func (r *BigHeaderRequest) WriteHeaderTo(w *bufio.Writer) error {
+	result := "Cache:"
+	for i := 0; i < 100000; i++ {
+		result += "S"
+	}
+	n, err := w.WriteString("Host: www.bing.com\r\nUser-Agent: test client\r\n" + result + "\r\n\r\n")
+	r.readSize += n
+	return err
+}
+
+func (r *BigHeaderRequest) WriteBodyTo(w *bufio.Writer) error {
+	return nil
+}
+
+func (r *BigHeaderRequest) ConnectionClose() bool {
+	return false
+}
+
+func (r *BigHeaderRequest) IsTLS() bool {
+	return false
+}
+
+func (r *BigHeaderRequest) TLSServerName() string {
+	return ""
+}
+
+func (r *BigHeaderRequest) GetProxy() *superproxy.SuperProxy {
+	return nil
+}
+
+func (r *BigHeaderRequest) GetReadSize() int {
+	return r.readSize
+}
+
+func (r *BigHeaderRequest) GetWriteSize() int {
+	return 0
+}
+
+func (r *BigHeaderRequest) AddReadSize(n int) {
+	r.readSize += n
+}
+
+func (r *BigHeaderRequest) AddWriteSize(n int) {
+	r.readSize += n
+}
+
+type BigBodyResponse struct {
+	size int
+	body []byte
+}
+
+func (r *BigBodyResponse) ReadFrom(discardBody bool, br *bufio.Reader) error {
+	b, err := br.ReadBytes('!')
+	if err != nil {
+		return err
+	}
+	r.size = len(b)
+	r.body = b
+	return nil
+}
+
+func (r *BigBodyResponse) GetBody() []byte {
+	return r.body
+}
+
+func (r *BigBodyResponse) ConnectionClose() bool {
+	return false
+}
+
+func (r *BigBodyResponse) GetSize() int {
 	return r.size
 }
