@@ -41,7 +41,14 @@ func TestHTTPRequest(t *testing.T) {
 	if bytes.Equal(req.Method(), []byte("GET")) {
 		t.Fatalf("Reset error")
 	}
-
+	noProtocolHTTPRequest := "GET / \r\n" +
+		"Host: localhost:10000\r\n" +
+		"\r\n"
+	br = bufio.NewReader(strings.NewReader(noProtocolHTTPRequest))
+	err = req.ReadFrom(br)
+	if err == nil {
+		t.Fatal("expected error: can't parse request")
+	}
 }
 
 func TestHTTPResponse(t *testing.T) {
