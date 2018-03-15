@@ -26,7 +26,7 @@ func TestClientDo(t *testing.T) {
 		log.Fatal(nethttp.ListenAndServe(":10000", nil))
 	}()
 	time.Sleep(time.Second)
-	testClientDoByDefaultParamters(t)
+	/*testClientDoByDefaultParamters(t)
 
 	testClientDoWithErrorParamters(t)
 
@@ -42,7 +42,8 @@ func TestClientDo(t *testing.T) {
 
 	testClientDoIsIdempotent(t)
 
-	testHostClientPendingRequests(t)
+	testHostClientPendingRequests(t)*/
+	//testClientDoWithHTTPSRequest(t)
 }
 
 func TestClientDoWithBigHeaderOrBody(t *testing.T) {
@@ -58,8 +59,8 @@ func TestClientDoWithBigHeaderOrBody(t *testing.T) {
 		log.Fatal(nethttp.ListenAndServe(":8888", nil))
 	}()
 	time.Sleep(time.Second)
-	//testClientDoWithBigHeader(t)
-	//testClientDoWithBigBodyResponse(t)
+	testClientDoWithBigHeader(t)
+	testClientDoWithBigBodyResponse(t)
 }
 
 func testClientDoByDefaultParamters(t *testing.T) {
@@ -331,7 +332,6 @@ func testClientDoWithBigBodyResponse(t *testing.T) {
 	req.SetTargetWithPort("0.0.0.0:8888")
 	resp := &BigBodyResponse{}
 	err = c.Do(req, resp)
-	fmt.Println(err)
 	if err == nil {
 		t.Fatalf("unexpected error: %s", io.ErrShortWrite.Error())
 	}
@@ -348,7 +348,6 @@ func testHostClientPendingRequests(t *testing.T) {
 		nethttp.HandleFunc("/hello", func(w nethttp.ResponseWriter, r *nethttp.Request) {
 			readyCh <- struct{}{}
 			<-doneCh
-			//fmt.Fprintf(w, "Hello world,tteterete%s!\r\n", r.URL.Path[1:])
 		})
 		log.Fatal(nethttp.ListenAndServe(":9999", nil))
 	}()
@@ -412,6 +411,33 @@ func testHostClientPendingRequests(t *testing.T) {
 	pendingRequests = c.PendingRequests()
 	if pendingRequests != 0 {
 		t.Fatalf("non-zero pendingRequests: %d", pendingRequests)
+	}
+}
+
+func testClientDoWithHTTPSRequest(t *testing.T) {
+	go func() {
+		nethttp.HandleFunc("/https", func(w nethttp.ResponseWriter, req *nethttp.Request) {
+			w.Header().Set("Content-Type", "text/plain")
+			w.Write([]byte("Hello world!"))
+		})
+		err := nethttp.ListenAndServeTLS(":443", "./certificate/server.crt", "./certificate/server.key", nil)
+		if err != nil {
+			log.Fatal("ListenAndServe: ", err)
+		}
+	}()
+	var err error
+	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+	c := &Client{
+		BufioPool: bPool,
+	}
+	req := &HTTPSRequest{}
+	resp := &SimpleResponse{}
+	err = c.Do(req, resp)
+	if err != nil {
+		t.Fatalf("unexpected error : %s", err.Error())
+	}
+	if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
+		t.Fatal("Response body is wrong")
 	}
 }
 
@@ -537,8 +563,15 @@ func (r *BigHeaderRequest) WriteHeaderTo(w *bufio.Writer) error {
 		result += "S"
 	}
 	n, err := w.WriteString("Host: www.bing.com\r\nUser-Agent: test client\r\n" + result + "\r\n\r\n")
+	if err != nil {
+		return err
+	}
+	if w.Buffered() < n {
+		r.readSize += w.Buffered()
+		return io.ErrShortWrite
+	}
 	r.readSize += n
-	return err
+	return nil
 }
 
 func (r *BigHeaderRequest) WriteBodyTo(w *bufio.Writer) error {
@@ -699,4 +732,64 @@ func (r *IdempotentResponse) ConnectionClose() bool {
 
 func (r *IdempotentResponse) GetSize() int {
 	return r.size
+}
+
+type HTTPSRequest struct {
+	targetwithport string
+}
+
+func (r *HTTPSRequest) Method() []byte {
+	return []byte("GET")
+}
+
+func (r *HTTPSRequest) TargetWithPort() string {
+	return "127.0.0.1:443"
+}
+func (r *HTTPSRequest) SetTargetWithPort(s string) {}
+
+func (r *HTTPSRequest) PathWithQueryFragment() []byte {
+	return []byte("/https")
+}
+
+func (r *HTTPSRequest) Protocol() []byte {
+	return []byte("HTTP/1.1")
+}
+
+func (r *HTTPSRequest) WriteHeaderTo(w *bufio.Writer) error {
+	_, err := w.WriteString("Host: www.bing.com\r\nUser-Agent: test client\r\n" + "\r\n")
+	return err
+}
+
+func (r *HTTPSRequest) WriteBodyTo(w *bufio.Writer) error {
+	return nil
+}
+
+func (r *HTTPSRequest) ConnectionClose() bool {
+	return false
+}
+
+func (r *HTTPSRequest) IsTLS() bool {
+	return true
+}
+
+func (r *HTTPSRequest) TLSServerName() string {
+	return "localhost"
+}
+
+func (r *HTTPSRequest) GetProxy() *superproxy.SuperProxy {
+	return nil
+}
+
+func (r *HTTPSRequest) GetReadSize() int {
+	return 0
+}
+
+func (r *HTTPSRequest) GetWriteSize() int {
+	return 0
+}
+
+func (r *HTTPSRequest) AddReadSize(n int) {
+}
+
+func (r *HTTPSRequest) AddWriteSize(n int) {
 }
