@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	nethttp "net/http"
 	"strings"
 	"sync"
@@ -57,8 +58,8 @@ func TestClientDoWithBigHeaderOrBody(t *testing.T) {
 		log.Fatal(nethttp.ListenAndServe(":8888", nil))
 	}()
 	time.Sleep(time.Second)
-	testClientDoWithBigHeader(t)
-	testClientDoWithBigBodyResponse(t)
+	//testClientDoWithBigHeader(t)
+	//testClientDoWithBigBodyResponse(t)
 }
 
 func testClientDoByDefaultParamters(t *testing.T) {
@@ -276,13 +277,31 @@ func testClientDoTimeoutError(t *testing.T, c *Client, n int) {
 }
 
 func testClientDoIsIdempotent(t *testing.T) {
+	go func() {
+		ln, err := net.Listen("tcp4", "0.0.0.0:8080")
+		i := 0
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+		nethttp.HandleFunc("/idempotent", func(w nethttp.ResponseWriter, r *nethttp.Request) {
+			i++
+			if i != 5 {
+				conn, _, _ := w.(nethttp.Hijacker).Hijack()
+				conn.Close()
+			} else {
+				fmt.Fprint(w, "Hello world!")
+			}
+		})
+		nethttp.Serve(ln, nil)
+	}()
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool: bPool,
+		//WriteTimeout: time.Second,
 	}
-	req := &SimpleRequest{}
-
-	req.SetTargetWithPort("127.0.0.1:10000")
+	req := &IdempotentRequest{}
+	req.SetMethod([]byte("GET"))
+	req.SetTargetWithPort("127.0.0.1:8080")
 	resp := &SimpleResponse{}
 	err := c.Do(req, resp)
 	if err != nil {
@@ -291,25 +310,14 @@ func testClientDoIsIdempotent(t *testing.T) {
 	if resp.GetSize() == 0 {
 		t.Fatal("Response can't be empty")
 	}
-	resultSize := resp.GetSize()
-	for i := 0; i < 10; i++ {
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err.Error())
-		}
-
-		err = c.Do(req, resp)
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err.Error())
-		}
-		if resp.GetSize() == 0 {
-			t.Fatal("Response can't be empty")
-		}
-		if resp.GetSize() != resultSize {
-			t.Fatalf("Corrent response is not equal with previous response")
-		}
-		if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
-			t.Fatal("Response body is wrong")
-		}
+	if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
+		t.Fatalf("Idempotent test error")
+	}
+	req.SetMethod([]byte("POST"))
+	newResp := &SimpleResponse{}
+	err = c.Do(req, newResp)
+	if err != ErrConnectionClosed {
+		t.Fatalf("expected error: %s", ErrConnectionClosed.Error())
 	}
 }
 
@@ -593,5 +601,102 @@ func (r *BigBodyResponse) ConnectionClose() bool {
 }
 
 func (r *BigBodyResponse) GetSize() int {
+	return r.size
+}
+
+type IdempotentRequest struct {
+	method         []byte
+	targetwithport string
+}
+
+func (r *IdempotentRequest) Method() []byte {
+	return r.method
+}
+
+func (r *IdempotentRequest) SetMethod(method []byte) {
+	r.method = method
+}
+func (r *IdempotentRequest) TargetWithPort() string {
+	return r.targetwithport
+}
+func (r *IdempotentRequest) SetTargetWithPort(s string) {
+	r.targetwithport = s
+}
+
+func (r *IdempotentRequest) PathWithQueryFragment() []byte {
+	return []byte("/idempotent")
+}
+
+func (r *IdempotentRequest) Protocol() []byte {
+	return []byte("HTTP/1.1")
+}
+
+func (r *IdempotentRequest) WriteHeaderTo(w *bufio.Writer) error {
+	result := "Cache:"
+	for i := 0; i < 100000; i++ {
+		result += "S"
+	}
+	_, err := w.WriteString("Host: www.bing.com\r\nUser-Agent: test client\r\n" + result + "\r\n\r\n")
+	return err
+}
+
+func (r *IdempotentRequest) WriteBodyTo(w *bufio.Writer) error {
+	return nil
+}
+
+func (r *IdempotentRequest) ConnectionClose() bool {
+	return false
+}
+
+func (r *IdempotentRequest) IsTLS() bool {
+	return false
+}
+
+func (r *IdempotentRequest) TLSServerName() string {
+	return ""
+}
+
+func (r *IdempotentRequest) GetProxy() *superproxy.SuperProxy {
+	return nil
+}
+
+func (r *IdempotentRequest) GetReadSize() int {
+	return 0
+}
+
+func (r *IdempotentRequest) GetWriteSize() int {
+	return 0
+}
+
+func (r *IdempotentRequest) AddReadSize(n int) {
+}
+
+func (r *IdempotentRequest) AddWriteSize(n int) {
+}
+
+type IdempotentResponse struct {
+	size int
+	body []byte
+}
+
+func (r *IdempotentResponse) ReadFrom(discardBody bool, br *bufio.Reader) error {
+	b, err := br.ReadBytes('!')
+	if err != nil {
+		return err
+	}
+	r.size = len(b)
+	r.body = b
+	return nil
+}
+
+func (r *IdempotentResponse) GetBody() []byte {
+	return r.body
+}
+
+func (r *IdempotentResponse) ConnectionClose() bool {
+	return false
+}
+
+func (r *IdempotentResponse) GetSize() int {
 	return r.size
 }
