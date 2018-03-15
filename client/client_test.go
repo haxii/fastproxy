@@ -46,6 +46,7 @@ func TestClientDo(t *testing.T) {
 	testClientDoWithHTTPSRequest(t)
 
 	testClientDoWithPostRequest(t)
+	testClinetDoWithSameConnection(t)
 }
 
 func TestClientDoWithBigHeaderOrBody(t *testing.T) {
@@ -460,6 +461,52 @@ func testClientDoWithPostRequest(t *testing.T) {
 	}
 	if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
 		t.Fatal("Response body is wrong")
+	}
+}
+
+func testClinetDoWithSameConnection(t *testing.T) {
+	go func() {
+		ln, err := net.Listen("tcp4", "0.0.0.0:10001")
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+		i := 0
+		nethttp.HandleFunc("/close", func(w nethttp.ResponseWriter, r *nethttp.Request) {
+			if i < 3 {
+				conn, _, _ := w.(nethttp.Hijacker).Hijack()
+				conn.Write([]byte("Connection will close!"))
+				conn.Close()
+				i++
+			} else {
+				fmt.Fprintf(w, "Hello world!")
+			}
+		})
+		nethttp.Serve(ln, nil)
+	}()
+	var err error
+	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+	c := &Client{
+		BufioPool: bPool,
+	}
+	req := &IdempotentRequest{}
+	req.SetMethod([]byte("POST"))
+	req.SetTargetWithPort("127.0.0.1:10001")
+	req.SetPathWithQueryFragment([]byte("/close"))
+	resp := &SimpleResponse{}
+	for i := 0; i < 4; i++ {
+		err = c.Do(req, resp)
+		if err != nil {
+			t.Fatalf("Unexpected error: %s", err.Error())
+		}
+		if i < 3 {
+			if !bytes.Contains(resp.GetBody(), []byte("Connection will close!")) {
+				t.Fatalf("Connection closed by peer, Client can't get any data")
+			}
+		} else {
+			if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
+				t.Fatalf("Connection closed by peer, Client can't get any data")
+			}
+		}
 	}
 }
 

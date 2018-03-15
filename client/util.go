@@ -43,6 +43,9 @@ func writeRequestLine(bw *bufio.Writer, fullURL bool,
 	write := func(b []byte) error {
 		var nw int
 		var err error
+		if bw == nil {
+			return errNilBufiopool
+		}
 		if nw, err = bw.Write(b); err != nil {
 			return err
 		} else if nw != len(b) {
