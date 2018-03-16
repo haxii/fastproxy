@@ -28,9 +28,9 @@ func TestClientDo(t *testing.T) {
 	}()
 	time.Sleep(time.Second)
 
-	testClientDoByDefaultParamters(t)
+	testClientDoByDefaultParameters(t)
 
-	testClientDoWithErrorParamters(t)
+	testClientDoWithErrorParameters(t)
 
 	testClientDoWithEmptyRequestAndResponse(t)
 
@@ -75,8 +75,8 @@ func TestClientDoWithBigHeaderOrBody(t *testing.T) {
 	testClientDoWithBigBodyResponse(t)
 }
 
-//test client do with default paramters
-func testClientDoByDefaultParamters(t *testing.T) {
+//test client do with default parameters
+func testClientDoByDefaultParameters(t *testing.T) {
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
@@ -226,8 +226,8 @@ func testClientDoTimeoutErrorConcurrent(t *testing.T) {
 	wg.Wait()
 }
 
-// test client do with wrong paramters
-func testClientDoWithErrorParamters(t *testing.T) {
+// test client do with wrong parameters
+func testClientDoWithErrorParameters(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 
 	req := &SimpleRequest{}
@@ -238,7 +238,7 @@ func testClientDoWithErrorParamters(t *testing.T) {
 
 }
 
-// test client do with error paramters
+// test client do with error parameters
 func testClientDoWithErrorParamter(t *testing.T, bPool *bufiopool.Pool, req *SimpleRequest, resp *SimpleResponse, expErr error) {
 	c := &Client{
 		BufioPool: bPool,
