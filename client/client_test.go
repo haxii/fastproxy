@@ -27,33 +27,33 @@ func TestClientDo(t *testing.T) {
 		log.Fatal(nethttp.ListenAndServe(":10000", nil))
 	}()
 	time.Sleep(time.Second)
+	/*
+		testClientDoByDefaultParamters(t)
 
-	testClientDoByDefaultParamters(t)
+		testClientDoWithErrorParamters(t)
 
-	testClientDoWithErrorParamters(t)
+		testClientDoWithEmptyRequestAndResponse(t)
 
-	testClientDoWithEmptyRequestAndResponse(t)
+		testClientDoTimeoutSuccess(t, nil, 10)
 
-	testClientDoTimeoutSuccess(t, nil, 10)
+		testClientDoConcurrent(t)
 
-	testClientDoConcurrent(t)
+		testClientDoTimeoutError(t, nil, 10)
 
-	testClientDoTimeoutError(t, nil, 10)
+		testClientDoTimeoutErrorConcurrent(t)
 
-	testClientDoTimeoutErrorConcurrent(t)
+		testClientDoConcurrentWithLargeNumber(t)
 
-	testClientDoConcurrentWithLargeNumber(t)
+		testClientDoIsIdempotent(t)
 
-	testClientDoIsIdempotent(t)
+		testHostClientPendingRequests(t)
 
-	testHostClientPendingRequests(t)
+		testClientDoWithHTTPSRequest(t)
 
-	testClientDoWithHTTPSRequest(t)
+		testClientDoWithPostRequest(t)
 
-	testClientDoWithPostRequest(t)
-
-	testClientDoWithSameConnectionGetMethod(t)
-
+		testClientDoWithSameConnectionGetMethod(t)
+	*/
 	testClientDoWithSameConnectionPostMethod(t)
 }
 
@@ -71,8 +71,8 @@ func TestClientDoWithBigHeaderOrBody(t *testing.T) {
 		log.Fatal(nethttp.ListenAndServe(":8888", nil))
 	}()
 	time.Sleep(time.Second)
-	testClientDoWithBigHeader(t)
-	testClientDoWithBigBodyResponse(t)
+	//testClientDoWithBigHeader(t)
+	//testClientDoWithBigBodyResponse(t)
 }
 
 //test client do with default paramters
@@ -516,7 +516,8 @@ func testClientDoWithSameConnectionPostMethod(t *testing.T) {
 		}
 		i := 0
 		nethttp.HandleFunc("/closetest", func(w nethttp.ResponseWriter, r *nethttp.Request) {
-			if i > 0 && i < 6 {
+			if i > 0 && i < 2 {
+				fmt.Fprintf(w, "Post success")
 				conn, _, _ := w.(nethttp.Hijacker).Hijack()
 				conn.Close()
 			} else {
