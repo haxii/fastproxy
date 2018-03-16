@@ -52,7 +52,7 @@ func TestServerShutDownByRightParameters(t *testing.T) {
 	}
 }
 
-func TestServerShutDownByWrongParameters(t *testing.T) {
+func TestServerShutDownWrong(t *testing.T) {
 	ln, err := net.Listen("tcp", "0.0.0.0:7777")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)

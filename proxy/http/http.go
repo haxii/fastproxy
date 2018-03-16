@@ -95,6 +95,11 @@ func (r *Request) SetHijacker(h hijack.Hijacker) {
 	r.hijacker = h
 }
 
+//TargetWithPort expected ip with port, if not, domain with port
+func (r *Request) TargetWithPort() string {
+	return r.hostInfo.HostWithPort()
+}
+
 //GetHijacker get hijacker for this request
 func (r *Request) GetHijacker() hijack.Hijacker {
 	return r.hijacker
