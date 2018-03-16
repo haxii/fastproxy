@@ -27,33 +27,33 @@ func TestClientDo(t *testing.T) {
 		log.Fatal(nethttp.ListenAndServe(":10000", nil))
 	}()
 	time.Sleep(time.Second)
-	/*
-		testClientDoByDefaultParamters(t)
 
-		testClientDoWithErrorParamters(t)
+	testClientDoByDefaultParamters(t)
 
-		testClientDoWithEmptyRequestAndResponse(t)
+	testClientDoWithErrorParamters(t)
 
-		testClientDoTimeoutSuccess(t, nil, 10)
+	testClientDoWithEmptyRequestAndResponse(t)
 
-		testClientDoConcurrent(t)
+	testClientDoTimeoutSuccess(t, nil, 10)
 
-		testClientDoTimeoutError(t, nil, 10)
+	testClientDoConcurrent(t)
 
-		testClientDoTimeoutErrorConcurrent(t)
+	testClientDoTimeoutError(t, nil, 10)
 
-		testClientDoConcurrentWithLargeNumber(t)
+	testClientDoTimeoutErrorConcurrent(t)
 
-		testClientDoIsIdempotent(t)
+	testClientDoConcurrentWithLargeNumber(t)
 
-		testHostClientPendingRequests(t)
+	testClientDoIsIdempotent(t)
 
-		testClientDoWithHTTPSRequest(t)
+	testHostClientPendingRequests(t)
 
-		testClientDoWithPostRequest(t)
+	testClientDoWithHTTPSRequest(t)
 
-		testClientDoWithSameConnectionGetMethod(t)
-	*/
+	testClientDoWithPostRequest(t)
+
+	testClientDoWithSameConnectionGetMethod(t)
+
 	testClientDoWithSameConnectionPostMethod(t)
 }
 
