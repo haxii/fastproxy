@@ -84,7 +84,7 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 	if superProxy != nil {
 		domain := req.HostInfo().Domain()
 		if len(domain) > 0 {
-			ip := h.lookupIp(domain)
+			ip := h.lookupIP(domain)
 			req.HostInfo().SetIP(ip)
 		}
 
@@ -146,7 +146,7 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 	if superProxy != nil {
 		host, port, _ := net.SplitHostPort(hostWithPort)
 		if len(host) > 0 && net.ParseIP(host) == nil {
-			ip := h.lookupIp(host)
+			ip := h.lookupIP(host)
 			if ip != nil {
 				targetWithPort = ip.String() + ":" + port
 			}
@@ -312,7 +312,7 @@ func (h *Handler) signFakeCert(mitmCACert *tls.Certificate, host string) (*tls.C
 }
 
 //resolve domain to ip
-func (h *Handler) lookupIp(domain string) net.IP {
+func (h *Handler) lookupIP(domain string) net.IP {
 	if h.LookupIP == nil {
 		return nil
 	}

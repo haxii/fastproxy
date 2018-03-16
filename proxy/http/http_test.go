@@ -41,13 +41,36 @@ func TestHTTPRequest(t *testing.T) {
 	if bytes.Equal(req.Method(), []byte("GET")) {
 		t.Fatalf("Reset error")
 	}
-	noProtocolHTTPRequest := "GET / \r\n" +
+}
+
+func TestHTTPRequestError(t *testing.T) {
+	errorReq := "/ HTTP/1.1\r\n" +
 		"Host: localhost:10000\r\n" +
 		"\r\n"
-	br = bufio.NewReader(strings.NewReader(noProtocolHTTPRequest))
+	req := &Request{}
+	br := bufio.NewReader(strings.NewReader(errorReq))
+	err := req.ReadFrom(br)
+	if err == nil {
+		t.Fatal("expected error: fail to read start line of request")
+	}
+	if !strings.Contains(err.Error(), "fail to read start line of request") {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+
 	err = req.ReadFrom(br)
 	if err == nil {
-		t.Fatal("expected error: can't parse request")
+		t.Fatal("expected error: request already initialized")
+	}
+	if !strings.Contains(err.Error(), "request already initialized") {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+
+	err = req.ReadFrom(nil)
+	if err == nil {
+		t.Fatal("nil reader provided")
+	}
+	if !strings.Contains(err.Error(), "nil reader provided") {
+		t.Fatalf("unexpected error: %s", err.Error())
 	}
 }
 
