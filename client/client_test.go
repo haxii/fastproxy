@@ -505,6 +505,8 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
 		t.Fatal("Response body is wrong")
 	}
+	os.Remove(".server.crt")
+	os.Remove(".server.key")
 }
 
 // test client do with get method at first and then post method
