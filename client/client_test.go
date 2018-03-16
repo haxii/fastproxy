@@ -28,7 +28,7 @@ func TestClientDo(t *testing.T) {
 	}()
 	time.Sleep(time.Second)
 
-	testClientDoByDefaultParamters(t)
+	/*testClientDoByDefaultParamters(t)
 
 	testClientDoWithErrorParamters(t)
 
@@ -48,11 +48,11 @@ func TestClientDo(t *testing.T) {
 
 	testHostClientPendingRequests(t)
 
-	testClientDoWithHTTPSRequest(t)
+	testClientDoWithHTTPSRequest(t)*/
 
-	testClientDoWithPostRequest(t)
+	//testClientDoWithPostRequest(t)
 
-	testClientDoWithSameConnectionGetMethod(t)
+	//testClientDoWithSameConnectionGetMethod(t)
 
 	testClientDoWithSameConnectionPostMethod(t)
 }
@@ -516,14 +516,20 @@ func testClientDoWithSameConnectionPostMethod(t *testing.T) {
 		}
 		i := 0
 		nethttp.HandleFunc("/closetest", func(w nethttp.ResponseWriter, r *nethttp.Request) {
-			if i < 1 {
+			if i > 0 && i < 6 {
+				conn, _, _ := w.(nethttp.Hijacker).Hijack()
+				conn.Close()
+			} else {
 				conn, _, _ := w.(nethttp.Hijacker).Hijack()
 				conn.Write([]byte("Connection will close!"))
 				conn.Close()
-				i++
-			} else {
-				fmt.Fprintf(w, "Hello, world!")
 			}
+			if i == 1 {
+				if r.Method != "POST" {
+					t.Fatalf("POST Failure")
+				}
+			}
+			i++
 		})
 		nethttp.Serve(ln, nil)
 	}()
@@ -556,6 +562,22 @@ func testClientDoWithSameConnectionPostMethod(t *testing.T) {
 
 // test client do with post request
 func testClientDoWithPostRequest(t *testing.T) {
+	go func() {
+		ln, err := net.Listen("tcp4", "0.0.0.0:10003")
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+		nethttp.HandleFunc("/post", func(w nethttp.ResponseWriter, r *nethttp.Request) {
+			if r.Method != "POST" {
+				t.Fatalf("method is %s", r.Method)
+			}
+			conn, _, _ := w.(nethttp.Hijacker).Hijack()
+			conn.Write([]byte("Post success!"))
+			conn.Close()
+		})
+		nethttp.Serve(ln, nil)
+	}()
+	time.Sleep(time.Second)
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
@@ -563,14 +585,14 @@ func testClientDoWithPostRequest(t *testing.T) {
 	}
 	req := &IdempotentRequest{}
 	req.SetMethod([]byte("POST"))
-	req.SetTargetWithPort("127.0.0.1:10000")
-	req.SetPathWithQueryFragment([]byte("/"))
+	req.SetTargetWithPort("127.0.0.1:10003")
+	req.SetPathWithQueryFragment([]byte("/post"))
 	resp := &SimpleResponse{}
 	err = c.Do(req, resp)
 	if err != nil {
 		t.Fatalf("unexpected error : %s", err.Error())
 	}
-	if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
+	if !bytes.Contains(resp.GetBody(), []byte("Post success!")) {
 		t.Fatal("Response body is wrong")
 	}
 }
@@ -822,12 +844,15 @@ type IdempotentRequest struct {
 	method                []byte
 	targetwithport        string
 	pathWithQueryFragment []byte
+	body                  []byte
 }
 
 func (r *IdempotentRequest) Method() []byte {
 	return r.method
 }
-
+func (r *IdempotentRequest) SetBody(b []byte) {
+	r.body = b
+}
 func (r *IdempotentRequest) SetMethod(method []byte) {
 	r.method = method
 }
@@ -851,16 +876,13 @@ func (r *IdempotentRequest) Protocol() []byte {
 }
 
 func (r *IdempotentRequest) WriteHeaderTo(w *bufio.Writer) error {
-	result := "Cache:"
-	for i := 0; i < 100000; i++ {
-		result += "S"
-	}
-	_, err := w.WriteString("Host: www.bing.com\r\nUser-Agent: test client\r\n" + result + "\r\n\r\n")
+	_, err := w.WriteString("Host: www.bing.com\r\nUser-Agent: test client" + "\r\n\r\n")
 	return err
 }
 
 func (r *IdempotentRequest) WriteBodyTo(w *bufio.Writer) error {
-	return nil
+	_, err := w.WriteString("username=Hello server!\r\n\r\n")
+	return err
 }
 
 func (r *IdempotentRequest) ConnectionClose() bool {
