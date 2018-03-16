@@ -28,7 +28,7 @@ func TestClientDo(t *testing.T) {
 	}()
 	time.Sleep(time.Second)
 
-	/*testClientDoByDefaultParamters(t)
+	testClientDoByDefaultParamters(t)
 
 	testClientDoWithErrorParamters(t)
 
@@ -48,11 +48,11 @@ func TestClientDo(t *testing.T) {
 
 	testHostClientPendingRequests(t)
 
-	testClientDoWithHTTPSRequest(t)*/
+	testClientDoWithHTTPSRequest(t)
 
-	//testClientDoWithPostRequest(t)
+	testClientDoWithPostRequest(t)
 
-	//testClientDoWithSameConnectionGetMethod(t)
+	testClientDoWithSameConnectionGetMethod(t)
 
 	testClientDoWithSameConnectionPostMethod(t)
 }
