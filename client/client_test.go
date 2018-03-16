@@ -28,48 +28,36 @@ func TestClientDo(t *testing.T) {
 	}()
 	time.Sleep(time.Second)
 
-	//test client do with default paramters
 	testClientDoByDefaultParamters(t)
 
-	// test client do with wrong paramters
 	testClientDoWithErrorParamters(t)
 
-	// test client do with nil request or response
 	testClientDoWithEmptyRequestAndResponse(t)
-	// test client do with timeout can be success
+
 	testClientDoTimeoutSuccess(t, nil, 10)
 
-	// test client do 50 concurrent
 	testClientDoConcurrent(t)
 
-	// test client do timeout
 	testClientDoTimeoutError(t, nil, 10)
 
-	// test client do with 1000 concurrent will timeout
 	testClientDoTimeoutErrorConcurrent(t)
 
-	// test client do with 51 concurrent but default is 50 expected one error
 	testClientDoConcurrentWithLargeNumber(t)
 
-	// test client do is idempotent
 	testClientDoIsIdempotent(t)
 
-	// test host client pending requests
 	testHostClientPendingRequests(t)
 
-	// test client do with https request
 	testClientDoWithHTTPSRequest(t)
 
-	// test client do with post request
 	testClientDoWithPostRequest(t)
 
-	// test client do with same connection using get method
 	testClientDoWithSameConnectionGetMethod(t)
 
-	// test client do with get method at first and then post method
 	testClientDoWithSameConnectionPostMethod(t)
 }
 
+// Test Client do with big header or big body
 func TestClientDoWithBigHeaderOrBody(t *testing.T) {
 	go func() {
 		nethttp.HandleFunc("/test", func(w nethttp.ResponseWriter, r *nethttp.Request) {
@@ -87,6 +75,7 @@ func TestClientDoWithBigHeaderOrBody(t *testing.T) {
 	testClientDoWithBigBodyResponse(t)
 }
 
+//test client do with default paramters
 func testClientDoByDefaultParamters(t *testing.T) {
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
@@ -105,6 +94,7 @@ func testClientDoByDefaultParamters(t *testing.T) {
 	}
 }
 
+// test client do with big header
 func testClientDoWithBigHeader(t *testing.T) {
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
@@ -120,6 +110,7 @@ func testClientDoWithBigHeader(t *testing.T) {
 	}
 }
 
+// test client do with 51 concurrent but default is 50 expected one error
 func testClientDoConcurrentWithLargeNumber(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
@@ -168,6 +159,7 @@ func testClientDoConcurrentWithLargeNumber(t *testing.T) {
 	wg.Wait()
 }
 
+// test client do 50 concurrent
 func testClientDoConcurrent(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
@@ -185,6 +177,8 @@ func testClientDoConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// test client do with timeout can be success
 func testClientDoTimeoutSuccess(t *testing.T, c *Client, n int) {
 	var err error
 	if c == nil {
@@ -212,6 +206,7 @@ func testClientDoTimeoutSuccess(t *testing.T, c *Client, n int) {
 	}
 }
 
+// test client do with 1000 concurrent will timeout
 func testClientDoTimeoutErrorConcurrent(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
@@ -231,6 +226,7 @@ func testClientDoTimeoutErrorConcurrent(t *testing.T) {
 	wg.Wait()
 }
 
+// test client do with wrong paramters
 func testClientDoWithErrorParamters(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 
@@ -242,6 +238,7 @@ func testClientDoWithErrorParamters(t *testing.T) {
 
 }
 
+// test client do with error paramters
 func testClientDoWithErrorParamter(t *testing.T, bPool *bufiopool.Pool, req *SimpleRequest, resp *SimpleResponse, expErr error) {
 	c := &Client{
 		BufioPool: bPool,
@@ -256,6 +253,7 @@ func testClientDoWithErrorParamter(t *testing.T, bPool *bufiopool.Pool, req *Sim
 
 }
 
+// test client do with nil request or response
 func testClientDoWithEmptyRequestAndResponse(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 
@@ -280,6 +278,7 @@ func testClientDoWithEmptyRequestAndResponse(t *testing.T) {
 	}
 }
 
+// test client do timeout paramter will get timeout
 func testClientDoTimeoutError(t *testing.T, c *Client, n int) {
 	var err error
 	if c == nil {
@@ -301,6 +300,7 @@ func testClientDoTimeoutError(t *testing.T, c *Client, n int) {
 	}
 }
 
+// test client do is idempotent
 func testClientDoIsIdempotent(t *testing.T) {
 	go func() {
 		ln, err := net.Listen("tcp4", "0.0.0.0:8080")
@@ -340,6 +340,7 @@ func testClientDoIsIdempotent(t *testing.T) {
 	}
 }
 
+// test client do with big response body
 func testClientDoWithBigBodyResponse(t *testing.T) {
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
@@ -358,6 +359,7 @@ func testClientDoWithBigBodyResponse(t *testing.T) {
 	}
 }
 
+// test host client pending requests
 func testHostClientPendingRequests(t *testing.T) {
 	concurrency := 3
 	doneCh := make(chan struct{})
@@ -431,6 +433,7 @@ func testHostClientPendingRequests(t *testing.T) {
 	}
 }
 
+// test client do with https request
 func testClientDoWithHTTPSRequest(t *testing.T) {
 	go func() {
 		nethttp.HandleFunc("/https", func(w nethttp.ResponseWriter, req *nethttp.Request) {
@@ -503,6 +506,8 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 		t.Fatal("Response body is wrong")
 	}
 }
+
+// test client do with get method at first and then post method
 func testClientDoWithSameConnectionPostMethod(t *testing.T) {
 	go func() {
 		ln, err := net.Listen("tcp4", "0.0.0.0:10002")
@@ -549,6 +554,7 @@ func testClientDoWithSameConnectionPostMethod(t *testing.T) {
 	}
 }
 
+// test client do with post request
 func testClientDoWithPostRequest(t *testing.T) {
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
@@ -569,6 +575,7 @@ func testClientDoWithPostRequest(t *testing.T) {
 	}
 }
 
+// test client do with same connection using get method
 func testClientDoWithSameConnectionGetMethod(t *testing.T) {
 	go func() {
 		ln, err := net.Listen("tcp4", "0.0.0.0:10001")
