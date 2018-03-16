@@ -71,8 +71,8 @@ func TestClientDoWithBigHeaderOrBody(t *testing.T) {
 		log.Fatal(nethttp.ListenAndServe(":8888", nil))
 	}()
 	time.Sleep(time.Second)
-	//testClientDoWithBigHeader(t)
-	//testClientDoWithBigBodyResponse(t)
+	testClientDoWithBigHeader(t)
+	testClientDoWithBigBodyResponse(t)
 }
 
 //test client do with default paramters
