@@ -120,6 +120,13 @@ type Client struct {
 
 type hostClients map[string]*HostClient
 
+var (
+	errNilReq        = errors.New("nil request")
+	errNilResp       = errors.New("nil response")
+	errNilBufiopool  = errors.New("nil buffer io pool")
+	errNilTargetHost = errors.New("nil target host provided")
+)
+
 // Do performs the given http request and fills the given http response.
 //
 // The function doesn't follow redirects.
@@ -128,13 +135,13 @@ type hostClients map[string]*HostClient
 // to the requested host are busy.
 func (c *Client) Do(req Request, resp Response) error {
 	if req == nil {
-		return errors.New("nil request")
+		return errNilReq
 	}
 	if resp == nil {
-		return errors.New("nil response")
+		return errNilResp
 	}
 	if c.BufioPool == nil {
-		return errors.New("nil buffer io pool")
+		return errNilBufiopool
 	}
 	//fetch request type
 	viaProxy := (req.GetProxy() != nil)
@@ -150,7 +157,7 @@ func (c *Client) Do(req Request, resp Response) error {
 	} else {
 		hostWithPort = req.TargetWithPort()
 		if len(hostWithPort) == 0 {
-			return errors.New("nil target host provided")
+			return errNilTargetHost
 		}
 	}
 
