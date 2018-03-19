@@ -51,18 +51,6 @@ func (r *simpleReq) GetProxy() *superproxy.SuperProxy {
 	return nil
 }
 
-func (r *simpleReq) GetReadSize() int {
-	return 0
-}
-
-func (r *simpleReq) GetWriteSize() int {
-	return 0
-}
-
-func (r *simpleReq) AddReadSize(n int) {}
-
-func (r *simpleReq) AddWriteSize(n int) {}
-
 type simpleResp struct{}
 
 func (r *simpleResp) ReadFrom(discardBody bool, br *bufio.Reader) error {
@@ -77,10 +65,6 @@ func (r *simpleResp) ReadFrom(discardBody bool, br *bufio.Reader) error {
 
 func (r *simpleResp) ConnectionClose() bool {
 	return false
-}
-
-func (r *simpleResp) GetSize() int {
-	return 0
 }
 
 func main() {

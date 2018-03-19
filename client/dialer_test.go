@@ -108,17 +108,3 @@ func (r *VariedRequest) GetProxy() *superproxy.SuperProxy {
 func (r *VariedRequest) SetProxy(s *superproxy.SuperProxy) {
 	r.superProxy = s
 }
-
-func (r *VariedRequest) GetReadSize() int {
-	return 0
-}
-
-func (r *VariedRequest) GetWriteSize() int {
-	return 0
-}
-
-func (r *VariedRequest) AddReadSize(n int) {
-}
-
-func (r *VariedRequest) AddWriteSize(n int) {
-}

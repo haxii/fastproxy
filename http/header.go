@@ -85,16 +85,17 @@ func (header *Header) ParseHeaderFields(reader *bufio.Reader,
 	buffer *bytebufferpool.ByteBuffer) (int, error) {
 	originalLen := buffer.Len()
 	n := 1
-	readSize := 0
+	readNum := 0
+
 	for {
 		rn, err := header.tryRead(reader, buffer, n)
-		readSize += rn
+		readNum += rn
 		if err == nil {
-			return readSize, nil
+			return readNum, nil
 		}
 		buffer.B = buffer.B[:originalLen]
 		if err != errNeedMore {
-			return readSize, err
+			return readNum, err
 		}
 		n = reader.Buffered() + 1
 	}
@@ -184,7 +185,8 @@ func (header *Header) readHeaders(buf []byte,
 		}
 		//remove proxy header
 		if !isProxyHeader(rawHeaderLine) {
-			return util.WriteWithValidation(buffer, rawHeaderLine)
+			_, err := util.WriteWithValidation(buffer, rawHeaderLine)
+			return err
 		}
 		return nil
 	}
