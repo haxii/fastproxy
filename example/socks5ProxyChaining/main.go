@@ -22,7 +22,7 @@ func main() {
 	if err != nil {
 		return
 	}
-	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 9099, superproxy.ProxyTypeSOCKS5, "", "", false, "")
+	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 9099, superproxy.ProxyTypeSOCKS5, "", "", "")
 	proxy := proxy.Proxy{
 		BufioPool:   &bufiopool.Pool{},
 		Client:      client.Client{},

@@ -28,13 +28,18 @@ func (r *simpleReq) Protocol() []byte {
 	return []byte("HTTP/1.1")
 }
 
-func (r *simpleReq) WriteHeaderTo(w *bufio.Writer) error {
-	w.WriteString("Host: www.bing.com\r\nUser-Agent: test client\r\n\r\n")
-	return w.Flush()
+func (r *simpleReq) WriteHeaderTo(w *bufio.Writer) (int, int, error) {
+	header := "Host: www.bing.com\r\nUser-Agent: test client\r\n\r\n"
+	n, err := w.WriteString(header)
+	if err != nil {
+		return len(header), n, err
+	}
+	err = w.Flush()
+	return len(header), n, err
 }
 
-func (r *simpleReq) WriteBodyTo(w *bufio.Writer) error {
-	return nil
+func (r *simpleReq) WriteBodyTo(w *bufio.Writer) (int, error) {
+	return 0, nil
 }
 func (r *simpleReq) ConnectionClose() bool {
 	return false
@@ -53,14 +58,14 @@ func (r *simpleReq) GetProxy() *superproxy.SuperProxy {
 
 type simpleResp struct{}
 
-func (r *simpleResp) ReadFrom(discardBody bool, br *bufio.Reader) error {
+func (r *simpleResp) ReadFrom(discardBody bool, br *bufio.Reader) (int, error) {
 	fmt.Println("should discard body a.k.a this is a head response:", discardBody)
 	b, err := br.ReadBytes('!')
 	if err != nil {
 		fmt.Println("error occurred when reading response", err)
 	}
 	fmt.Printf("full response: \n%s", b)
-	return nil
+	return len(b), nil
 }
 
 func (r *simpleResp) ConnectionClose() bool {
@@ -76,7 +81,7 @@ func main() {
 	}()
 	time.Sleep(time.Second)
 	client := &client.Client{BufioPool: bufiopool.New(1, 1)}
-	if err := client.Do(&simpleReq{}, &simpleResp{}); err != nil {
+	if _, _, _, err := client.Do(&simpleReq{}, &simpleResp{}); err != nil {
 		fmt.Println("error occurred when making client request: \n", err)
 	}
 }

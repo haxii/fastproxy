@@ -85,7 +85,7 @@ func testClientDoByDefaultParamters(t *testing.T) {
 	req := &SimpleRequest{}
 	req.SetTargetWithPort("0.0.0.0:10000")
 	resp := &SimpleResponse{}
-	err = c.Do(req, resp)
+	_, _, _, err = c.Do(req, resp)
 	if err != nil {
 		t.Fatalf("unexpected error : %s", err.Error())
 	}
@@ -104,7 +104,7 @@ func testClientDoWithBigHeader(t *testing.T) {
 	req := &BigHeaderRequest{}
 	req.SetTargetWithPort("0.0.0.0:8888")
 	resp := &SimpleResponse{}
-	err = c.Do(req, resp)
+	_, _, _, err = c.Do(req, resp)
 	if err == nil {
 		t.Fatalf("unexpected error : %s", io.ErrShortWrite.Error())
 	}
@@ -126,7 +126,7 @@ func testClientDoConcurrentWithLargeNumber(t *testing.T) {
 			req := &SimpleRequest{}
 			req.SetTargetWithPort("127.0.0.1:10000")
 			resp := &SimpleResponse{}
-			if err := c.Do(req, resp); err != nil {
+			if _, _, _, err := c.Do(req, resp); err != nil {
 				resultCh <- fmt.Errorf("unexpected error: %s", err)
 				return
 			}
@@ -196,7 +196,7 @@ func testClientDoTimeoutSuccess(t *testing.T, c *Client, n int) {
 			t.Fatalf("unexpected error: %s", err.Error())
 		}
 
-		err = c.Do(req, resp)
+		_, _, _, err = c.Do(req, resp)
 		if err != nil {
 			t.Fatalf("unexpecting error: %s", err.Error())
 		}
@@ -243,7 +243,7 @@ func testClientDoWithErrorParamter(t *testing.T, bPool *bufiopool.Pool, req *Sim
 	c := &Client{
 		BufioPool: bPool,
 	}
-	err := c.Do(req, resp)
+	_, _, _, err := c.Do(req, resp)
 	if err == nil {
 		t.Fatal("expecting error")
 	}
@@ -262,14 +262,14 @@ func testClientDoWithEmptyRequestAndResponse(t *testing.T) {
 	c := &Client{
 		BufioPool: bPool,
 	}
-	err := c.Do(nil, resp)
+	_, _, _, err := c.Do(nil, resp)
 	if err == nil {
 		t.Fatal("expecting error")
 	}
 	if err != errNilReq {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
-	err = c.Do(req, nil)
+	_, _, _, err = c.Do(req, nil)
 	if err == nil {
 		t.Fatal("expecting error")
 	}
@@ -293,9 +293,11 @@ func testClientDoTimeoutError(t *testing.T, c *Client, n int) {
 		req.SetTargetWithPort("127.0.0.1:10000")
 		resp := &SimpleResponse{}
 
-		err = c.Do(req, resp)
-		if !strings.Contains(err.Error(), "timeout") {
-			t.Fatalf("unexpected error: %s", err.Error())
+		_, _, _, err = c.Do(req, resp)
+		if err != nil {
+			if !strings.Contains(err.Error(), "timeout") {
+				t.Fatalf("unexpected error: %s", err.Error())
+			}
 		}
 	}
 }
@@ -328,7 +330,7 @@ func testClientDoIsIdempotent(t *testing.T) {
 	req.SetTargetWithPort("127.0.0.1:8080")
 	req.SetPathWithQueryFragment([]byte("/idempotent"))
 	resp := &SimpleResponse{}
-	err := c.Do(req, resp)
+	_, _, _, err := c.Do(req, resp)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
@@ -350,7 +352,7 @@ func testClientDoWithBigBodyResponse(t *testing.T) {
 	req := &BigHeaderRequest{}
 	req.SetTargetWithPort("0.0.0.0:8888")
 	resp := &BigBodyResponse{}
-	err = c.Do(req, resp)
+	_, _, _, err = c.Do(req, resp)
 	if err == nil {
 		t.Fatalf("unexpected error: %s", io.ErrShortWrite.Error())
 	}
@@ -386,7 +388,7 @@ func testHostClientPendingRequests(t *testing.T) {
 			req := &SimpleRequest{}
 			req.SetTargetWithPort("127.0.0.1:9999")
 			resp := &SimpleResponse{}
-			if err := c.Do(req, resp); err != nil {
+			if _, _, _, err := c.Do(req, resp); err != nil {
 				resultCh <- fmt.Errorf("unexpected error: %s", err)
 				return
 			}
@@ -498,7 +500,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	}
 	req := &HTTPSRequest{}
 	resp := &SimpleResponse{}
-	err = c.Do(req, resp)
+	_, _, _, err = c.Do(req, resp)
 	if err != nil {
 		t.Fatalf("unexpected error : %s", err.Error())
 	}
@@ -546,7 +548,7 @@ func testClientDoWithSameConnectionPostMethod(t *testing.T) {
 	req.SetTargetWithPort("127.0.0.1:10002")
 	req.SetPathWithQueryFragment([]byte("/closetest"))
 	resp := &SimpleResponse{}
-	err = c.Do(req, resp)
+	_, _, _, err = c.Do(req, resp)
 	if err != nil {
 		t.Fatalf("Unexpected error: %s", err.Error())
 	}
@@ -554,7 +556,7 @@ func testClientDoWithSameConnectionPostMethod(t *testing.T) {
 		t.Fatalf("Connection closed by peer, Client can't get any data")
 	}
 	req.SetMethod([]byte("POST"))
-	err = c.Do(req, resp)
+	_, _, _, err = c.Do(req, resp)
 	if err == nil {
 		t.Fatalf("expected error: %s", ErrConnectionClosed)
 	}
@@ -591,7 +593,7 @@ func testClientDoWithPostRequest(t *testing.T) {
 	req.SetTargetWithPort("127.0.0.1:10003")
 	req.SetPathWithQueryFragment([]byte("/post"))
 	resp := &SimpleResponse{}
-	err = c.Do(req, resp)
+	_, _, _, err = c.Do(req, resp)
 	if err != nil {
 		t.Fatalf("unexpected error : %s", err.Error())
 	}
@@ -631,7 +633,7 @@ func testClientDoWithSameConnectionGetMethod(t *testing.T) {
 	req.SetPathWithQueryFragment([]byte("/close"))
 	resp := &SimpleResponse{}
 	for i := 0; i < 2; i++ {
-		err = c.Do(req, resp)
+		_, _, _, err = c.Do(req, resp)
 		if err != nil {
 			t.Fatalf("Unexpected error: %s", err.Error())
 		}
@@ -675,13 +677,18 @@ func (r *SimpleRequest) Protocol() []byte {
 	return []byte("HTTP/1.1")
 }
 
-func (r *SimpleRequest) WriteHeaderTo(w *bufio.Writer) error {
-	w.WriteString("Host: www.bing.com\r\nUser-Agent: test client\r\n\r\n")
-	return w.Flush()
+func (r *SimpleRequest) WriteHeaderTo(w *bufio.Writer) (int, int, error) {
+	header := "Host: www.bing.com\r\nUser-Agent: test client\r\n\r\n"
+	n, err := w.WriteString(header)
+	if err != nil {
+		return len(header), 0, err
+	}
+	err = w.Flush()
+	return len(header), n, err
 }
 
-func (r *SimpleRequest) WriteBodyTo(w *bufio.Writer) error {
-	return nil
+func (r *SimpleRequest) WriteBodyTo(w *bufio.Writer) (int, error) {
+	return 0, nil
 }
 
 func (r *SimpleRequest) ConnectionClose() bool {
@@ -717,14 +724,14 @@ type SimpleResponse struct {
 	body []byte
 }
 
-func (r *SimpleResponse) ReadFrom(discardBody bool, br *bufio.Reader) error {
+func (r *SimpleResponse) ReadFrom(discardBody bool, br *bufio.Reader) (int, error) {
 	b, err := br.ReadBytes('!')
 	if err != nil {
-		return err
+		return 0, err
 	}
 	r.size = len(b)
 	r.body = b
-	return nil
+	return r.size, nil
 }
 
 func (r *SimpleResponse) GetBody() []byte {
@@ -763,25 +770,25 @@ func (r *BigHeaderRequest) Protocol() []byte {
 	return []byte("HTTP/1.1")
 }
 
-func (r *BigHeaderRequest) WriteHeaderTo(w *bufio.Writer) error {
+func (r *BigHeaderRequest) WriteHeaderTo(w *bufio.Writer) (int, int, error) {
 	result := "Cache:"
 	for i := 0; i < 100000; i++ {
 		result += "S"
 	}
 	n, err := w.WriteString("Host: www.bing.com\r\nUser-Agent: test client\r\n" + result + "\r\n\r\n")
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	if w.Buffered() < n {
 		r.readSize += w.Buffered()
-		return io.ErrShortWrite
+		return r.readSize, n, io.ErrShortWrite
 	}
 	r.readSize += n
-	return nil
+	return r.readSize, n, nil
 }
 
-func (r *BigHeaderRequest) WriteBodyTo(w *bufio.Writer) error {
-	return nil
+func (r *BigHeaderRequest) WriteBodyTo(w *bufio.Writer) (int, error) {
+	return 0, nil
 }
 
 func (r *BigHeaderRequest) ConnectionClose() bool {
@@ -821,14 +828,14 @@ type BigBodyResponse struct {
 	body []byte
 }
 
-func (r *BigBodyResponse) ReadFrom(discardBody bool, br *bufio.Reader) error {
+func (r *BigBodyResponse) ReadFrom(discardBody bool, br *bufio.Reader) (int, error) {
 	b, err := br.ReadBytes('!')
 	if err != nil {
-		return err
+		return 0, err
 	}
 	r.size = len(b)
 	r.body = b
-	return nil
+	return r.size, nil
 }
 
 func (r *BigBodyResponse) GetBody() []byte {
@@ -878,14 +885,19 @@ func (r *IdempotentRequest) Protocol() []byte {
 	return []byte("HTTP/1.1")
 }
 
-func (r *IdempotentRequest) WriteHeaderTo(w *bufio.Writer) error {
-	_, err := w.WriteString("Host: www.bing.com\r\nUser-Agent: test client" + "\r\n\r\n")
-	return err
+func (r *IdempotentRequest) WriteHeaderTo(w *bufio.Writer) (int, int, error) {
+	header := "Host: www.bing.com\r\nUser-Agent: test client\r\n\r\n"
+	n, err := w.WriteString(header)
+	if err != nil {
+		return len(header), 0, err
+	}
+	err = w.Flush()
+	return len(header), n, err
 }
 
-func (r *IdempotentRequest) WriteBodyTo(w *bufio.Writer) error {
-	_, err := w.WriteString("username=Hello server!\r\n\r\n")
-	return err
+func (r *IdempotentRequest) WriteBodyTo(w *bufio.Writer) (int, error) {
+	n, err := w.WriteString("username=Hello server!\r\n\r\n")
+	return n, err
 }
 
 func (r *IdempotentRequest) ConnectionClose() bool {
@@ -923,14 +935,14 @@ type IdempotentResponse struct {
 	body []byte
 }
 
-func (r *IdempotentResponse) ReadFrom(discardBody bool, br *bufio.Reader) error {
+func (r *IdempotentResponse) ReadFrom(discardBody bool, br *bufio.Reader) (int, error) {
 	b, err := br.ReadBytes('!')
 	if err != nil {
-		return err
+		return 0, err
 	}
 	r.size = len(b)
 	r.body = b
-	return nil
+	return r.size, nil
 }
 
 func (r *IdempotentResponse) GetBody() []byte {
@@ -966,13 +978,18 @@ func (r *HTTPSRequest) Protocol() []byte {
 	return []byte("HTTP/1.1")
 }
 
-func (r *HTTPSRequest) WriteHeaderTo(w *bufio.Writer) error {
-	_, err := w.WriteString("Host: www.bing.com\r\nUser-Agent: test client\r\n" + "\r\n")
-	return err
+func (r *HTTPSRequest) WriteHeaderTo(w *bufio.Writer) (int, int, error) {
+	header := "Host: www.bing.com\r\nUser-Agent: test client\r\n\r\n"
+	n, err := w.WriteString(header)
+	if err != nil {
+		return len(header), 0, err
+	}
+	err = w.Flush()
+	return len(header), n, err
 }
 
-func (r *HTTPSRequest) WriteBodyTo(w *bufio.Writer) error {
-	return nil
+func (r *HTTPSRequest) WriteBodyTo(w *bufio.Writer) (int, error) {
+	return 0, nil
 }
 
 func (r *HTTPSRequest) ConnectionClose() bool {
