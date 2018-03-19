@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/cert"
@@ -111,11 +112,11 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 }
 
 func (h *Handler) handleHTTPSConns(c net.Conn, hostWithPort string,
-	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage) error {
+	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage, idle time.Duration) error {
 	if h.ShouldDecryptHost(hostWithPort) {
 		return h.decryptConnect(c, hostWithPort, bufioPool, client, usage)
 	}
-	return h.tunnelConnect(c, bufioPool, hostWithPort, usage)
+	return h.tunnelConnect(c, bufioPool, hostWithPort, usage, idle)
 }
 
 const (
@@ -143,7 +144,7 @@ func (h *Handler) sendHTTPSProxyStatusBadGateway(c net.Conn) (err error) {
 
 //proxy https traffic directly
 func (h *Handler) tunnelConnect(conn net.Conn,
-	bufioPool *bufiopool.Pool, hostWithPort string, usage *usage.ProxyUsage) error {
+	bufioPool *bufiopool.Pool, hostWithPort string, usage *usage.ProxyUsage, idle time.Duration) error {
 	superProxy := h.URLProxy(hostWithPort, nil)
 
 	targetWithPort := hostWithPort
@@ -206,11 +207,11 @@ func (h *Handler) tunnelConnect(conn net.Conn,
 	var superProxyOutgoingTrafficSize, superProxyIncomingTrafficSize int64
 	wg.Add(2)
 	go func() {
-		superProxyOutgoingTrafficSize, superProxyWriteErr = transport.Forward(tunnelConn, conn)
+		superProxyOutgoingTrafficSize, superProxyWriteErr = transport.Forward(tunnelConn, conn, idle)
 		wg.Done()
 	}()
 	go func() {
-		superProxyIncomingTrafficSize, superProxyReadErr = transport.Forward(conn, tunnelConn)
+		superProxyIncomingTrafficSize, superProxyReadErr = transport.Forward(conn, tunnelConn, idle)
 		wg.Done()
 	}()
 	wg.Wait()

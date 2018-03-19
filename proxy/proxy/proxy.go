@@ -229,7 +229,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			req.Reset()
 			//make the requests
 			if err := p.Handler.handleHTTPSConns(c, host,
-				p.BufioPool, &p.Client, &p.Client.Usage); err != nil {
+				p.BufioPool, &p.Client, &p.Client.Usage, p.MaxClientIdleDuration); err != nil {
 				return util.ErrWrapper(err, "error HTTPS traffic "+host+" ")
 			}
 		}
