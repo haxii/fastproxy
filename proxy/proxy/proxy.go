@@ -62,6 +62,9 @@ type Proxy struct {
 
 	//usage
 	Usage *usage.ProxyUsage
+
+	//gln net listener for graceful shut down
+	gln net.Listener
 }
 
 func (p *Proxy) init() error {
@@ -117,7 +120,7 @@ func (p *Proxy) Serve(ln net.Listener, maxWaitTime time.Duration) error {
 	var c net.Conn
 	var err error
 
-	gln := NewGracefulListener(ln, maxWaitTime)
+	p.gln = NewGracefulListener(ln, maxWaitTime)
 	maxWorkersCount := DefaultConcurrency
 	wp := &server.WorkerPool{
 		WorkerFunc:      p.serveConn,
@@ -127,7 +130,7 @@ func (p *Proxy) Serve(ln net.Listener, maxWaitTime time.Duration) error {
 	wp.Start()
 
 	for {
-		if c, err = p.acceptConn(gln, &lastPerIPErrorTime); err != nil {
+		if c, err = p.acceptConn(p.gln, &lastPerIPErrorTime); err != nil {
 			wp.Stop()
 			if err == io.EOF {
 				return nil
@@ -266,12 +269,12 @@ func (p *Proxy) writeFastError(w io.Writer, statusCode int, msg string) error {
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(w, "Connection: close\r\n"+
+	_, err = fmt.Fprintf(w,
 		"Date: %s\r\n"+
-		"Content-Type: text/plain\r\n"+
-		"Content-Length: %d\r\n"+
-		"\r\n"+
-		"%s",
+			"Content-Type: text/plain\r\n"+
+			"Content-Length: %d\r\n"+
+			"\r\n"+
+			"%s",
 		servertime.ServerDate(), len(msg), msg)
 	return err
 }
@@ -298,4 +301,9 @@ func (p *Proxy) updateReadDeadline(c net.Conn, currentTime, connTime, lastDeadli
 		lastDeadlineTime = currentTime
 	}
 	return lastDeadlineTime
+}
+
+//GracefulShutdown for proxy graceful shut down
+func (p *Proxy) GracefulShutdown() error {
+	return p.gln.Close()
 }
