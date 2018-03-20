@@ -220,6 +220,13 @@ func TestWithClient(t *testing.T) {
 		t.Fatalf("No response data can get, client do with proxy http request and response error")
 	}
 
+	if !bytes.Contains(bReq.Bytes(), []byte("Host")) {
+		t.Fatal("Hijack does not save request data")
+	}
+
+	if !bytes.Contains(bReq.Bytes(), []byte("HTTP/1.1 200 ok")) {
+		t.Fatal("Hijack does not save reponse data")
+	}
 	req.Reset()
 	resp.Reset()
 	headReq := "HEAD / HTTP/1.1\r\n" +
@@ -296,10 +303,17 @@ func (a *testAddr) Network() string {
 	return a.netWork
 }
 
-type hijacker struct{}
+var bReq = bytebufferpool.MakeFixedSizeByteBuffer(100)
+var bResp = bytebufferpool.MakeFixedSizeByteBuffer(100)
+
+type hijacker struct {
+	clientAddr, targetHost string
+	method, path           []byte
+}
 
 func (s *hijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
-	return nil
+	bReq.Write(rawHeader)
+	return bReq
 }
 
 func (s *hijacker) HijackResponse() io.Reader {
@@ -308,7 +322,20 @@ func (s *hijacker) HijackResponse() io.Reader {
 
 func (s *hijacker) OnResponse(respLine http.ResponseLine,
 	header http.Header, rawHeader []byte) io.Writer {
-	return nil
+	fmt.Fprintf(bResp, `
+			************************
+			%s %d %s
+			************************
+			content length: %d
+			content type: %s
+			************************
+			%s
+			************************
+			`,
+
+		respLine.GetProtocol(), respLine.GetStatusCode(), respLine.GetStatusMessage(),
+		header.ContentLength(), header.ContentType(), rawHeader)
+	return bResp
 }
 
 func TestCopyHeader(t *testing.T) {
@@ -345,5 +372,4 @@ func TestCopyHeader(t *testing.T) {
 	if !strings.Contains(err.Error(), "fail to parse http headers") {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
-
 }

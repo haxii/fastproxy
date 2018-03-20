@@ -758,6 +758,8 @@ func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 		Timeout:   10 * time.Second,
 	}
 	req, err := nethttp.NewRequest("GET", "http://127.0.0.1:9333/sproxy", nil)
+	req.Header.Set("Cache", "no-cache")
+	req.Header.Set("Cookie", "NID=126=VEQk0MLRs1D2e5LMm8xkSyakyyr0_pEite-M8OAIh23FIzFCaoEAJkaeyIioj_ExnEKjdXUa4dMGdXVmS6bW3-E2xIZU89F3dcI87OUnH5RjN-xbtLlYdEy2OsAoPYQib4AiozI; 1P_JAR=2018-3-19-9")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -783,8 +785,28 @@ func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 		t.Fatal("An error occurred: proxy can't send request")
 	}
 
-	if !bytes.Contains(bResp.Bytes(), []byte("hello, world")) {
-		t.Fatal("Don't save sniffer")
+	if !bytes.Contains(bReq.Bytes(), []byte("Cache")) {
+		t.Fatal("Hijack do not save request")
+	}
+
+	if !bytes.Contains(bReq.Bytes(), []byte("Host")) {
+		t.Fatal("Hijack do not save request")
+	}
+
+	if !bytes.Contains(bReq.Bytes(), []byte("Cookie")) {
+		t.Fatal("Hijack do not save request")
+	}
+
+	if !bytes.Contains(bReq.Bytes(), []byte("User-Agent")) {
+		t.Fatal("Hijack do not save request")
+	}
+
+	if !bytes.Contains(bResp.Bytes(), []byte("Hello world")) {
+		t.Fatal("Hijack don't save response")
+	}
+
+	if !bytes.Contains(bResp.Bytes(), []byte("Hello proxy")) {
+		t.Fatal("Hijack don't save response")
 	}
 }
 
@@ -865,6 +887,7 @@ func (s *completeHijacker) Set(clientAddr net.Addr,
 	s.path = path
 }
 func (s *completeHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
+	bReq.Write(rawHeader)
 	return bReq
 }
 
