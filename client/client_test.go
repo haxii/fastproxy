@@ -17,6 +17,7 @@ import (
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/superproxy"
+	"github.com/haxii/fastproxy/usage"
 )
 
 func TestClientDo(t *testing.T) {
@@ -55,6 +56,8 @@ func TestClientDo(t *testing.T) {
 	testClientDoWithSameConnectionGetMethod(t)
 
 	testClientDoWithSameConnectionPostMethod(t)
+
+	testClientUsage(t)
 }
 
 // Test Client do with big header or big body
@@ -646,6 +649,78 @@ func testClientDoWithSameConnectionGetMethod(t *testing.T) {
 				t.Fatalf("Connection closed by peer, Client can't get any data")
 			}
 		}
+	}
+}
+
+func testClientUsage(t *testing.T) {
+	c := Client{}
+	c.Usage = usage.ProxyUsage{
+		Incoming: 0,
+		Outgoing: 0,
+	}
+	preIncomingSize := 0
+	preOutgoingSize := 0
+	for i := 1; i < 100; i++ {
+		c.Usage.AddIncomingSize(uint64(i))
+		if c.Usage.GetIncomingSize() != uint64(i+preIncomingSize) {
+			t.Fatal("IncomingSize count error")
+		}
+		c.Usage.AddOutgoingSize(uint64(i))
+		if c.Usage.GetOutgoingSize() != uint64(i+preOutgoingSize) {
+			t.Fatal("OutgoingSize count error")
+		}
+		preIncomingSize = int(c.Usage.GetIncomingSize())
+		preOutgoingSize = int(c.Usage.GetOutgoingSize())
+	}
+	if c.Usage.GetIncomingSize() != 4950 {
+		t.Fatal("IncomingSize count error")
+	}
+	if c.Usage.GetOutgoingSize() != 4950 {
+		t.Fatal("IncomingSize count error")
+	}
+
+	c.Usage.AddIncomingSize(1000)
+	if c.Usage.GetIncomingSize() != 4950 {
+		t.Fatal("IncomingSize count error")
+	}
+	c.Usage.AddOutgoingSize(1000)
+	if c.Usage.GetOutgoingSize() != 4950 {
+		t.Fatal("OutgoingSize count error")
+	}
+
+	c.Usage.Incoming = 0
+	c.Usage.AddIncomingSize(10000000000000000000)
+	if c.Usage.GetIncomingSize() != 10000000000000000000 {
+		t.Fatal("IncomingSize count error")
+	}
+
+	var err error
+	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+	currentClinet := &Client{
+		BufioPool: bPool,
+	}
+	currentClinet.Usage = usage.ProxyUsage{
+		Incoming: 0,
+		Outgoing: 0,
+	}
+	req := &SimpleRequest{}
+	req.SetTargetWithPort("0.0.0.0:10000")
+	resp := &SimpleResponse{}
+	reqReadNum, respWriteNum, _, err := currentClinet.Do(req, resp)
+	if err != nil {
+		t.Fatalf("unexpected error : %s", err.Error())
+	}
+	if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
+		t.Fatal("Response body is wrong")
+	}
+
+	currentClinet.Usage.AddIncomingSize(uint64(respWriteNum))
+	currentClinet.Usage.AddOutgoingSize(uint64(reqReadNum))
+	if currentClinet.Usage.GetIncomingSize() != uint64(respWriteNum) {
+		t.Fatal("Usage income size count is wrong")
+	}
+	if currentClinet.Usage.GetOutgoingSize() != uint64(reqReadNum) {
+		t.Fatal("Usage outgoing size count is wrong")
 	}
 }
 
