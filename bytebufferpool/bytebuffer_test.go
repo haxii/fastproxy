@@ -155,3 +155,51 @@ func TestByteBufferCopy(t *testing.T) {
 		t.Fatal("Copy content is wrong")
 	}
 }
+
+func TestCopyWithIdleDuration(t *testing.T) {
+	b := Get()
+	dst := Get()
+	dst.Reset()
+	s := "hello world!"
+	nReader := strings.NewReader(s)
+	n, err := b.CopyWithIdleDuration(dst, nReader, 0)
+	if err != nil {
+		t.Fatalf("unexpected err: %s", err.Error())
+	}
+	if int(n) != len(s) {
+		t.Fatal("Copy size is wrong")
+	}
+	if !bytes.Equal(dst.Bytes(), []byte(s)) {
+		t.Fatal("Copy content is wrong")
+	}
+
+	dst.Reset()
+	largeS := ""
+	for i := 0; i < 30000; i++ {
+		largeS += "t"
+	}
+	nReader.Reset(largeS)
+	n, err = b.CopyWithIdleDuration(dst, nReader, 100*time.Microsecond)
+	if err != nil {
+		t.Fatalf("unexpected err: %s", err.Error())
+	}
+	if int(n) != len(largeS) {
+		t.Fatal("Copy size is wrong")
+	}
+	if !bytes.Equal(dst.Bytes(), []byte(largeS)) {
+		t.Fatal("Copy content is wrong")
+	}
+
+	nlargeS := ""
+	for i := 0; i < 400000; i++ {
+		nlargeS += "t"
+	}
+	nReader.Reset(nlargeS)
+	n, err = b.CopyWithIdleDuration(dst, nReader, 1*time.Microsecond)
+	if err == nil {
+		t.Fatal("expected err: idle time out")
+	}
+	if !strings.Contains(err.Error(), "idle time out") {
+		t.Fatal("expected err: idle time out, but get unexpected error")
+	}
+}
