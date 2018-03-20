@@ -140,7 +140,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 		}
 	}()
 	go func() {
-		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 443, superproxy.ProxyTypeHTTPS, "", "", false, "../proxy/proxy/.server.crt")
+		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 8888, superproxy.ProxyTypeHTTPS, "", "", false, "../proxy/proxy/.server.crt")
 		ln, err := net.Listen("tcp4", "0.0.0.0:5060")
 		if err != nil {
 			return
@@ -157,7 +157,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 					return true
 				},
 				ShouldDecryptHost: func(hostWithPort string) bool {
-					return true
+					return false
 				},
 				URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
 					return superProxy
@@ -187,7 +187,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 					return true
 				},
 				ShouldDecryptHost: func(hostWithPort string) bool {
-					return true
+					return false
 				},
 				URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
 					return superProxy
@@ -200,7 +200,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 		}
 	}()
 	go func() {
-		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 5080, superproxy.ProxyTypeHTTP, "", "", false, "")
+		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 3128, superproxy.ProxyTypeHTTP, "", "", false, "")
 		ln, err := net.Listen("tcp4", "0.0.0.0:5040")
 		if err != nil {
 			return
@@ -217,7 +217,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 					return true
 				},
 				ShouldDecryptHost: func(hostWithPort string) bool {
-					return true
+					return false
 				},
 				URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
 					return superProxy
@@ -261,11 +261,11 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	tesHTTPRequest(t)
 	testHTTPSRequest(t)
 	testHTTPSuperProxyWithHTTPRequest(t)
-	//testHTTPSuperProxyWithHTTPSRequest(t)
-	//testHTTPSSuperProxyWithHTTPRequest(t)
-	//testHTTPSSuperProxyWithHTTPSRequest(t)
+	testHTTPSuperProxyWithHTTPSRequest(t)
+	testHTTPSSuperProxyWithHTTPRequest(t)
+	testHTTPSSuperProxyWithHTTPSRequest(t)
 	testSocks5SuperProxyyWithHTTPRequest(t)
-	//testSocks5SuperProxyWithHTTPSRequest(t)
+	testSocks5SuperProxyWithHTTPSRequest(t)
 	testDNSAnalysis(t)
 
 	testBigHeader(t)
@@ -702,7 +702,7 @@ func TestGracefulShutDown(t *testing.T) {
 }
 
 func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
-	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 5080, superproxy.ProxyTypeHTTP, "", "", false, "")
+	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 3128, superproxy.ProxyTypeHTTP, "", "", false, "")
 	proxy := Proxy{
 		BufioPool:   &bufiopool.Pool{},
 		Client:      client.Client{},
@@ -712,7 +712,7 @@ func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 				return true
 			},
 			ShouldDecryptHost: func(hostWithPort string) bool {
-				return true
+				return false
 			},
 			URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
 				if strings.Contains(hostWithPort, "127.0.0.1:9333") {
