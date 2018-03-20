@@ -783,7 +783,7 @@ func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 		t.Fatal("An error occurred: proxy can't send request")
 	}
 
-	if !bytes.Contains(bResp, "hello, world") {
+	if !bytes.Contains(bResp.Bytes(), []byte("hello, world")) {
 		t.Fatal("Don't save sniffer")
 	}
 }
