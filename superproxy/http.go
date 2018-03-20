@@ -50,7 +50,7 @@ func (p *SuperProxy) initHTTPCertAndAuth(isSSL bool, host string,
 // Host: targetHost:Port\r\n
 // * proxy auth if needed *
 // \r\n
-func (p *SuperProxy) writeHTTPProxyReq(c net.Conn, targetHostWithPort []byte) error {
+func (p *SuperProxy) writeHTTPProxyReq(c net.Conn, targetHostWithPort []byte) (int, error) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 	buf.B = make([]byte, len(superProxyReqMethod)+len(superProxyReqSP)+

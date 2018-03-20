@@ -16,7 +16,6 @@ import (
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/proxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
-	"github.com/haxii/fastproxy/usage"
 	"github.com/haxii/log"
 )
 
@@ -25,7 +24,7 @@ func main() {
 	if err != nil {
 		return
 	}
-	superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8081, superproxy.ProxyTypeHTTP, "", "", true, "")
+	superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8888, superproxy.ProxyTypeHTTP, "", "", "")
 	superProxy.SetMaxConcurrency(20)
 
 	proxy := proxy.Proxy{
@@ -60,7 +59,7 @@ func main() {
 				return ips[randInt]
 			},
 		},
-		Usage: usage.NewProxyUsage(),
+		MaxClientIdleDuration: time.Second * 30,
 	}
 
 	if err := proxy.Serve(ln, 30*time.Second); err != nil {

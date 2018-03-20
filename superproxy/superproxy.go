@@ -50,7 +50,7 @@ type SuperProxy struct {
 	socks5Auth      []byte
 
 	//usage
-	Usage *usage.ProxyUsage
+	Usage usage.ProxyUsage
 
 	//concurrency chan
 	concurrencyChan chan struct{}
@@ -58,7 +58,7 @@ type SuperProxy struct {
 
 // NewSuperProxy new a super proxy
 func NewSuperProxy(proxyHost string, proxyPort uint16, proxyType ProxyType,
-	user string, pass string, shouldOpenUsage bool, selfSignedCACertificate string) (*SuperProxy, error) {
+	user string, pass string, selfSignedCACertificate string) (*SuperProxy, error) {
 	// check input vars
 	if len(proxyHost) == 0 {
 		return nil, errors.New("nil host provided")
@@ -83,10 +83,6 @@ func NewSuperProxy(proxyHost string, proxyPort uint16, proxyType ProxyType,
 		s.initHTTPCertAndAuth(proxyType == ProxyTypeHTTPS, proxyHost, user, pass, selfSignedCACertificate)
 	} else {
 		s.initSOCKS5GreetingsAndAuth(user, pass)
-	}
-
-	if shouldOpenUsage {
-		s.Usage = usage.NewProxyUsage()
 	}
 
 	s.SetMaxConcurrency(DefaultMaxConcurrency)
@@ -137,7 +133,8 @@ func (p *SuperProxy) MakeTunnel(pool *bufiopool.Pool,
 
 	if p.proxyType != ProxyTypeSOCKS5 {
 		// HTTP/HTTPS tunnel establishing
-		if err := p.writeHTTPProxyReq(c, []byte(targetHostWithPort)); err != nil {
+		_, err := p.writeHTTPProxyReq(c, []byte(targetHostWithPort))
+		if err != nil {
 			c.Close()
 			return nil, err
 		}
@@ -163,14 +160,6 @@ func (p *SuperProxy) MakeTunnel(pool *bufiopool.Pool,
 		}
 	}
 	return c, nil
-}
-
-//Release releases some resource
-func (p *SuperProxy) Release() {
-	if p.Usage != nil {
-		p.Usage.Stop()
-		p.Usage = nil
-	}
 }
 
 // SetMaxConcurrency sets max concurrency,
