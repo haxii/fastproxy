@@ -3,6 +3,7 @@ package client
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io"
 	"net"
 )
@@ -36,16 +37,18 @@ var (
 
 const defaultHTTPPort = "80"
 
+var errNilBufioWriter = errors.New("nil bufio writer")
+
 func writeRequestLine(bw *bufio.Writer, fullURL bool,
 	method []byte, hostWithPort string, path, protocol []byte) (int, error) {
-	host, port, err := net.SplitHostPort(hostWithPort)
-	if err != nil {
-		return 0, err
-	}
+
 	writeSize := 0
 	write := func(b []byte) error {
 		var nw int
 		var err error
+		if bw == nil {
+			return errNilBufioWriter
+		}
 		if nw, err = bw.Write(b); err != nil {
 			return err
 		} else if nw != len(b) {
@@ -71,8 +74,13 @@ func writeRequestLine(bw *bufio.Writer, fullURL bool,
 	if err := bw.WriteByte(startLineSP); err != nil {
 		return writeSize, err
 	}
-	writeSize += 1
+	writeSize++
 	if fullURL {
+		host, port, err := net.SplitHostPort(hostWithPort)
+		if err != nil {
+			return 0, err
+		}
+
 		if err := write(startLineScheme); err != nil {
 			return writeSize, err
 		}
@@ -103,7 +111,7 @@ func writeRequestLine(bw *bufio.Writer, fullURL bool,
 	if err := bw.WriteByte(startLineSP); err != nil {
 		return writeSize, err
 	}
-	writeSize += 1
+	writeSize++
 	if err := write(protocol); err != nil {
 		return writeSize, err
 	}
