@@ -75,6 +75,7 @@ func TestProxyServe(t *testing.T) {
 	}
 }
 
+//TestFastProxyAsProxyServe test fast proxy as http https socks5 proxy
 func TestFastProxyAsProxyServe(t *testing.T) {
 	go func() {
 		nethttp.HandleFunc("/", func(w nethttp.ResponseWriter, r *nethttp.Request) {
@@ -275,6 +276,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	defer os.Remove(".server.key")
 }
 
+//test send http request with fastproxy
 func tesHTTPRequest(t *testing.T) {
 	proxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5050))
@@ -305,6 +307,7 @@ func tesHTTPRequest(t *testing.T) {
 	}
 }
 
+// test send https request with fastproxy
 func testHTTPSRequest(t *testing.T) {
 	proxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5050))
@@ -338,6 +341,8 @@ func testHTTPSRequest(t *testing.T) {
 		t.Fatal("An error occurred: proxy can't send request")
 	}
 }
+
+// test send http request with http superproxy
 func testHTTPSuperProxyWithHTTPRequest(t *testing.T) {
 	proxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5040))
@@ -367,6 +372,8 @@ func testHTTPSuperProxyWithHTTPRequest(t *testing.T) {
 		t.Fatal("An error occurred: proxy can't send request")
 	}
 }
+
+// test send https request with http superproxy
 func testHTTPSuperProxyWithHTTPSRequest(t *testing.T) {
 	proxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5040))
@@ -400,6 +407,8 @@ func testHTTPSuperProxyWithHTTPSRequest(t *testing.T) {
 		t.Fatal("An error occurred: proxy can't send request")
 	}
 }
+
+// test send http request with https superproxy
 func testHTTPSSuperProxyWithHTTPRequest(t *testing.T) {
 	proxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("https://%s:%d", "127.0.0.1", 5060))
@@ -435,6 +444,7 @@ func testHTTPSSuperProxyWithHTTPRequest(t *testing.T) {
 	}
 }
 
+// test send https request with https superproxy
 func testHTTPSSuperProxyWithHTTPSRequest(t *testing.T) {
 	proxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5060))
@@ -467,6 +477,8 @@ func testHTTPSSuperProxyWithHTTPSRequest(t *testing.T) {
 		t.Fatal("An error occurred: proxy can't send request")
 	}
 }
+
+// test send http request with socks5 superproxy
 func testSocks5SuperProxyyWithHTTPRequest(t *testing.T) {
 	proxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5030))
@@ -497,6 +509,8 @@ func testSocks5SuperProxyyWithHTTPRequest(t *testing.T) {
 		t.Fatal("An error occurred: proxy can't send request")
 	}
 }
+
+// test send https request with socks5 superproxy
 func testSocks5SuperProxyWithHTTPSRequest(t *testing.T) {
 	proxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5030))
@@ -530,6 +544,7 @@ func testSocks5SuperProxyWithHTTPSRequest(t *testing.T) {
 	}
 }
 
+// test local DNS analysis by dnsmasq
 func testDNSAnalysis(t *testing.T) {
 	ns, err := net.LookupHost("localhost")
 	if err != nil {
@@ -546,6 +561,7 @@ func testDNSAnalysis(t *testing.T) {
 	}
 }
 
+// test read timeout and max keep alive duration
 func testReadTimeoutAndMaxKeepaliveDuration(t *testing.T) {
 	go func() {
 		ln, err := net.Listen("tcp4", "0.0.0.0:7077")
@@ -609,6 +625,7 @@ func testReadTimeoutAndMaxKeepaliveDuration(t *testing.T) {
 	}
 }
 
+// test big header parse
 func testBigHeader(t *testing.T) {
 	Cache := ""
 	for i := 0; i < 10000; i++ {
@@ -642,6 +659,7 @@ func testBigHeader(t *testing.T) {
 	}
 }
 
+// test graceful shut down
 func TestGracefulShutDown(t *testing.T) {
 	proxy := Proxy{
 		BufioPool:   &bufiopool.Pool{},
@@ -701,6 +719,7 @@ func TestGracefulShutDown(t *testing.T) {
 	}
 }
 
+// test using proxy hijack and url send to different proxy
 func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 3128, superproxy.ProxyTypeHTTP, "", "", false, "")
 	proxy := Proxy{
