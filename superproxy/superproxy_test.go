@@ -3,6 +3,7 @@ package superproxy
 import (
 	"bytes"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -23,17 +24,17 @@ func TestNewSuperProxy(t *testing.T) {
 	testNewSuperProxyWithSocksType(t)
 }
 func testNewSuperProxyWithHTTPType(t *testing.T) {
-	superProxy, err := NewSuperProxy("localhost", uint16(5080), ProxyTypeHTTP, "", "", "")
+	superProxy, err := NewSuperProxy("localhost", uint16(8081), ProxyTypeHTTP, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
 	if superProxy.GetProxyType() != ProxyTypeHTTP {
 		t.Fatalf("unexpected proxy type")
 	}
-	if superProxy.HostWithPort() != "localhost:5080" {
+	if superProxy.HostWithPort() != "localhost:8081" {
 		t.Fatalf("unexpected host with port")
 	}
-	if !bytes.Equal(superProxy.HostWithPortBytes(), []byte("localhost:5080")) {
+	if !bytes.Equal(superProxy.HostWithPortBytes(), []byte("localhost:8081")) {
 		t.Fatalf("unexpected host with port bytes")
 	}
 	pool := bufiopool.New(1, 1)
@@ -87,17 +88,60 @@ func testNewSuperProxyWithSocksType(t *testing.T) {
 }
 
 func testNewSuperProxyWithHTTPSProxy(t *testing.T) {
-	superProxy, err := NewSuperProxy("localhost", uint16(443), ProxyTypeHTTPS, "", "", selfSignedCA)
+	serverCrt := `-----BEGIN CERTIFICATE-----
+MIICnzCCAggCCQDbF8N9hzgLKTANBgkqhkiG9w0BAQUFADCBkzELMAkGA1UEBhMC
+c2gxGjAYBgNVBAgMEXNoYW5naGFpIGluIENoaW5hMREwDwYDVQQHDAhzaGFuZ2hh
+aTEOMAwGA1UECgwFaGF4aWkxEDAOBgNVBAsMB3NlY3Rpb24xEjAQBgNVBAMMCWxv
+Y2FsaG9zdDEfMB0GCSqGSIb3DQEJARYQNDkzODg1NTk3QHFxLmNvbTAeFw0xODAz
+MDEwMzU4NDRaFw0xODAzMzEwMzU4NDRaMIGTMQswCQYDVQQGEwJzaDEaMBgGA1UE
+CAwRc2hhbmdoYWkgaW4gY2hpbmExETAPBgNVBAcMCHNoYW5naGFpMQ4wDAYDVQQK
+DAVoYXhpaTEQMA4GA1UECwwHc2VjdGlvbjESMBAGA1UEAwwJbG9jYWxob3N0MR8w
+HQYJKoZIhvcNAQkBFhA0OTM4ODU1OTdAcXEuY29tMIGfMA0GCSqGSIb3DQEBAQUA
+A4GNADCBiQKBgQCpavxAydg6qDcSHhzwcebD5v/o2yItY1a6cA8t4cd+8661TAQr
+//YRISpIwUZ7TOLVdmnMuyUzxGABZQ5iwiKDqbl5GLxB/f3NRWv5Cr8vT4izFNP0
+toIky5oEkDq/xBZvVnshBO6fpx1vulnow+3Y3WeriwVXvuQAQw5N8qod/QIDAQAB
+MA0GCSqGSIb3DQEBBQUAA4GBAG45K4B2N8lEeCimTyYuS9yGRQINMfdZksL2aDyq
+OL95JiCMKM1iFulom/fth3oxi1w95VRFaM4tO8qIBtKuFyWs8x1MMpTJlEamHFTe
+H1Id2JuKgDgi4AmxfKPjh+j+U6iNbMgjwo6scfaWcpteGK0FA5jn4cmMmlwhkjCA
+L/ib
+-----END CERTIFICATE-----
+`
+	f, err := os.Create(".server.crt")
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	f.Write([]byte(serverCrt))
+	f.Close()
+
+	defer os.Remove(".server.crt")
+
+	superProxy, err := NewSuperProxy("localhost", uint16(3129), ProxyTypeHTTPS, "", "", ".server.crt")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
 	if superProxy.GetProxyType() != ProxyTypeHTTPS {
 		t.Fatalf("unexpected proxy type")
 	}
-	if superProxy.HostWithPort() != "localhost:443" {
+	if superProxy.HostWithPort() != "localhost:3129" {
 		t.Fatalf("unexpected host with port")
 	}
-	if !bytes.Equal(superProxy.HostWithPortBytes(), []byte("localhost:443")) {
+	if !bytes.Equal(superProxy.HostWithPortBytes(), []byte("localhost:3129")) {
 		t.Fatalf("unexpected host with port bytes")
+	}
+	superProxy.tlsConfig.InsecureSkipVerify = true
+	pool := bufiopool.New(1, 1)
+	conn, err := superProxy.MakeTunnel(pool, "localhost:9999")
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	result := make([]byte, 1000)
+	if _, err = conn.Read(result); err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	if !strings.Contains(string(result), "HTTP/1.1 200 OK") {
+		t.Fatalf("unexpected result")
 	}
 }
