@@ -52,6 +52,9 @@ func (h *Handler) handleHTTPConns(c net.Conn, req *http.Request,
 	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage) error {
 	if h.RewriteURL != nil {
 		hostWithPort := h.RewriteURL(req.HostInfo().HostWithPort())
+		if len(hostWithPort) == 0 {
+			return nil
+		}
 		req.HostInfo().ParseHostWithPort(hostWithPort)
 	}
 
@@ -123,6 +126,9 @@ func (h *Handler) handleHTTPSConns(c net.Conn, hostWithPort string,
 	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage, idle time.Duration) error {
 	if h.RewriteURL != nil {
 		hostWithPort = h.RewriteURL(hostWithPort)
+		if len(hostWithPort) == 0 {
+			return nil
+		}
 	}
 	if h.ShouldDecryptHost(hostWithPort) {
 		return h.decryptConnect(c, hostWithPort, bufioPool, client, usage)

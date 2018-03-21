@@ -33,6 +33,9 @@ type SuperProxy struct {
 	hostWithPort      string
 	hostWithPortBytes []byte
 
+	username string
+	password string
+
 	// proxyType, HTTP/HTTPS/SOCKS5
 	proxyType ProxyType
 	// proxy net connections pool/manager
@@ -85,8 +88,21 @@ func NewSuperProxy(proxyHost string, proxyPort uint16, proxyType ProxyType,
 		s.initSOCKS5GreetingsAndAuth(user, pass)
 	}
 
+	s.username = user
+	s.password = pass
+
 	s.SetMaxConcurrency(DefaultMaxConcurrency)
 	return s, nil
+}
+
+//Username returns username
+func (p *SuperProxy) Username() string {
+	return p.username
+}
+
+//Password returns password
+func (p *SuperProxy) Password() string {
+	return p.password
 }
 
 //GetProxyType returns super proxy type
