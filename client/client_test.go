@@ -542,7 +542,6 @@ func testClientDoWithSameConnectionPostMethod(t *testing.T) {
 		})
 		nethttp.Serve(ln, nil)
 	}()
-	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool: bPool,
@@ -552,20 +551,41 @@ func testClientDoWithSameConnectionPostMethod(t *testing.T) {
 	req.SetTargetWithPort("127.0.0.1:10002")
 	req.SetPathWithQueryFragment([]byte("/closetest"))
 	resp := &SimpleResponse{}
-	_, _, _, err = c.Do(req, resp)
+	reqR, reqW, respN, err := c.Do(req, resp)
 	if err != nil {
 		t.Fatalf("Unexpected error: %s", err.Error())
 	}
 	if !bytes.Contains(resp.GetBody(), []byte("Connection will close!")) {
 		t.Fatalf("Connection closed by peer, Client can't get any data")
 	}
+	currentReqSize, currentReqWriteSize := req.GetRequestSize()
+	if currentReqSize != reqR {
+		t.Fatal("Request read size count error")
+	}
+	if currentReqWriteSize != reqW {
+		t.Fatal("Request write size count error")
+	}
+	if len(resp.GetBody()) != respN {
+		t.Fatal("Response size count error")
+	}
+
 	req.SetMethod([]byte("POST"))
-	_, _, _, err = c.Do(req, resp)
+	reqR, reqW, respN, err = c.Do(req, resp)
 	if err == nil {
 		t.Fatalf("expected error: %s", ErrConnectionClosed)
 	}
 	if err != ErrConnectionClosed {
 		t.Fatalf("expected error: %s, but unexpected error: %s", ErrConnectionClosed, err)
+	}
+	currentReqSize, currentReqWriteSize = req.GetRequestSize()
+	if currentReqSize != reqR {
+		t.Fatal("Request read size count error")
+	}
+	if currentReqWriteSize != reqW {
+		t.Fatal("Request write size count error")
+	}
+	if respN != 0 {
+		t.Fatalf("unexpected resp num: %d", respN)
 	}
 }
 
@@ -626,7 +646,6 @@ func testClientDoWithSameConnectionGetMethod(t *testing.T) {
 		})
 		nethttp.Serve(ln, nil)
 	}()
-	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool: bPool,
@@ -637,7 +656,7 @@ func testClientDoWithSameConnectionGetMethod(t *testing.T) {
 	req.SetPathWithQueryFragment([]byte("/close"))
 	resp := &SimpleResponse{}
 	for i := 0; i < 2; i++ {
-		_, _, _, err = c.Do(req, resp)
+		reqR, reqW, respN, err := c.Do(req, resp)
 		if err != nil {
 			t.Fatalf("Unexpected error: %s", err.Error())
 		}
@@ -649,6 +668,16 @@ func testClientDoWithSameConnectionGetMethod(t *testing.T) {
 			if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
 				t.Fatalf("Connection closed by peer, Client can't get any data")
 			}
+		}
+		currentReqSize, currentReqWriteSize := req.GetRequestSize()
+		if currentReqSize != reqR {
+			t.Fatal("Request read size count error")
+		}
+		if currentReqWriteSize != reqW {
+			t.Fatal("Request write size count error")
+		}
+		if len(resp.GetBody()) != respN {
+			t.Fatal("Response size count error")
 		}
 	}
 }
@@ -937,6 +966,7 @@ type IdempotentRequest struct {
 	targetwithport        string
 	pathWithQueryFragment []byte
 	body                  []byte
+	header                string
 }
 
 func (r *IdempotentRequest) Method() []byte {
@@ -963,12 +993,20 @@ func (r *IdempotentRequest) SetPathWithQueryFragment(p []byte) {
 	r.pathWithQueryFragment = p
 }
 
+func (r *IdempotentRequest) GetRequestSize() (int, int) {
+	startLineSize := len(string(r.method) + " " + string(r.PathWithQueryFragment()) + " " + string(r.Protocol()) + "\r\n")
+	requestSize := len(r.header)
+	requestBodySize := len(r.body)
+	return requestSize + requestBodySize, startLineSize + requestSize + requestBodySize
+}
+
 func (r *IdempotentRequest) Protocol() []byte {
 	return []byte("HTTP/1.1")
 }
 
 func (r *IdempotentRequest) WriteHeaderTo(w *bufio.Writer) (int, int, error) {
 	header := "Host: www.bing.com\r\nUser-Agent: test client\r\n\r\n"
+	r.header = header
 	n, err := w.WriteString(header)
 	if err != nil {
 		return len(header), 0, err
@@ -979,6 +1017,7 @@ func (r *IdempotentRequest) WriteHeaderTo(w *bufio.Writer) (int, int, error) {
 
 func (r *IdempotentRequest) WriteBodyTo(w *bufio.Writer) (int, error) {
 	n, err := w.WriteString("username=Hello server!\r\n\r\n")
+	r.body = []byte("username=Hello server!\r\n\r\n")
 	return n, err
 }
 

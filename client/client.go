@@ -283,6 +283,7 @@ func (c *HostClient) Do(req Request, resp Response) (reqReadNum, reqWriteNum, re
 		if err == nil || !retry {
 			break
 		}
+
 		if isHeadOrGet(req.Method()) {
 			// Retry non-idempotent requests if the server closes
 			// the connection before sending the response.
@@ -342,7 +343,6 @@ func (c *HostClient) do(req Request, resp Response,
 		if currentTime.Sub(cc.LastWriteDeadlineTime) > (c.WriteTimeout >> 2) {
 			if err = conn.SetWriteDeadline(currentTime.Add(c.WriteTimeout)); err != nil {
 				c.ConnManager.CloseConn(cc)
-
 				return false, reqReadNum, reqWriteNum, respNum, err
 			}
 			cc.LastWriteDeadlineTime = currentTime
@@ -354,6 +354,7 @@ func (c *HostClient) do(req Request, resp Response,
 		!req.ConnectionClose() {
 		resetConnection = true
 	}
+
 	//write request
 	shouldCacheReqForRetry := (reqCacheForRetry != nil) && isHeadOrGet(req.Method())
 	isCachedReqAvailable := func() bool { return shouldCacheReqForRetry && (reqCacheForRetry.Len() > 0) }
@@ -365,7 +366,6 @@ func (c *HostClient) do(req Request, resp Response,
 		} else {
 			reqWriteToTarget = conn
 		}
-
 		rn, wn, err := c.readFromReqAndWriteToIOWriter(req, reqWriteToTarget)
 		if err != nil {
 			if shouldCacheReqForRetry {
@@ -409,7 +409,6 @@ func (c *HostClient) do(req Request, resp Response,
 		}
 	}
 	br := c.BufioPool.AcquireReader(conn)
-
 	//read a byte from response to test if the connection has been closed by remote
 	if b, err := br.Peek(1); err != nil {
 		if err == io.EOF {
@@ -419,6 +418,7 @@ func (c *HostClient) do(req Request, resp Response,
 	} else if len(b) == 0 {
 		return false, reqReadNum, reqWriteNum, respNum, io.EOF
 	}
+
 	n, err := resp.ReadFrom(isHead(req.Method()), br)
 	if err != nil {
 		c.BufioPool.ReleaseReader(br)
