@@ -617,12 +617,22 @@ func testClientDoWithPostRequest(t *testing.T) {
 	req.SetTargetWithPort("127.0.0.1:10003")
 	req.SetPathWithQueryFragment([]byte("/post"))
 	resp := &SimpleResponse{}
-	_, _, _, err = c.Do(req, resp)
+	reqR, reqW, respN, err := c.Do(req, resp)
 	if err != nil {
 		t.Fatalf("unexpected error : %s", err.Error())
 	}
 	if !bytes.Contains(resp.GetBody(), []byte("Post success!")) {
 		t.Fatal("Response body is wrong")
+	}
+	currentReqSize, currentReqWriteSize := req.GetRequestSize()
+	if currentReqSize != reqR {
+		t.Fatal("Request read size count error")
+	}
+	if currentReqWriteSize != reqW {
+		t.Fatal("Request write size count error")
+	}
+	if respN != len(resp.GetBody()) {
+		t.Fatal("Response data count error")
 	}
 }
 
