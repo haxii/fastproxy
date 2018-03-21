@@ -343,7 +343,7 @@ func (c *HostClient) do(req Request, resp Response,
 		if currentTime.Sub(cc.LastWriteDeadlineTime) > (c.WriteTimeout >> 2) {
 			if err = conn.SetWriteDeadline(currentTime.Add(c.WriteTimeout)); err != nil {
 				c.ConnManager.CloseConn(cc)
-				return false, reqReadNum, reqWriteNum, respNum, err
+				return true, reqReadNum, reqWriteNum, respNum, err
 			}
 			cc.LastWriteDeadlineTime = currentTime
 		}
@@ -388,7 +388,7 @@ func (c *HostClient) do(req Request, resp Response,
 		if err != nil {
 			if err != nil {
 				c.ConnManager.CloseConn(cc)
-				return false, reqReadNum, reqWriteNum, respNum, err
+				return true, reqReadNum, reqWriteNum, respNum, err
 			}
 		}
 		reqWriteNum += n
@@ -403,7 +403,7 @@ func (c *HostClient) do(req Request, resp Response,
 		if currentTime.Sub(cc.LastReadDeadlineTime) > (c.ReadTimeout >> 2) {
 			if err = conn.SetReadDeadline(currentTime.Add(c.ReadTimeout)); err != nil {
 				c.ConnManager.CloseConn(cc)
-				return false, reqReadNum, reqWriteNum, respNum, err
+				return true, reqReadNum, reqWriteNum, respNum, err
 			}
 			cc.LastReadDeadlineTime = currentTime
 		}
@@ -416,7 +416,7 @@ func (c *HostClient) do(req Request, resp Response,
 		}
 		return false, reqReadNum, reqWriteNum, respNum, err
 	} else if len(b) == 0 {
-		return false, reqReadNum, reqWriteNum, respNum, io.EOF
+		return true, reqReadNum, reqWriteNum, respNum, io.EOF
 	}
 
 	n, err := resp.ReadFrom(isHead(req.Method()), br)
