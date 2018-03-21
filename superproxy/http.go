@@ -22,14 +22,18 @@ var (
 )
 
 func (p *SuperProxy) initHTTPCertAndAuth(isSSL bool, host string,
-	user string, pass string) {
+	user string, pass string, selfSignedCACertificate string) {
 	// make HTTP/HTTPS proxy auth header
 	basicAuth := func(username, password string) string {
 		auth := username + ":" + password
 		return base64.StdEncoding.EncodeToString([]byte(auth))
 	}
 	if isSSL {
-		p.tlsConfig = cert.MakeClientTLSConfig(host, "")
+		if len(selfSignedCACertificate) > 0 {
+			p.tlsConfig = cert.MakeClientTLSConfigByCA(host, "", selfSignedCACertificate)
+		} else {
+			p.tlsConfig = cert.MakeClientTLSConfig(host, "")
+		}
 	}
 	if len(user) > 0 && len(pass) > 0 {
 		authHeaderWithCRLFStr := "Proxy-Authorization: Basic " + basicAuth(user, pass) + "\r\n"
@@ -46,7 +50,7 @@ func (p *SuperProxy) initHTTPCertAndAuth(isSSL bool, host string,
 // Host: targetHost:Port\r\n
 // * proxy auth if needed *
 // \r\n
-func (p *SuperProxy) writeHTTPProxyReq(c net.Conn, targetHostWithPort []byte) error {
+func (p *SuperProxy) writeHTTPProxyReq(c net.Conn, targetHostWithPort []byte) (int, error) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 	buf.B = make([]byte, len(superProxyReqMethod)+len(superProxyReqSP)+
