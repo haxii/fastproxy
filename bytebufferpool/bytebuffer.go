@@ -64,7 +64,6 @@ func (b *ByteBuffer) CopyWithIdleDuration(dst io.Writer, src io.Reader, idle tim
 	if idle == 0 {
 		return b.Copy(dst, src)
 	}
-
 	b.Reset()
 	b.B = make([]byte, 32*1024)
 	idleChan := make(chan struct{})
