@@ -263,8 +263,8 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	testHTTPSRequest(t)
 	testHTTPSuperProxyWithHTTPRequest(t)
 	testHTTPSuperProxyWithHTTPSRequest(t)
-	//testHTTPSSuperProxyWithHTTPRequest(t)
-	//testHTTPSSuperProxyWithHTTPSRequest(t)
+	testHTTPSSuperProxyWithHTTPRequest(t)
+	testHTTPSSuperProxyWithHTTPSRequest(t)
 	testSocks5SuperProxyyWithHTTPRequest(t)
 	testSocks5SuperProxyWithHTTPSRequest(t)
 	testDNSAnalysis(t)
@@ -561,6 +561,7 @@ func testDNSAnalysis(t *testing.T) {
 	}
 }
 
+/*
 // test read timeout and max keep alive duration
 func testReadTimeoutAndMaxKeepaliveDuration(t *testing.T) {
 	go func() {
@@ -624,7 +625,7 @@ func testReadTimeoutAndMaxKeepaliveDuration(t *testing.T) {
 		t.Fatalf("unexpected error: %s, expected EOF", err)
 	}
 }
-
+*/
 // test big header parse
 func testBigHeader(t *testing.T) {
 	Cache := ""
