@@ -2,7 +2,6 @@ package superproxy
 
 import (
 	"bytes"
-	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -24,7 +23,7 @@ func TestNewSuperProxy(t *testing.T) {
 	testNewSuperProxyWithSocksType(t)
 }
 func testNewSuperProxyWithHTTPType(t *testing.T) {
-	superProxy, err := NewSuperProxy("localhost", uint16(5080), ProxyTypeHTTP, "", "", false, "")
+	superProxy, err := NewSuperProxy("localhost", uint16(5080), ProxyTypeHTTP, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
@@ -37,26 +36,25 @@ func testNewSuperProxyWithHTTPType(t *testing.T) {
 	if !bytes.Equal(superProxy.HostWithPortBytes(), []byte("localhost:5080")) {
 		t.Fatalf("unexpected host with port bytes")
 	}
-
-	conn, err := net.Dial("tcp4", "localhost:9999")
+	pool := bufiopool.New(1, 1)
+	conn, err := superProxy.MakeTunnel(pool, "localhost:9999")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
-	if _, err = conn.Write([]byte("GET /test HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
+	if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
-	result := make([]byte, 50)
+	result := make([]byte, 1000)
 	if _, err = conn.Read(result); err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
 	if !strings.Contains(string(result), "HTTP/1.1 200 OK") {
 		t.Fatalf("unexpected result")
 	}
-	defer conn.Close()
 }
 
 func testNewSuperProxyWithSocksType(t *testing.T) {
-	superProxy, err := NewSuperProxy("localhost", uint16(9099), ProxyTypeSOCKS5, "", "", false, "")
+	superProxy, err := NewSuperProxy("localhost", uint16(9099), ProxyTypeSOCKS5, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
@@ -89,7 +87,7 @@ func testNewSuperProxyWithSocksType(t *testing.T) {
 }
 
 func testNewSuperProxyWithHTTPSProxy(t *testing.T) {
-	superProxy, err := NewSuperProxy("localhost", uint16(443), ProxyTypeHTTPS, "", "", false, selfSignedCA)
+	superProxy, err := NewSuperProxy("localhost", uint16(443), ProxyTypeHTTPS, "", "", selfSignedCA)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
@@ -102,20 +100,4 @@ func testNewSuperProxyWithHTTPSProxy(t *testing.T) {
 	if !bytes.Equal(superProxy.HostWithPortBytes(), []byte("localhost:443")) {
 		t.Fatalf("unexpected host with port bytes")
 	}
-
-	conn, err := net.Dial("tcp4", "localhost:9999")
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err.Error())
-	}
-	if _, err = conn.Write([]byte("GET /https HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
-		t.Fatalf("unexpected error: %s", err.Error())
-	}
-	result := make([]byte, 1000)
-	if _, err = conn.Read(result); err != nil {
-		t.Fatalf("unexpected error: %s", err.Error())
-	}
-	if !strings.Contains(string(result), "HTTP/1.1 200 OK") {
-		t.Fatalf("unexpected result")
-	}
-	defer conn.Close()
 }
