@@ -29,6 +29,9 @@ type Handler struct {
 	//URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
 	URLProxy func(hostWithPort string, path []byte) *superproxy.SuperProxy
 
+	//RewriteURL rewrites url
+	RewriteURL func(hostWithPort string) string
+
 	//LookupIP returns ip string,
 	//should not block for long time
 	LookupIP func(domain string) net.IP
@@ -47,6 +50,11 @@ type Handler struct {
 
 func (h *Handler) handleHTTPConns(c net.Conn, req *http.Request,
 	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage) error {
+	if h.RewriteURL != nil {
+		hostWithPort := h.RewriteURL(req.HostInfo().HostWithPort())
+		req.HostInfo().ParseHostWithPort(hostWithPort)
+	}
+
 	return h.do(c, req, bufioPool, client, usage)
 }
 
@@ -113,6 +121,9 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 
 func (h *Handler) handleHTTPSConns(c net.Conn, hostWithPort string,
 	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage, idle time.Duration) error {
+	if h.RewriteURL != nil {
+		hostWithPort = h.RewriteURL(hostWithPort)
+	}
 	if h.ShouldDecryptHost(hostWithPort) {
 		return h.decryptConnect(c, hostWithPort, bufioPool, client, usage)
 	}

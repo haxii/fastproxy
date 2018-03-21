@@ -69,6 +69,7 @@ func (p *Proxy) init() error {
 			return nil
 		}
 	}
+
 	if p.Handler.MitmCACert == nil {
 		p.Handler.MitmCACert = x509.DefaultMitmCA
 	}
