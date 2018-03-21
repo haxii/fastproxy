@@ -70,12 +70,6 @@ func (p *Proxy) init() error {
 		}
 	}
 
-	if p.Handler.RewriteURL == nil {
-		p.Handler.RewriteURL = func(hostWithPort string) string {
-			return hostWithPort
-		}
-	}
-
 	if p.Handler.MitmCACert == nil {
 		p.Handler.MitmCACert = x509.DefaultMitmCA
 	}
