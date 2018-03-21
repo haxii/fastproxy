@@ -2,15 +2,15 @@ package superproxy
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
 )
-
-var selfSignedCA = "/Users/xiangyu/Documents/workstation/nginx-forward-proxy/etc/server.crt"
 
 func TestNewSuperProxy(t *testing.T) {
 	go func() {
@@ -144,4 +144,85 @@ L/ib
 	if !strings.Contains(string(result), "HTTP/1.1 200 OK") {
 		t.Fatalf("unexpected result")
 	}
+}
+
+func TestErrorParameters(t *testing.T) {
+	_, err := NewSuperProxy("", uint16(3129), ProxyTypeHTTPS, "", "", ".server.crt")
+	if err == nil {
+		t.Fatalf("expected error: nil host provided")
+	}
+	if !strings.Contains(err.Error(), "nil host provided") {
+		t.Fatalf("expected error: nil host proivded, but get an unexpected error: %s", err)
+	}
+
+	_, err = NewSuperProxy("localhost", uint16(0), ProxyTypeHTTPS, "", "", ".server.crt")
+	if err == nil {
+		t.Fatalf("expected error: nil port provided")
+	}
+	if !strings.Contains(err.Error(), "nil port provided") {
+		t.Fatalf("expected error: nil port provided, but get an unexpected error: %s", err)
+	}
+}
+
+func TestSuperProxyConcurrency(t *testing.T) {
+	superProxy, err := NewSuperProxy("localhost", uint16(8081), ProxyTypeHTTP, "", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	if superProxy.GetProxyType() != ProxyTypeHTTP {
+		t.Fatalf("unexpected proxy type")
+	}
+	if superProxy.HostWithPort() != "localhost:8081" {
+		t.Fatalf("unexpected host with port")
+	}
+	if !bytes.Equal(superProxy.HostWithPortBytes(), []byte("localhost:8081")) {
+		t.Fatalf("unexpected host with port bytes")
+	}
+	pool := bufiopool.New(1, 1)
+	superProxy.SetMaxConcurrency(2)
+	startTime := time.Now()
+	for i := 0; i < 4; i++ {
+		superProxy.AcquireToken()
+		fmt.Println(i)
+		go func() {
+			fmt.Println(i)
+			conn, err := superProxy.MakeTunnel(pool, "localhost:9999")
+			if err != nil {
+				t.Fatalf("unexpected error: %s", err.Error())
+			}
+			if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
+				t.Fatalf("unexpected error: %s", err.Error())
+			}
+			result := make([]byte, 1000)
+			if _, err = conn.Read(result); err != nil {
+				t.Fatalf("unexpected error: %s", err.Error())
+			}
+			if !strings.Contains(string(result), "HTTP/1.1 200 OK") {
+				t.Fatalf("unexpected result")
+			}
+			time.Sleep(3 * time.Second)
+			defer superProxy.PushBackToken()
+		}()
+	}
+	time.Sleep(1 * time.Second)
+	elapsed := time.Since(startTime)
+	if elapsed < 4*time.Second {
+		t.Fatal("Concurrency error!")
+	}
+	superProxy.AcquireToken()
+	conn, err := superProxy.MakeTunnel(pool, "localhost:9999")
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	result := make([]byte, 1000)
+	if _, err = conn.Read(result); err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	if !strings.Contains(string(result), "HTTP/1.1 200 OK") {
+		t.Fatalf("unexpected result")
+	}
+	defer superProxy.PushBackToken()
 }
