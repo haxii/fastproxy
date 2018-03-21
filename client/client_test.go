@@ -58,6 +58,7 @@ func TestClientDo(t *testing.T) {
 	testClientDoWithSameConnectionPostMethod(t)
 
 	testClientUsage(t)
+
 }
 
 // Test Client do with big header or big body
@@ -109,7 +110,7 @@ func testClientDoWithBigHeader(t *testing.T) {
 	resp := &SimpleResponse{}
 	_, _, _, err = c.Do(req, resp)
 	if err == nil {
-		t.Fatalf("unexpected error : %s", io.ErrShortWrite.Error())
+		t.Fatalf("expected error : %s", io.ErrShortWrite.Error())
 	}
 }
 
@@ -679,15 +680,6 @@ func testClientUsage(t *testing.T) {
 		t.Fatal("IncomingSize count error")
 	}
 
-	c.Usage.AddIncomingSize(1000)
-	if c.Usage.GetIncomingSize() != 4950 {
-		t.Fatal("IncomingSize count error")
-	}
-	c.Usage.AddOutgoingSize(1000)
-	if c.Usage.GetOutgoingSize() != 4950 {
-		t.Fatal("OutgoingSize count error")
-	}
-
 	c.Usage.Incoming = 0
 	c.Usage.AddIncomingSize(10000000000000000000)
 	if c.Usage.GetIncomingSize() != 10000000000000000000 {
@@ -706,17 +698,27 @@ func testClientUsage(t *testing.T) {
 	req := &SimpleRequest{}
 	req.SetTargetWithPort("0.0.0.0:10000")
 	resp := &SimpleResponse{}
-	reqReadNum, respWriteNum, _, err := currentClinet.Do(req, resp)
+	reqReadNum, reqWriteNum, respNum, err := currentClinet.Do(req, resp)
 	if err != nil {
 		t.Fatalf("unexpected error : %s", err.Error())
 	}
 	if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
 		t.Fatal("Response body is wrong")
 	}
+	if len(resp.GetBody()) != respNum {
+		t.Fatal("Response body length is wrong")
+	}
+	if req.GetReadSize() != reqReadNum {
+		t.Fatal("request read length is wrong")
+	}
 
-	currentClinet.Usage.AddIncomingSize(uint64(respWriteNum))
+	if req.GetWriteSize() != reqWriteNum {
+		t.Fatal("request read length is wrong")
+	}
+
+	currentClinet.Usage.AddIncomingSize(uint64(reqWriteNum))
 	currentClinet.Usage.AddOutgoingSize(uint64(reqReadNum))
-	if currentClinet.Usage.GetIncomingSize() != uint64(respWriteNum) {
+	if currentClinet.Usage.GetIncomingSize() != uint64(reqWriteNum) {
 		t.Fatal("Usage income size count is wrong")
 	}
 	if currentClinet.Usage.GetOutgoingSize() != uint64(reqReadNum) {
@@ -731,6 +733,8 @@ var (
 
 type SimpleRequest struct {
 	targetwithport string
+	readSize       int
+	writeSize      int
 }
 
 func (r *SimpleRequest) Method() []byte {
@@ -759,7 +763,22 @@ func (r *SimpleRequest) WriteHeaderTo(w *bufio.Writer) (int, int, error) {
 		return len(header), 0, err
 	}
 	err = w.Flush()
+	r.AddHeaderSize(len(header))
 	return len(header), n, err
+}
+func (r *SimpleRequest) GetWriteSize() int {
+	s := string(r.Method()) + " " + string(r.PathWithQueryFragment()) + " " + string(r.Protocol()) + "\r\n"
+	r.writeSize = r.writeSize + len(s)
+	return r.writeSize
+}
+
+func (r *SimpleRequest) GetReadSize() int {
+	return r.readSize
+}
+
+func (r *SimpleRequest) AddHeaderSize(n int) {
+	r.readSize += n
+	r.writeSize += n
 }
 
 func (r *SimpleRequest) WriteBodyTo(w *bufio.Writer) (int, error) {
@@ -781,18 +800,6 @@ func (r *SimpleRequest) TLSServerName() string {
 func (r *SimpleRequest) GetProxy() *superproxy.SuperProxy {
 	return nil
 }
-
-func (r *SimpleRequest) GetReadSize() int {
-	return 0
-}
-
-func (r *SimpleRequest) GetWriteSize() int {
-	return 0
-}
-
-func (r *SimpleRequest) AddReadSize(n int) {}
-
-func (r *SimpleRequest) AddWriteSize(n int) {}
 
 type SimpleResponse struct {
 	size int
