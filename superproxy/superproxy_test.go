@@ -2,12 +2,10 @@ package superproxy
 
 import (
 	"bytes"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
 )
@@ -152,7 +150,7 @@ L/ib
 	}
 }
 
-// test new super proxy with error parameters 
+// test new super proxy with error parameters
 func TestErrorParameters(t *testing.T) {
 	_, err := NewSuperProxy("", uint16(3129), ProxyTypeHTTPS, "", "", ".server.crt")
 	if err == nil {
@@ -171,6 +169,7 @@ func TestErrorParameters(t *testing.T) {
 	}
 }
 
+/* refactor test superproxy concurrency
 // test if super proxy can limit concurrency
 func TestSuperProxyConcurrency(t *testing.T) {
 	superProxy, err := NewSuperProxy("localhost", uint16(8081), ProxyTypeHTTP, "", "", "")
@@ -232,3 +231,4 @@ func TestSuperProxyConcurrency(t *testing.T) {
 	}
 	defer superProxy.PushBackToken()
 }
+*/
