@@ -143,6 +143,9 @@ func MakeClientTLSConfig(host, serverName string) *tls.Config {
 // MakeClientTLSConfigByCA make a client TLS config based on self-signed ca certificate
 func MakeClientTLSConfigByCA(host, serverName, filePath string) *tls.Config {
 	tlsServerName := func(addr string) string {
+		if len(addr) == 0 {
+			return "*"
+		}
 		if !strings.Contains(addr, ":") {
 			return addr
 		}
