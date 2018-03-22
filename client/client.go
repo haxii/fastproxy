@@ -272,11 +272,11 @@ func (c *HostClient) Do(req Request, resp Response) (reqReadNum, reqWriteNum, re
 	atomic.AddUint64(&c.pendingRequests, 1)
 	buffer := bytebufferpool.Get()
 	var retry bool
-	var thisReqReadNum int
-	var thisReqWriteNum int
-	var thisRespNum int
+	var currentReqReadNum int
+	var currentReqWriteNum int
+	var currentRespNum int
 	for {
-		retry, thisReqReadNum, thisReqWriteNum, thisRespNum, err = c.do(req, resp, buffer)
+		retry, currentReqReadNum, currentReqWriteNum, currentRespNum, err = c.do(req, resp, buffer)
 		reqReadNum += thisReqReadNum
 		reqWriteNum += thisReqWriteNum
 		respNum += thisRespNum
