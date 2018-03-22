@@ -2,7 +2,6 @@ package superproxy
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -25,7 +24,6 @@ func TestNewSuperProxy(t *testing.T) {
 				time.Sleep(2 * time.Second)
 				conn, _, _ := w.(http.Hijacker).Hijack()
 				j--
-				fmt.Println(j)
 				conn.Close()
 			}
 			if j < 3 {
