@@ -183,9 +183,7 @@ func TestSuperProxyConcurrency(t *testing.T) {
 	startTime := time.Now()
 	for i := 0; i < 4; i++ {
 		superProxy.AcquireToken()
-		fmt.Println(i)
 		go func() {
-			fmt.Println(i)
 			conn, err := superProxy.MakeTunnel(pool, "localhost:9999")
 			if err != nil {
 				t.Fatalf("unexpected error: %s", err.Error())
