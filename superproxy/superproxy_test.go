@@ -36,9 +36,9 @@ func TestNewSuperProxy(t *testing.T) {
 		})
 		http.ListenAndServe(":9999", nil)
 	}()
-	//testNewSuperProxyWithHTTPSProxy(t)
-	//testNewSuperProxyWithHTTPType(t)
-	//testNewSuperProxyWithSocks5Type(t)
+	testNewSuperProxyWithHTTPSProxy(t)
+	testNewSuperProxyWithHTTPType(t)
+	testNewSuperProxyWithSocks5Type(t)
 }
 
 // test new super proxy with http type
@@ -226,9 +226,8 @@ func TestSuperProxyConcurrency(t *testing.T) {
 	pool := bufiopool.New(1, 1)
 	superProxy.SetMaxConcurrency(2)
 	time.Sleep(5 * time.Second)
-	for i := 0; i < 4; i++ {
-		//fmt.Println(i)
-		//superProxy.AcquireToken()
+	for i := 0; i < 6; i++ {
+		superProxy.AcquireToken()
 		go func() {
 			conn, err := superProxy.MakeTunnel(pool, "localhost:9999")
 			if err != nil {
@@ -244,26 +243,8 @@ func TestSuperProxyConcurrency(t *testing.T) {
 			if !strings.Contains(string(result), "HTTP/1.1 200 OK") {
 				t.Fatalf("unexpected result: %s", result)
 			}
-			//superProxy.PushBackToken()
+			superProxy.PushBackToken()
 		}()
 		time.Sleep(1 * time.Second)
 	}
-	/*
-		superProxy.AcquireToken()
-		conn, err := superProxy.MakeTunnel(pool, "localhost:8081")
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err.Error())
-		}
-		if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
-			t.Fatalf("unexpected error: %s", err.Error())
-		}
-		result := make([]byte, 1000)
-		if _, err = conn.Read(result); err != nil {
-			t.Fatalf("unexpected error: %s", err.Error())
-		}
-		if !strings.Contains(string(result), "HTTP/1.1 200 OK") {
-			t.Fatalf("unexpected result")
-		}
-		defer superProxy.PushBackToken()
-	*/
 }
