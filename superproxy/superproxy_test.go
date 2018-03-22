@@ -2,10 +2,14 @@ package superproxy
 
 import (
 	"bytes"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
 )
@@ -13,15 +17,28 @@ import (
 // TestNewSuperProxy test new super proxy with http, https and socks5 types
 // and test if those superproxy can make tunnel with a simple server
 func TestNewSuperProxy(t *testing.T) {
+	var j = 0
 	go func() {
 		http.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(200)
+			j++
+			if j > 2 {
+				time.Sleep(2 * time.Second)
+				conn, _, _ := w.(http.Hijacker).Hijack()
+				j--
+				fmt.Println(j)
+				conn.Close()
+			}
+			if j < 3 {
+				time.Sleep(3 * time.Second)
+				w.WriteHeader(200)
+				j--
+			}
 		})
 		http.ListenAndServe(":9999", nil)
 	}()
-	testNewSuperProxyWithHTTPSProxy(t)
-	testNewSuperProxyWithHTTPType(t)
-	testNewSuperProxyWithSocks5Type(t)
+	//testNewSuperProxyWithHTTPSProxy(t)
+	//testNewSuperProxyWithHTTPType(t)
+	//testNewSuperProxyWithSocks5Type(t)
 }
 
 // test new super proxy with http type
@@ -169,33 +186,55 @@ func TestErrorParameters(t *testing.T) {
 	}
 }
 
-/* refactor test superproxy concurrency
 // test if super proxy can limit concurrency
 func TestSuperProxyConcurrency(t *testing.T) {
+	for i := 0; i < 4; i++ {
+		go func() {
+			conn, err := net.Dial("tcp4", "localhost:9999")
+			if err != nil {
+				t.Fatalf("unexpected error: %s", err)
+			}
+			if _, err = conn.Write([]byte("GET /test HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
+				t.Fatalf("unexpected error: %s", err.Error())
+			}
+			result := make([]byte, 1000)
+			if i < 2 {
+				if _, err = conn.Read(result); err != nil {
+					t.Fatalf("unexpected error: %s", err.Error())
+				}
+				if !strings.Contains(string(result), "HTTP/1.1 200 OK") {
+					t.Fatalf("unexpected result")
+				}
+			}
+			if i > 1 {
+				if _, err = conn.Read(result); err == nil {
+					t.Fatal("expected error: EOF")
+				}
+				if err != io.EOF {
+					t.Fatalf("expected error: EOF, but get unexpected error: %s", err)
+				}
+			}
+			conn.Close()
+		}()
+		time.Sleep(1 * time.Second)
+	}
+
 	superProxy, err := NewSuperProxy("localhost", uint16(8081), ProxyTypeHTTP, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
-	if superProxy.GetProxyType() != ProxyTypeHTTP {
-		t.Fatalf("unexpected proxy type")
-	}
-	if superProxy.HostWithPort() != "localhost:8081" {
-		t.Fatalf("unexpected host with port")
-	}
-	if !bytes.Equal(superProxy.HostWithPortBytes(), []byte("localhost:8081")) {
-		t.Fatalf("unexpected host with port bytes")
-	}
 	pool := bufiopool.New(1, 1)
 	superProxy.SetMaxConcurrency(2)
-	startTime := time.Now()
+	time.Sleep(5 * time.Second)
 	for i := 0; i < 4; i++ {
-		superProxy.AcquireToken()
+		//fmt.Println(i)
+		//superProxy.AcquireToken()
 		go func() {
 			conn, err := superProxy.MakeTunnel(pool, "localhost:9999")
 			if err != nil {
 				t.Fatalf("unexpected error: %s", err.Error())
 			}
-			if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
+			if _, err = conn.Write([]byte("GET /test HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
 				t.Fatalf("unexpected error: %s", err.Error())
 			}
 			result := make([]byte, 1000)
@@ -203,32 +242,28 @@ func TestSuperProxyConcurrency(t *testing.T) {
 				t.Fatalf("unexpected error: %s", err.Error())
 			}
 			if !strings.Contains(string(result), "HTTP/1.1 200 OK") {
-				t.Fatalf("unexpected result")
+				t.Fatalf("unexpected result: %s", result)
 			}
-			time.Sleep(3 * time.Second)
-			defer superProxy.PushBackToken()
+			//superProxy.PushBackToken()
 		}()
+		time.Sleep(1 * time.Second)
 	}
-	time.Sleep(1 * time.Second)
-	elapsed := time.Since(startTime)
-	if elapsed < 4*time.Second {
-		t.Fatal("Concurrency error!")
-	}
-	superProxy.AcquireToken()
-	conn, err := superProxy.MakeTunnel(pool, "localhost:9999")
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err.Error())
-	}
-	if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
-		t.Fatalf("unexpected error: %s", err.Error())
-	}
-	result := make([]byte, 1000)
-	if _, err = conn.Read(result); err != nil {
-		t.Fatalf("unexpected error: %s", err.Error())
-	}
-	if !strings.Contains(string(result), "HTTP/1.1 200 OK") {
-		t.Fatalf("unexpected result")
-	}
-	defer superProxy.PushBackToken()
+	/*
+		superProxy.AcquireToken()
+		conn, err := superProxy.MakeTunnel(pool, "localhost:8081")
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+		if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+		result := make([]byte, 1000)
+		if _, err = conn.Read(result); err != nil {
+			t.Fatalf("unexpected error: %s", err.Error())
+		}
+		if !strings.Contains(string(result), "HTTP/1.1 200 OK") {
+			t.Fatalf("unexpected result")
+		}
+		defer superProxy.PushBackToken()
+	*/
 }
-*/
