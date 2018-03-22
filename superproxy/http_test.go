@@ -1,9 +1,15 @@
 package superproxy
 
 import (
+	"bytes"
+	"net"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/haxii/fastproxy/bufiopool"
 )
 
 func TestInitHTTPCertAndAuth(t *testing.T) {
@@ -84,6 +90,69 @@ L/ib
 	}
 }
 
-func TestWriteHTTPProxyReq(t *testing.T) {
+func TestWriteHTTPProxyReqAndReadHTTPProxyResp(t *testing.T) {
+	go func() {
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("Hello world!"))
+		})
+		http.ListenAndServe(":8999", nil)
+	}()
+	time.Sleep(1 * time.Second)
+	superProxy, _ := NewSuperProxy("localhost", uint16(8081), ProxyTypeHTTP, "", "", "")
+	conn, err := net.Dial("tcp", "localhost:8081")
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if _, err = superProxy.writeHTTPProxyReq(conn, []byte("localhost:8999")); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	b := make([]byte, 200)
 
+	_, err = conn.Read(b)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if !bytes.Contains(b, []byte("200 OK")) {
+		t.Fatalf("unexpected status line: %s, expected: HTTP/1.1 200 OK", string(b))
+	}
+	err = conn.Close()
+	if err != nil {
+		t.Fatalf("connection close error: %s", err)
+	}
+
+	conn, err = net.Dial("tcp", "localhost:8081")
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if _, err = superProxy.writeHTTPProxyReq(conn, []byte("localhost:8999")); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	pool := bufiopool.New(1, 1)
+	err = superProxy.readHTTPProxyResp(conn, pool)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	err = conn.Close()
+	if err != nil {
+		t.Fatalf("connection close error: %s", err)
+	}
+
+	conn, err = net.Dial("tcp", "localhost:8081")
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if _, err = superProxy.writeHTTPProxyReq(conn, []byte("localhost:8998")); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	err = superProxy.readHTTPProxyResp(conn, pool)
+	if err == nil {
+		t.Fatalf("unexpected error: onnected to proxy failed ")
+	}
+	if !strings.Contains(err.Error(), "connected to proxy failed with startline") {
+		t.Fatalf("expected error: connected to proxy failed with startline HTTP/1.1 502 Bad Gateway, but unexpected error: %s", err)
+	}
+	err = conn.Close()
+	if err != nil {
+		t.Fatalf("connection close error: %s", err)
+	}
 }

@@ -14,7 +14,7 @@ import (
 // and test if those superproxy can make tunnel with a simple server
 func TestNewSuperProxy(t *testing.T) {
 	go func() {
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(200)
 		})
 		http.ListenAndServe(":9999", nil)
@@ -44,7 +44,7 @@ func testNewSuperProxyWithHTTPType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
-	if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
+	if _, err = conn.Write([]byte("GET /test HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
 	result := make([]byte, 1000)
@@ -77,7 +77,7 @@ func testNewSuperProxyWithSocks5Type(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
-	if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
+	if _, err = conn.Write([]byte("GET /test HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
 	result := make([]byte, 1000)
@@ -138,7 +138,7 @@ L/ib
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
-	if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
+	if _, err = conn.Write([]byte("GET /test HTTP/1.1\r\nHost: localhost:9999\r\n\r\n")); err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
 	result := make([]byte, 1000)
