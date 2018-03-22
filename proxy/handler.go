@@ -10,54 +10,72 @@ import (
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/cert"
 	"github.com/haxii/fastproxy/client"
-	"github.com/haxii/fastproxy/hijack"
-	"github.com/haxii/fastproxy/proxy/http"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
 	"github.com/haxii/fastproxy/usage"
 	"github.com/haxii/fastproxy/util"
+	"github.com/haxii/fastproxy/x509"
 )
 
 var (
-	//ErrSessionUnavailable means that proxy can't serve this session
+	// ErrSessionUnavailable means that proxy can't serve this session
 	ErrSessionUnavailable = errors.New("session unavailable")
 )
 
-//Handler proxy handler
+// Handler proxy handler
 type Handler struct {
-	//ShouldAllowConnection should allow the connection to proxy, return false to drop the conn
+	// ShouldAllowConnection should allow the connection to proxy, return false to drop the conn
 	ShouldAllowConnection func(connAddr net.Addr) bool
 
-	//HTTPSDecryptEnable test if host's https connection should be decrypted
+	// HTTPSDecryptEnable test if host's https connection should be decrypted
 	ShouldDecryptHost func(host string) bool
 
-	//URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
-	URLProxy func(hostInfo *http.HostInfo, path []byte) *superproxy.SuperProxy
+	// URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
+	URLProxy func(hostInfo *HostInfo, path []byte) *superproxy.SuperProxy
 
-	//LookupIP returns ip string,
-	//should not block for long time
+	// LookupIP returns ip string,
+	// should not block for long time
 	LookupIP func(domain string) net.IP
 
-	//hijacker pool for making a hijacker for every incoming request
-	HijackerPool hijack.HijackerPool
-	//hijacker client for make hijacked response if available
-	hijackClient hijack.Client
-	//MitmCACert HTTPSDecryptCACert ca.cer used for https decryption
+	// hijacker pool for making a hijacker for every incoming request
+	HijackerPool HijackerPool
+	// MitmCACert HTTPSDecryptCACert ca.cer used for https decryption
 	MitmCACert *tls.Certificate
 
-	//http requests and response pool
-	reqPool  http.RequestPool
-	respPool http.ResponsePool
+	// http requests and response pool
+	reqPool  RequestPool
+	respPool ResponsePool
 }
 
-func (h *Handler) handleHTTPConns(c net.Conn, req *http.Request,
+func (h *Handler) init() {
+	if h.ShouldAllowConnection == nil {
+		h.ShouldAllowConnection = func(net.Addr) bool {
+			return false
+		}
+	}
+	if h.ShouldDecryptHost == nil {
+		h.ShouldDecryptHost = func(string) bool {
+			return false
+		}
+	}
+	if h.URLProxy == nil {
+		h.URLProxy = func(hostInfo *HostInfo, path []byte) *superproxy.SuperProxy {
+			return nil
+		}
+	}
+	if h.MitmCACert == nil {
+		h.MitmCACert = x509.DefaultMitmCA
+	}
+}
+
+func (h *Handler) handleHTTPConns(c net.Conn, req *Request,
 	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage) error {
 	return h.do(c, req, bufioPool, client, usage)
 }
 
-func (h *Handler) do(c net.Conn, req *http.Request,
+func (h *Handler) do(c net.Conn, req *Request,
 	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage) error {
-	//convert connetion into a http response
+	// convert connetion into a http response
 	writer := bufioPool.AcquireWriter(c)
 	defer bufioPool.ReleaseWriter(writer)
 	defer writer.Flush()
@@ -67,16 +85,20 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 		return err
 	}
 
-	//set requests hijacker
-	hijacker := h.HijackerPool.Get(c.RemoteAddr(),
-		req.HostInfo().HostWithPort(), req.Method(), req.PathWithQueryFragment())
-	defer h.HijackerPool.Put(hijacker)
-
-	//set request & response hijacker
+	// set hijacker
+	var hijacker Hijacker
+	if h.HijackerPool == nil {
+		hijacker = defaultNilHijacker
+	} else {
+		hijacker = h.HijackerPool.Get(c.RemoteAddr(), req.HostInfo().HostWithPort(),
+			req.Method(), req.PathWithQueryFragment())
+		defer h.HijackerPool.Put(hijacker)
+	}
 	req.SetHijacker(hijacker)
 	resp.SetHijacker(hijacker)
+
 	if hijackedRespReader := hijacker.HijackResponse(); hijackedRespReader != nil {
-		reqReadSize, _, respSize, err := h.hijackClient.Do(req, resp, hijackedRespReader)
+		reqReadSize, _, respSize, err := client.DoFake(req, resp, hijackedRespReader)
 		go func() {
 			client.Usage.AddIncomingSize(uint64(reqReadSize))
 			client.Usage.AddOutgoingSize(uint64(respSize))
@@ -85,7 +107,7 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 		return err
 	}
 
-	//set requests proxy
+	// set requests proxy
 	superProxy := h.URLProxy(req.HostInfo(), req.PathWithQueryFragment())
 	if len(req.HostInfo().HostWithPort()) == 0 {
 		return ErrSessionUnavailable
@@ -105,10 +127,11 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 		}()
 	}
 
-	//handle http proxy request
+	// handle http proxy request
 	reqReadNum, reqWriteNum, respNum, err := client.Do(req, resp)
 
 	go func() {
+		// TODO: usage should calculated outside client and super proxy @daizong
 		client.Usage.AddIncomingSize(uint64(reqReadNum))
 		client.Usage.AddOutgoingSize(uint64(respNum))
 		if superProxy != nil {
@@ -134,15 +157,15 @@ const (
 )
 
 var (
-	httpTunnelMadeOkBytes    = []byte(httpTunnelMadeOk)
+	httpTunnelMadeOKayBytes  = []byte(httpTunnelMadeOk)
 	httpTunnelMadeErrorBytes = []byte(httpTunnelMadeError)
 
-	httpTunnelMadeOkSize    = uint64(len(httpTunnelMadeOkBytes))
+	httpTunnelMadeOKaySize  = uint64(len(httpTunnelMadeOKayBytes))
 	httpTunnelMadeErrorSize = uint64(len(httpTunnelMadeErrorBytes))
 )
 
 func (h *Handler) sendHTTPSProxyStatusOK(c net.Conn) (err error) {
-	_, err = util.WriteWithValidation(c, httpTunnelMadeOkBytes)
+	_, err = util.WriteWithValidation(c, httpTunnelMadeOKayBytes)
 	return err
 }
 
@@ -151,10 +174,10 @@ func (h *Handler) sendHTTPSProxyStatusBadGateway(c net.Conn) (err error) {
 	return err
 }
 
-//proxy https traffic directly
+// proxy https traffic directly
 func (h *Handler) tunnelConnect(conn net.Conn, bufioPool *bufiopool.Pool,
 	hostWithPort string, usage *usage.ProxyUsage, idle time.Duration) error {
-	hostInfo := &http.HostInfo{}
+	hostInfo := &HostInfo{}
 	hostInfo.ParseHostWithPort(hostWithPort)
 	superProxy := h.URLProxy(hostInfo, nil)
 	if len(hostInfo.HostWithPort()) == 0 {
@@ -171,7 +194,7 @@ func (h *Handler) tunnelConnect(conn net.Conn, bufioPool *bufiopool.Pool,
 				targetWithPort = ip.String() + ":" + port
 			}
 		}
-		//limit concurrency
+		// limit concurrency
 		superProxy.AcquireToken()
 		defer func() {
 			superProxy.PushBackToken()
@@ -183,10 +206,10 @@ func (h *Handler) tunnelConnect(conn net.Conn, bufioPool *bufiopool.Pool,
 		err        error
 	)
 	if superProxy != nil {
-		//acquire server conn to target host
+		// acquire server conn to target host
 		tunnelConn, err = superProxy.MakeTunnel(bufioPool, targetWithPort)
 	} else {
-		//acquire server conn to target host
+		// acquire server conn to target host
 		tunnelConn, err = transport.Dial(hostWithPort)
 	}
 
@@ -211,11 +234,11 @@ func (h *Handler) tunnelConnect(conn net.Conn, bufioPool *bufiopool.Pool,
 	}
 	defer tunnelConn.Close()
 
-	//handshake with client
+	// handshake with client
 	if err := h.sendHTTPSProxyStatusOK(conn); err != nil {
 		return util.ErrWrapper(err, "error occurred when handshaking with client")
 	}
-	proxyOutgoingSize += httpTunnelMadeOkSize
+	proxyOutgoingSize += httpTunnelMadeOKaySize
 
 	var wg sync.WaitGroup
 	var superProxyWriteErr, superProxyReadErr error
@@ -245,13 +268,13 @@ func (h *Handler) tunnelConnect(conn net.Conn, bufioPool *bufiopool.Pool,
 	return nil
 }
 
-//proxy the https connetions by MITM
+// proxy the https connetions by MITM
 func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage) error {
-	//fakeTargetServer means a fake target server for remote client
-	//make a connection with client by creating a fake target server
+	// fakeTargetServer means a fake target server for remote client
+	// make a connection with client by creating a fake target server
 	//
-	//make a fake target server's certificate
+	// make a fake target server's certificate
 	fakeTargetServerCert, err := h.signFakeCert(h.MitmCACert, hostWithPort)
 	if err != nil {
 		h.sendHTTPSProxyStatusBadGateway(c)
@@ -262,7 +285,7 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 		}
 		return util.ErrWrapper(err, "fail to sign fake certificate for client")
 	}
-	//make the target server's config with this fake certificate
+	// make the target server's config with this fake certificate
 	targetServerName := ""
 	fakeTargetServerTLSConfig := &tls.Config{
 		Certificates: []tls.Certificate{*fakeTargetServerCert},
@@ -271,18 +294,18 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 			return cert.GenCert(h.MitmCACert, []string{hello.ServerName})
 		},
 	}
-	//perform the proxy hand shake and fake tls handshake
+	// perform the proxy hand shake and fake tls handshake
 	handShake := func() (*tls.Conn, error) {
-		//make the proxy handshake
+		// make the proxy handshake
 		if err := h.sendHTTPSProxyStatusOK(c); err != nil {
 			return nil, util.ErrWrapper(err, "proxy fails to handshake with client")
 		}
 		if usage != nil {
 			go func() {
-				usage.AddOutgoingSize(httpTunnelMadeOkSize)
+				usage.AddOutgoingSize(httpTunnelMadeOKaySize)
 			}()
 		}
-		//make the tls handshake in https
+		// make the tls handshake in https
 		conn := tls.Server(c, fakeTargetServerTLSConfig)
 		if err := conn.Handshake(); err != nil {
 			conn.Close()
@@ -299,9 +322,9 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	}
 	defer fakeServerConn.Close()
 
-	//make a connection with target server by creating a fake remote client
+	// make a connection with target server by creating a fake remote client
 	//
-	//convert fakeServerConn into a http request
+	// convert fakeServerConn into a http request
 	reader := bufioPool.AcquireReader(fakeServerConn)
 	defer bufioPool.ReleaseReader(reader)
 	req := h.reqPool.Acquire()
@@ -318,7 +341,7 @@ func (h *Handler) decryptConnect(c net.Conn, hostWithPort string,
 	}
 
 	req.SetTLS(targetServerName)
-	//mandatory for tls request cause non hosts provided in request header
+	// mandatory for tls request cause non hosts provided in request header
 	req.SetHostWithPort(hostWithPort)
 
 	return h.do(fakeServerConn, req, bufioPool, client, usage)
@@ -336,7 +359,7 @@ func (h *Handler) signFakeCert(mitmCACert *tls.Certificate, host string) (*tls.C
 	return cert, nil
 }
 
-//resolve domain to ip
+// resolve domain to ip
 func (h *Handler) lookupIP(domain string) net.IP {
 	if h.LookupIP == nil {
 		return nil

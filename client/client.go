@@ -66,7 +66,7 @@ type Response interface {
 	// ConnectionClose if the response's "Connection" header value is
 	// set as `Close`
 	//
-	// this determines weather the client reusing the connections
+	// this determines wether the client reusing the connections
 	ConnectionClose() bool
 }
 
@@ -115,6 +115,30 @@ var (
 	errNilBufiopool  = errors.New("nil buffer io pool")
 	errNilTargetHost = errors.New("nil target host provided")
 )
+
+//DoFake make a client request by giving a faked response
+func (c *Client) DoFake(req Request, resp Response, fakeRespReader io.Reader) (reqReadNum int,
+	reqWriteNum int, responseNum int, err error) {
+	if reqReadNum, reqWriteNum, err = c.writeReqToDevNull(req); err != nil {
+		return reqReadNum, reqWriteNum, responseNum, err
+	}
+	bufFakeRespReader := c.BufioPool.AcquireReader(fakeRespReader)
+	defer c.BufioPool.ReleaseReader(bufFakeRespReader)
+	responseNum, err = resp.ReadFrom(false, bufFakeRespReader)
+	return reqReadNum, reqWriteNum, responseNum, err
+}
+
+func (c *Client) writeReqToDevNull(req Request) (readNum int, writeNum int, err error) {
+	devNullBufferedWriter := c.BufioPool.AcquireWriter(defaultDevNullWriter)
+	defer c.BufioPool.ReleaseWriter(devNullBufferedWriter)
+	if readNum, writeNum, err = req.WriteHeaderTo(devNullBufferedWriter); err != nil {
+		return readNum, writeNum, err
+	}
+	n, err := req.WriteBodyTo(devNullBufferedWriter)
+	readNum += n
+	writeNum += n
+	return readNum, writeNum, err
+}
 
 // Do performs the given http request and fills the given http response.
 //

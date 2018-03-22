@@ -12,20 +12,13 @@ import (
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/client"
-	"github.com/haxii/fastproxy/hijack"
 	"github.com/haxii/fastproxy/http"
-	"github.com/haxii/fastproxy/proxy/proxy"
+	"github.com/haxii/fastproxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/log"
-
-	proxyhttp "github.com/haxii/fastproxy/proxy/http"
 )
 
 func main() {
-	ln, err := net.Listen("tcp4", "0.0.0.0:8080")
-	if err != nil {
-		return
-	}
 	superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8888, superproxy.ProxyTypeHTTP, "", "", "")
 	superProxy.SetMaxConcurrency(20)
 
@@ -41,7 +34,7 @@ func main() {
 			ShouldDecryptHost: func(hostWithPort string) bool {
 				return true
 			},
-			URLProxy: func(hostInfo *proxyhttp.HostInfo, uri []byte) *superproxy.SuperProxy {
+			URLProxy: func(hostInfo *proxy.HostInfo, uri []byte) *superproxy.SuperProxy {
 				hostWithPort := hostInfo.HostWithPort()
 				if strings.Contains(hostWithPort, "lumtest") {
 					return nil
@@ -65,9 +58,7 @@ func main() {
 		MaxClientIdleDuration: time.Second * 30,
 	}
 
-	if err := proxy.Serve(ln, 30*time.Second); err != nil {
-		panic(err)
-	}
+	panic(proxy.Serve("0.0.0.0:8080"))
 }
 
 //SimpleHijackerPool implements the HijackerPool based on simpleHijacker & sync.Pool
@@ -77,7 +68,7 @@ type SimpleHijackerPool struct {
 
 //Get get a simple hijacker from pool
 func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
-	targetHost string, method, path []byte) hijack.Hijacker {
+	targetHost string, method, path []byte) proxy.Hijacker {
 	v := p.pool.Get()
 	var h *simpleHijacker
 	if v == nil {
@@ -90,7 +81,7 @@ func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
 }
 
 //Put puts a simple hijacker back to pool
-func (p *SimpleHijackerPool) Put(s hijack.Hijacker) {
+func (p *SimpleHijackerPool) Put(s proxy.Hijacker) {
 	p.pool.Put(s)
 }
 
