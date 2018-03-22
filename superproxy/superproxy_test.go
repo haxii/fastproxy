@@ -12,6 +12,8 @@ import (
 	"github.com/haxii/fastproxy/bufiopool"
 )
 
+// TestNewSuperProxy test new super proxy with http, https and socks5 types
+// and test if those superproxy can make tunnel with a simple server
 func TestNewSuperProxy(t *testing.T) {
 	go func() {
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -21,8 +23,10 @@ func TestNewSuperProxy(t *testing.T) {
 	}()
 	testNewSuperProxyWithHTTPSProxy(t)
 	testNewSuperProxyWithHTTPType(t)
-	testNewSuperProxyWithSocksType(t)
+	testNewSuperProxyWithSocks5Type(t)
 }
+
+// test new super proxy with http type
 func testNewSuperProxyWithHTTPType(t *testing.T) {
 	superProxy, err := NewSuperProxy("localhost", uint16(8081), ProxyTypeHTTP, "", "", "")
 	if err != nil {
@@ -54,7 +58,8 @@ func testNewSuperProxyWithHTTPType(t *testing.T) {
 	}
 }
 
-func testNewSuperProxyWithSocksType(t *testing.T) {
+// test new super proxy with socks5 type
+func testNewSuperProxyWithSocks5Type(t *testing.T) {
 	superProxy, err := NewSuperProxy("localhost", uint16(9099), ProxyTypeSOCKS5, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
@@ -87,6 +92,7 @@ func testNewSuperProxyWithSocksType(t *testing.T) {
 	defer conn.Close()
 }
 
+// // test new super proxy with https type
 func testNewSuperProxyWithHTTPSProxy(t *testing.T) {
 	serverCrt := `-----BEGIN CERTIFICATE-----
 MIICnzCCAggCCQDbF8N9hzgLKTANBgkqhkiG9w0BAQUFADCBkzELMAkGA1UEBhMC
@@ -146,6 +152,7 @@ L/ib
 	}
 }
 
+// test new super proxy with error parameters 
 func TestErrorParameters(t *testing.T) {
 	_, err := NewSuperProxy("", uint16(3129), ProxyTypeHTTPS, "", "", ".server.crt")
 	if err == nil {
@@ -164,6 +171,7 @@ func TestErrorParameters(t *testing.T) {
 	}
 }
 
+// test if super proxy can limit concurrency
 func TestSuperProxyConcurrency(t *testing.T) {
 	superProxy, err := NewSuperProxy("localhost", uint16(8081), ProxyTypeHTTP, "", "", "")
 	if err != nil {
