@@ -32,10 +32,7 @@ type Handler struct {
 	ShouldDecryptHost func(host string) bool
 
 	//URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
-	URLProxy func(hostWithPort string, path []byte) *superproxy.SuperProxy
-
-	//RewriteURL rewrites url
-	RewriteURL func(hostWithPort string) string
+	URLProxy func(hostInfo *http.HostInfo, path []byte) *superproxy.SuperProxy
 
 	//LookupIP returns ip string,
 	//should not block for long time
@@ -55,14 +52,6 @@ type Handler struct {
 
 func (h *Handler) handleHTTPConns(c net.Conn, req *http.Request,
 	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage) error {
-	if h.RewriteURL != nil {
-		hostWithPort := h.RewriteURL(req.HostInfo().HostWithPort())
-		if len(hostWithPort) == 0 {
-			return ErrSessionUnavailable
-		}
-		req.HostInfo().ParseHostWithPort(hostWithPort)
-	}
-
 	return h.do(c, req, bufioPool, client, usage)
 }
 
@@ -97,7 +86,11 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 	}
 
 	//set requests proxy
-	superProxy := h.URLProxy(req.HostInfo().HostWithPort(), req.PathWithQueryFragment())
+	superProxy := h.URLProxy(req.HostInfo(), req.PathWithQueryFragment())
+	if len(req.HostInfo().HostWithPort()) == 0 {
+		return ErrSessionUnavailable
+	}
+
 	req.SetProxy(superProxy)
 	if superProxy != nil {
 		domain := req.HostInfo().Domain()
@@ -129,12 +122,6 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 
 func (h *Handler) handleHTTPSConns(c net.Conn, hostWithPort string,
 	bufioPool *bufiopool.Pool, client *client.Client, usage *usage.ProxyUsage, idle time.Duration) error {
-	if h.RewriteURL != nil {
-		hostWithPort = h.RewriteURL(hostWithPort)
-		if len(hostWithPort) == 0 {
-			return ErrSessionUnavailable
-		}
-	}
 	if h.ShouldDecryptHost(hostWithPort) {
 		return h.decryptConnect(c, hostWithPort, bufioPool, client, usage)
 	}
@@ -165,11 +152,17 @@ func (h *Handler) sendHTTPSProxyStatusBadGateway(c net.Conn) (err error) {
 }
 
 //proxy https traffic directly
-func (h *Handler) tunnelConnect(conn net.Conn,
-	bufioPool *bufiopool.Pool, hostWithPort string, usage *usage.ProxyUsage, idle time.Duration) error {
-	superProxy := h.URLProxy(hostWithPort, nil)
-
+func (h *Handler) tunnelConnect(conn net.Conn, bufioPool *bufiopool.Pool,
+	hostWithPort string, usage *usage.ProxyUsage, idle time.Duration) error {
+	hostInfo := &http.HostInfo{}
+	hostInfo.ParseHostWithPort(hostWithPort)
+	superProxy := h.URLProxy(hostInfo, nil)
+	if len(hostInfo.HostWithPort()) == 0 {
+		return ErrSessionUnavailable
+	}
+	hostWithPort = hostInfo.HostWithPort()
 	targetWithPort := hostWithPort
+
 	if superProxy != nil {
 		host, port, _ := net.SplitHostPort(hostWithPort)
 		if len(host) > 0 && net.ParseIP(host) == nil {

@@ -65,7 +65,7 @@ func (p *Proxy) init() error {
 		}
 	}
 	if p.Handler.URLProxy == nil {
-		p.Handler.URLProxy = func(hostWithPort string, path []byte) *superproxy.SuperProxy {
+		p.Handler.URLProxy = func(hostInfo *proxyhttp.HostInfo, path []byte) *superproxy.SuperProxy {
 			return nil
 		}
 	}

@@ -277,9 +277,9 @@ func (c *HostClient) Do(req Request, resp Response) (reqReadNum, reqWriteNum, re
 	var currentRespNum int
 	for {
 		retry, currentReqReadNum, currentReqWriteNum, currentRespNum, err = c.do(req, resp, buffer)
-		reqReadNum += thisReqReadNum
-		reqWriteNum += thisReqWriteNum
-		respNum += thisRespNum
+		reqReadNum += currentReqReadNum
+		reqWriteNum += currentReqWriteNum
+		respNum += currentRespNum
 		if err == nil || !retry {
 			break
 		}
