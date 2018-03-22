@@ -85,16 +85,17 @@ func (header *Header) ParseHeaderFields(reader *bufio.Reader,
 	buffer *bytebufferpool.ByteBuffer) (int, error) {
 	originalLen := buffer.Len()
 	n := 1
-	readSize := 0
+	readNum := 0
+
 	for {
 		rn, err := header.tryRead(reader, buffer, n)
-		readSize += rn
+		readNum += rn
 		if err == nil {
-			return readSize, nil
+			return readNum, nil
 		}
 		buffer.B = buffer.B[:originalLen]
 		if err != errNeedMore {
-			return readSize, err
+			return readNum, err
 		}
 		n = reader.Buffered() + 1
 	}
@@ -129,7 +130,7 @@ func (header *Header) tryRead(reader *bufio.Reader,
 }
 
 func (header *Header) readHeaders(buf []byte,
-	buffer *bytebufferpool.ByteBuffer) (_headerLength int, _err error) {
+	buffer *bytebufferpool.ByteBuffer) (headerLength int, err error) {
 	parseThenWriteBuffer := func(rawHeaderLine []byte) error {
 		// Connection, Authenticate and Authorization are single hop Header:
 		// http://www.w3.org/Protocols/rfc2616/rfc2616.txt
@@ -184,7 +185,8 @@ func (header *Header) readHeaders(buf []byte,
 		}
 		//remove proxy header
 		if !isProxyHeader(rawHeaderLine) {
-			return util.WriteWithValidation(buffer, rawHeaderLine)
+			_, err := util.WriteWithValidation(buffer, rawHeaderLine)
+			return err
 		}
 		return nil
 	}
@@ -195,7 +197,8 @@ func (header *Header) readHeaders(buf []byte,
 		return 0, errNeedMore
 	}
 	if (n == 1 && buf[0] == '\r') || n == 0 {
-		// empty headers
+		// empty headers, write \n or \r\n
+		util.WriteWithValidation(buffer, buf[:n+1])
 		return n + 1, nil
 	}
 	n++

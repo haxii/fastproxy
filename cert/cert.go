@@ -9,7 +9,10 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"io/ioutil"
 	"math/big"
+	"net"
+	"strings"
 	"time"
 
 	"github.com/haxii/fastproxy/util"
@@ -108,7 +111,10 @@ func GenCA(name string) (certPEM, keyPEM []byte, err error) {
 //MakeClientTLSConfig make a client TLS config based on host and servername
 //servername is 1st used to generate the config then from client tls
 func MakeClientTLSConfig(host, serverName string) *tls.Config {
-	/*tlsServerName := func(addr string) string {
+	tlsServerName := func(addr string) string {
+		if len(addr) == 0 {
+			return "*"
+		}
 		if !strings.Contains(addr, ":") {
 			return addr
 		}
@@ -117,21 +123,61 @@ func MakeClientTLSConfig(host, serverName string) *tls.Config {
 			return "*"
 		}
 		return host
-	}*/
+	}
 	tlsConfig := &tls.Config{}
 	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(0)
 
-	/*
-		if len(serverName) == 0 {
-			hostName := tlsServerName(host)
-			if hostName == "*" {
-				tlsConfig.InsecureSkipVerify = true
-			} else {
-				tlsConfig.ServerName = hostName
-			}
+	if len(serverName) == 0 {
+		hostName := tlsServerName(host)
+		if hostName == "*" {
+			tlsConfig.InsecureSkipVerify = true
 		} else {
-			tlsConfig.ServerName = serverName
-		}*/
-	tlsConfig.InsecureSkipVerify = true
+			tlsConfig.ServerName = hostName
+		}
+	} else {
+		tlsConfig.ServerName = serverName
+	}
+	return tlsConfig
+}
+
+// MakeClientTLSConfigByCA make a client TLS config based on self-signed ca certificate
+func MakeClientTLSConfigByCA(host, serverName, filePath string) *tls.Config {
+	tlsServerName := func(addr string) string {
+		if !strings.Contains(addr, ":") {
+			return addr
+		}
+		host, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			return "*"
+		}
+		return host
+	}
+	tlsConfig := &tls.Config{}
+	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(0)
+
+	if len(serverName) == 0 {
+		hostName := tlsServerName(host)
+		if hostName == "*" {
+			tlsConfig.InsecureSkipVerify = true
+		} else {
+			tlsConfig.ServerName = hostName
+		}
+	} else {
+		tlsConfig.ServerName = serverName
+	}
+	selfCertificate, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return tlsConfig
+	}
+	newCert := &tls.Certificate{}
+	key, err := genKeyPair()
+	if err != nil {
+		return tlsConfig
+	}
+	newCert.Certificate = append(newCert.Certificate, selfCertificate)
+	newCert.PrivateKey = key
+	newCert.Leaf, _ = x509.ParseCertificate(selfCertificate)
+
+	tlsConfig.Certificates = append(tlsConfig.Certificates, *newCert)
 	return tlsConfig
 }
