@@ -18,6 +18,11 @@ import (
 	"github.com/haxii/fastproxy/util"
 )
 
+var (
+	//ErrSessionUnavailable means that proxy can't serve this session
+	ErrSessionUnavailable = errors.New("session unavailable")
+)
+
 //Handler proxy handler
 type Handler struct {
 	//ShouldAllowConnection should allow the connection to proxy, return false to drop the conn
@@ -53,7 +58,7 @@ func (h *Handler) handleHTTPConns(c net.Conn, req *http.Request,
 	if h.RewriteURL != nil {
 		hostWithPort := h.RewriteURL(req.HostInfo().HostWithPort())
 		if len(hostWithPort) == 0 {
-			return nil
+			return ErrSessionUnavailable
 		}
 		req.HostInfo().ParseHostWithPort(hostWithPort)
 	}
@@ -127,7 +132,7 @@ func (h *Handler) handleHTTPSConns(c net.Conn, hostWithPort string,
 	if h.RewriteURL != nil {
 		hostWithPort = h.RewriteURL(hostWithPort)
 		if len(hostWithPort) == 0 {
-			return nil
+			return ErrSessionUnavailable
 		}
 	}
 	if h.ShouldDecryptHost(hostWithPort) {

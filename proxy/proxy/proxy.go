@@ -208,13 +208,13 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			return nil
 		}
 
+		var err error
+		var host string
 		//handle http requests
 		if !http.IsMethodConnect(req.Method()) {
-			err := p.Handler.handleHTTPConns(c, req,
+			host = req.HostInfo().HostWithPort()
+			err = p.Handler.handleHTTPConns(c, req,
 				p.BufioPool, &p.Client, &p.Client.Usage)
-			if err != nil {
-				return util.ErrWrapper(err, "error HTTP traffic %s ", req.HostInfo().HostWithPort())
-			}
 			req.Reset()
 		} else {
 			//some header may not be read, but buffered in reader, such as "Host", "Proxy-Connection",
@@ -226,13 +226,21 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			//handle https proxy request
 			//here I make a copy of the host
 			//then reset the request immediately
-			host := strings.Repeat(req.HostInfo().HostWithPort(), 1)
+			host = strings.Repeat(req.HostInfo().HostWithPort(), 1)
 			req.Reset()
-			//make the requests
-			if err := p.Handler.handleHTTPSConns(c, host,
-				p.BufioPool, &p.Client, &p.Client.Usage, p.MaxClientIdleDuration); err != nil {
-				return util.ErrWrapper(err, "error HTTPS traffic "+host+" ")
+			err = p.Handler.handleHTTPSConns(c, host,
+				p.BufioPool, &p.Client, &p.Client.Usage, p.MaxClientIdleDuration)
+		}
+
+		if err != nil {
+			if err == ErrSessionUnavailable {
+				if e := p.writeFastError(c, http.StatusSessionUnavailable,
+					"Sorry, server can't keep this session.\n"); e != nil {
+					return util.ErrWrapper(e, "fail to response session unavailable")
+				}
+				return nil
 			}
+			return util.ErrWrapper(err, "error HTTP traffic %s ", host)
 		}
 
 		if req.ConnectionClose() {
