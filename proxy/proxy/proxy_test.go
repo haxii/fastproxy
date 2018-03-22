@@ -26,9 +26,18 @@ import (
 	"github.com/haxii/log"
 )
 
+var (
+	simpleProxyPort = "5050"
+	simpleServerPort = ":9999"
+	simpleHTTPSServerPort = ":444"
+	httpsProxy = "0.0.0.0:5060"
+	httpsProxyPort = ":5060"
+	
+)
+
 func TestProxyServe(t *testing.T) {
 	go func() {
-		ln, err := net.Listen("tcp4", "0.0.0.0:5050")
+		ln, err := net.Listen("tcp4", "0.0.0.0:"+simpleProxyPort)
 		if err != nil {
 			return
 		}
@@ -60,8 +69,8 @@ func TestProxyServe(t *testing.T) {
 			panic(err)
 		}
 	}()
-
-	conn, err := net.Dial("tcp4", "0.0.0.0:5050")
+	simpleServerAddr = "0.0.0.0:" + +simpleProxyPort
+	conn, err := net.Dial("tcp4", simpleServerAddr)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -81,7 +90,7 @@ func TestFastProxyAsProxyServe(t *testing.T) {
 		nethttp.HandleFunc("/", func(w nethttp.ResponseWriter, r *nethttp.Request) {
 			fmt.Fprintf(w, "Hello world%s!", r.URL.Path[1:])
 		})
-		nethttp.ListenAndServe(":9990", nil)
+		nethttp.ListenAndServe(simpleServerPort, nil)
 	}()
 
 	go func() {
@@ -135,14 +144,14 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 		f.Write([]byte(serverKey))
 		f.Close()
 
-		err = nethttp.ListenAndServeTLS(":444", ".server.crt", ".server.key", nil)
+		err = nethttp.ListenAndServeTLS(simpleHTTPSServerPort, ".server.crt", ".server.key", nil)
 		if err != nil {
 			slog.Fatal("ListenAndServe: ", err)
 		}
 	}()
 	go func() {
-		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 8888, superproxy.ProxyTypeHTTPS, "", "", "../proxy/proxy/.server.crt")
-		ln, err := net.Listen("tcp4", "0.0.0.0:5060")
+		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 3129, superproxy.ProxyTypeHTTPS, "", "", "../proxy/proxy/.server.crt")
+		ln, err := net.Listen("tcp4", httpsProxy)
 		if err != nil {
 			return
 		}
@@ -278,7 +287,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 
 //test send http request with fastproxy
 func tesHTTPRequest(t *testing.T) {
-	proxy := func(r *nethttp.Request) (*url.URL, error) {
+	simpleProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5050))
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
@@ -287,7 +296,7 @@ func tesHTTPRequest(t *testing.T) {
 
 	}
 	transport := &nethttp.Transport{
-		Proxy: proxy,
+		Proxy: simpleProxy,
 	}
 	c := nethttp.Client{
 		Transport: transport,
@@ -309,7 +318,7 @@ func tesHTTPRequest(t *testing.T) {
 
 // test send https request with fastproxy
 func testHTTPSRequest(t *testing.T) {
-	proxy := func(r *nethttp.Request) (*url.URL, error) {
+	simpleProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5050))
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
@@ -318,7 +327,7 @@ func testHTTPSRequest(t *testing.T) {
 
 	}
 	transport := &nethttp.Transport{
-		Proxy: proxy,
+		Proxy: simpleProxy,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 			ServerName:         "localhost"},
@@ -344,7 +353,7 @@ func testHTTPSRequest(t *testing.T) {
 
 // test send http request with http superproxy
 func testHTTPSuperProxyWithHTTPRequest(t *testing.T) {
-	proxy := func(r *nethttp.Request) (*url.URL, error) {
+	proxyWithHttpSuperProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5040))
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
@@ -353,7 +362,7 @@ func testHTTPSuperProxyWithHTTPRequest(t *testing.T) {
 
 	}
 	transport := &nethttp.Transport{
-		Proxy: proxy,
+		Proxy: proxyWithHttpSuperProxy,
 	}
 	c := nethttp.Client{
 		Transport: transport,
@@ -375,7 +384,7 @@ func testHTTPSuperProxyWithHTTPRequest(t *testing.T) {
 
 // test send https request with http superproxy
 func testHTTPSuperProxyWithHTTPSRequest(t *testing.T) {
-	proxy := func(r *nethttp.Request) (*url.URL, error) {
+	proxyWithHttpSuperProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5040))
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
@@ -384,7 +393,7 @@ func testHTTPSuperProxyWithHTTPSRequest(t *testing.T) {
 
 	}
 	transport := &nethttp.Transport{
-		Proxy: proxy,
+		Proxy: proxyWithHttpSuperProxy,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 			ServerName:         "localhost",
@@ -410,7 +419,7 @@ func testHTTPSuperProxyWithHTTPSRequest(t *testing.T) {
 
 // test send http request with https superproxy
 func testHTTPSSuperProxyWithHTTPRequest(t *testing.T) {
-	proxy := func(r *nethttp.Request) (*url.URL, error) {
+	proxyWithHttpsSuperProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("https://%s:%d", "127.0.0.1", 5060))
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
@@ -419,7 +428,7 @@ func testHTTPSSuperProxyWithHTTPRequest(t *testing.T) {
 
 	}
 	transport := &nethttp.Transport{
-		Proxy: proxy,
+		Proxy: proxyWithHttpsSuperProxy,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 			ServerName:         "localhost",
@@ -446,7 +455,7 @@ func testHTTPSSuperProxyWithHTTPRequest(t *testing.T) {
 
 // test send https request with https superproxy
 func testHTTPSSuperProxyWithHTTPSRequest(t *testing.T) {
-	proxy := func(r *nethttp.Request) (*url.URL, error) {
+	proxyWithHttpsSuperProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5060))
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
@@ -455,7 +464,7 @@ func testHTTPSSuperProxyWithHTTPSRequest(t *testing.T) {
 
 	}
 	transport := &nethttp.Transport{
-		Proxy: proxy,
+		Proxy: proxyWithHttpsSuperProxy,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 			ServerName:         "localhost"},
@@ -480,7 +489,7 @@ func testHTTPSSuperProxyWithHTTPSRequest(t *testing.T) {
 
 // test send http request with socks5 superproxy
 func testSocks5SuperProxyyWithHTTPRequest(t *testing.T) {
-	proxy := func(r *nethttp.Request) (*url.URL, error) {
+	proxyWithSocks5SuperProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5030))
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
@@ -489,7 +498,7 @@ func testSocks5SuperProxyyWithHTTPRequest(t *testing.T) {
 
 	}
 	transport := &nethttp.Transport{
-		Proxy:           proxy,
+		Proxy:           proxyWithSocks5SuperProxy,
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	c := nethttp.Client{
@@ -512,7 +521,7 @@ func testSocks5SuperProxyyWithHTTPRequest(t *testing.T) {
 
 // test send https request with socks5 superproxy
 func testSocks5SuperProxyWithHTTPSRequest(t *testing.T) {
-	proxy := func(r *nethttp.Request) (*url.URL, error) {
+	proxyWithSocks5SuperProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5030))
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
@@ -521,7 +530,7 @@ func testSocks5SuperProxyWithHTTPSRequest(t *testing.T) {
 
 	}
 	transport := &nethttp.Transport{
-		Proxy: proxy,
+		Proxy: proxyWithSocks5SuperProxy,
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true,
 			ServerName: "localhost"},
 	}
@@ -561,71 +570,6 @@ func testDNSAnalysis(t *testing.T) {
 	}
 }
 
-/*
-// test read timeout and max keep alive duration
-func testReadTimeoutAndMaxKeepaliveDuration(t *testing.T) {
-	go func() {
-		ln, err := net.Listen("tcp4", "0.0.0.0:7077")
-		if err != nil {
-			return
-		}
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err)
-		}
-		proxy := Proxy{
-			BufioPool:   &bufiopool.Pool{},
-			Client:      client.Client{},
-			ProxyLogger: &log.DefaultLogger{},
-			Handler: Handler{
-				ShouldAllowConnection: func(conn net.Addr) bool {
-					return true
-				},
-				ShouldDecryptHost: func(hostWithPort string) bool {
-					return true
-				},
-				URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
-					return nil
-				},
-				HijackerPool: &SimpleHijackerPool{},
-			},
-			MaxKeepaliveDuration: 2 * time.Second,
-			ReadTimeout:          2 * time.Second,
-		}
-		if err := proxy.Serve(ln, 30*time.Second); err != nil {
-			panic(err)
-		}
-	}()
-	conn, err := net.Dial("tcp4", "0.0.0.0:7077")
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	fmt.Fprintf(conn, "GET / HTTP/1.1\r\n\r\n")
-	status, err := bufio.NewReader(conn).ReadString('\n')
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if status != "HTTP/1.1 400 Bad Request\r\n" {
-		t.Fatalf("an error occurred when send get request")
-	}
-
-	time.Sleep(100 * time.Millisecond)
-	fmt.Fprintf(conn, "GET / HTTP/1.1\r\n\r\n")
-	result, err := bufio.NewReader(conn).ReadString('.')
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if result != "This is a proxy server" {
-		t.Fatalf("an error occurred when send get request")
-	}
-
-	time.Sleep(2 * time.Second)
-	fmt.Fprintf(conn, "GET / HTTP/1.1\r\n\r\n")
-	_, err = bufio.NewReader(conn).ReadString('\n')
-	if err != io.EOF {
-		t.Fatalf("unexpected error: %s, expected EOF", err)
-	}
-}
-*/
 // test big header parse
 func testBigHeader(t *testing.T) {
 	Cache := ""
@@ -633,7 +577,7 @@ func testBigHeader(t *testing.T) {
 		Cache += "t"
 	}
 	Cache += "ewpZ8WDfBU095k+r/6v6GA=="
-	proxy := func(r *nethttp.Request) (*url.URL, error) {
+	simpleProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 5050))
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
@@ -642,7 +586,7 @@ func testBigHeader(t *testing.T) {
 
 	}
 	transport := &nethttp.Transport{
-		Proxy: proxy,
+		Proxy: simpleProxy,
 	}
 	c := nethttp.Client{
 		Transport: transport,
@@ -700,6 +644,7 @@ func TestGracefulShutDown(t *testing.T) {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	}()
+	time.Sleep(1 * time.Second)
 	fmt.Fprintf(conn, "GET / HTTP/1.1\r\n\r\n")
 	status, err := bufio.NewReader(conn).ReadString('\n')
 	if err != nil {
@@ -723,6 +668,7 @@ func TestGracefulShutDown(t *testing.T) {
 // test using proxy hijack and url send to different proxy
 func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 3128, superproxy.ProxyTypeHTTP, "", "", "")
+	dataForSigning := ""
 	proxy := Proxy{
 		BufioPool:   &bufiopool.Pool{},
 		Client:      client.Client{},
@@ -736,6 +682,7 @@ func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 			},
 			URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
 				if strings.Contains(hostWithPort, "127.0.0.1:9333") {
+					dataForSigning = "No super proxy can use for fast proxy"
 					return nil
 				}
 				if len(uri) == 0 {
@@ -762,7 +709,7 @@ func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 		})
 		nethttp.ListenAndServe(":9333", nil)
 	}()
-	cproxy := func(r *nethttp.Request) (*url.URL, error) {
+	newProxyWithSuperProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 7555))
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
@@ -771,7 +718,7 @@ func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 
 	}
 	transport := &nethttp.Transport{
-		Proxy: cproxy,
+		Proxy: newProxyWithSuperProxy,
 	}
 	c := nethttp.Client{
 		Transport: transport,
@@ -790,6 +737,10 @@ func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 	body, err := ioutil.ReadAll(resp.Body)
 	if string(body) != "Hello proxy!" {
 		t.Fatal("An error occurred: proxy can't send request")
+	}
+
+	if !strings.Contains(dataForSigning, "No super proxy can use for fast proxy") {
+		t.Fatal("Proxy send request using super proxy, expected should not use super proxy")
 	}
 
 	req, err = nethttp.NewRequest("GET", "http://127.0.0.1:9990", nil)
