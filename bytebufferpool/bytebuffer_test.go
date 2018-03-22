@@ -201,7 +201,7 @@ func TestCopyWithIdleDuration(t *testing.T) {
 		t.Fatal("expected err: idle time out")
 	}
 	if !strings.Contains(err.Error(), "idle time out") {
-		t.Fatal("expected err: idle time out, but get unexpected error")
+		t.Fatalf("expected err: idle time out, but get unexpected error: %s", err)
 	}
 }
 

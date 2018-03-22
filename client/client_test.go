@@ -693,38 +693,6 @@ func testClientDoWithSameConnectionGetMethod(t *testing.T) {
 }
 
 func testClientUsage(t *testing.T) {
-	c := Client{}
-	c.Usage = usage.ProxyUsage{
-		Incoming: 0,
-		Outgoing: 0,
-	}
-	preIncomingSize := 0
-	preOutgoingSize := 0
-	for i := 1; i < 100; i++ {
-		c.Usage.AddIncomingSize(uint64(i))
-		if c.Usage.GetIncomingSize() != uint64(i+preIncomingSize) {
-			t.Fatal("IncomingSize count error")
-		}
-		c.Usage.AddOutgoingSize(uint64(i))
-		if c.Usage.GetOutgoingSize() != uint64(i+preOutgoingSize) {
-			t.Fatal("OutgoingSize count error")
-		}
-		preIncomingSize = int(c.Usage.GetIncomingSize())
-		preOutgoingSize = int(c.Usage.GetOutgoingSize())
-	}
-	if c.Usage.GetIncomingSize() != 4950 {
-		t.Fatal("IncomingSize count error")
-	}
-	if c.Usage.GetOutgoingSize() != 4950 {
-		t.Fatal("IncomingSize count error")
-	}
-
-	c.Usage.Incoming = 0
-	c.Usage.AddIncomingSize(10000000000000000000)
-	if c.Usage.GetIncomingSize() != 10000000000000000000 {
-		t.Fatal("IncomingSize count error")
-	}
-
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	currentClinet := &Client{
