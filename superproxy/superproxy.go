@@ -61,11 +61,7 @@ type SuperProxy struct {
 
 // NewSuperProxy new a super proxy
 func NewSuperProxy(proxyHost string, proxyPort uint16, proxyType ProxyType,
-<<<<<<< HEAD
-	user string, pass string, shouldOpenUsage bool, selfSignedCACertificate string) (*SuperProxy, error) {
-=======
 	user string, pass string, selfSignedCACertificate string) (*SuperProxy, error) {
->>>>>>> a91bfcfa68c17823135aa7283d1bea26fe3f61c8
 	// check input vars
 	if len(proxyHost) == 0 {
 		return nil, errors.New("nil host provided")
