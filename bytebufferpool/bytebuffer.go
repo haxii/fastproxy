@@ -1,6 +1,10 @@
 package bytebufferpool
 
-import "io"
+import (
+	"errors"
+	"io"
+	"time"
+)
 
 // ByteBuffer provides byte buffer, which can be used for minimizing
 // memory allocations.
@@ -29,6 +33,54 @@ func (b *ByteBuffer) Copy(dst io.Writer, src io.Reader) (written int64, err erro
 	b.B = make([]byte, 32*1024)
 	for {
 		nr, er := src.Read(b.B)
+		if nr > 0 {
+			nw, ew := dst.Write(b.B[0:nr])
+			if nw > 0 {
+				written += int64(nw)
+			}
+			if ew != nil {
+				err = ew
+				break
+			}
+			if nr != nw {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if er != nil {
+			if er != io.EOF {
+				err = er
+			}
+			break
+		}
+	}
+	return written, err
+}
+
+// CopyWithIdleDuration copies from src to dst until either EOF is reached
+// on src, or an error occurs, or idle time out. It returns the number of bytes
+// copied and the first error encountered while copying, if any.
+func (b *ByteBuffer) CopyWithIdleDuration(dst io.Writer, src io.Reader, idle time.Duration) (written int64, err error) {
+	if idle == 0 {
+		return b.Copy(dst, src)
+	}
+
+	b.Reset()
+	b.B = make([]byte, 32*1024)
+	idleChan := make(chan struct{})
+	for {
+		var nr int
+		var er error
+		go func() {
+			nr, er = src.Read(b.B)
+			idleChan <- struct{}{}
+		}()
+		select {
+		case <-idleChan:
+		case <-time.After(idle):
+			return written, errors.New("idle time out")
+		}
+
 		if nr > 0 {
 			nw, ew := dst.Write(b.B[0:nr])
 			if nw > 0 {

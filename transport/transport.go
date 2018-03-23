@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/haxii/fastproxy/bytebufferpool"
 )
@@ -22,16 +23,17 @@ func Dial(addr string) (net.Conn, error) {
 // Forward forward remote and local connection
 // It returns the number of bytes write to dst
 // and the first error encountered while writing, if any.
-func Forward(dst io.Writer, src io.Reader) (int64, error) {
+func Forward(dst io.Writer, src io.Reader, idle time.Duration) (int64, error) {
 	buffer := bytebufferpool.Get()
 	defer bytebufferpool.Put(buffer)
 	var err, e error
 	var wn int64
-	if wn, e = buffer.Copy(dst, src); e != nil {
+	if wn, e = buffer.CopyWithIdleDuration(dst, src, idle); e != nil {
 		errStr := e.Error()
 		if !(strings.Contains(errStr, "broken pipe") ||
 			strings.Contains(errStr, "reset by peer") ||
-			strings.Contains(errStr, "i/o timeout")) {
+			strings.Contains(errStr, "i/o timeout") ||
+			strings.Contains(errStr, "idle time out")) {
 			err = e
 		}
 	}

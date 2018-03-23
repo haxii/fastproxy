@@ -5,18 +5,16 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
-	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/bytebufferpool"
-	"github.com/haxii/fastproxy/cert"
-	"github.com/haxii/fastproxy/proxy/http"
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
+	"github.com/haxii/fastproxy/usage"
 )
 
 // ErrConnectionClosed may be returned from client methods if the server
@@ -29,22 +27,22 @@ import (
 var ErrConnectionClosed = errors.New("the server closed connection before returning the first response byte. " +
 	"Make sure the server returns 'Connection: close' response header before closing the connection")
 
-//Request http request for request
+// Request http request used for client
 type Request interface {
 	//Method request method in UPPER case
 	Method() []byte
-	//HostInfo
-	HostInfo() *http.HostInfo
+	//TargetWithPort, expected ip with port, if not, domain with port
+	TargetWithPort() string
 	//Path request relative path
 	PathWithQueryFragment() []byte
 	//Protocol HTTP/1.0, HTTP/1.1 etc.
 	Protocol() []byte
 
 	//WriteHeaderTo read header from request, then Write To buffer IO writer
-	WriteHeaderTo(*bufio.Writer) error
+	WriteHeaderTo(*bufio.Writer) (readNum int, writeNum int, err error)
 
 	//WriteBodyTo read body from request, then Write To buffer IO writer
-	WriteBodyTo(*bufio.Writer) error
+	WriteBodyTo(*bufio.Writer) (int, error)
 
 	// ConnectionClose if the request's "Connection" header value is
 	// set as `Close`
@@ -58,33 +56,18 @@ type Request interface {
 
 	//super proxy
 	GetProxy() *superproxy.SuperProxy
-
-	//get readSize
-	GetReadSize() int
-
-	//get writeSize
-	GetWriteSize() int
-
-	//add read size
-	AddReadSize(n int)
-
-	//add write size
-	AddWriteSize(n int)
 }
 
-//Response http response for response
+// Response http response used for client
 type Response interface {
 	//ReadFrom read the http response from the buffer IO reader
-	ReadFrom(discardBody bool, br *bufio.Reader) error
+	ReadFrom(discardBody bool, br *bufio.Reader) (int, error)
 
 	// ConnectionClose if the response's "Connection" header value is
 	// set as `Close`
 	//
 	// this determines weather the client reusing the connections
 	ConnectionClose() bool
-
-	//size of header and body
-	GetSize() int
 }
 
 // Client implements http client.
@@ -119,47 +102,18 @@ type Client struct {
 	hostClientsLock sync.Mutex
 	//refers to all possibilities of requestType i.e. isTLS x isProxy
 	hostClientsList [5]hostClients
+
+	//usage
+	Usage usage.ProxyUsage
 }
 
 type hostClients map[string]*HostClient
 
-type requestType int
-
-func (r *requestType) Value() int {
-	return int(*r)
-}
-
-func parseRequestType(superProxy *superproxy.SuperProxy, isHTTPS bool) requestType {
-	var rt requestType
-	if superProxy == nil {
-		if !isHTTPS {
-			rt = requestDirectHTTP
-		} else {
-			rt = requestDirectHTTPS
-		}
-	} else {
-		switch superProxy.GetProxyType() {
-		case superproxy.ProxyTypeSOCKS5:
-			rt = requestProxySOCKS5
-		case superproxy.ProxyTypeHTTP:
-			fallthrough
-		case superproxy.ProxyTypeHTTPS:
-			if !isHTTPS {
-				rt = requestProxyHTTP
-			} else {
-				rt = requestProxyHTTPS
-			}
-		}
-	}
-	return rt
-}
-
-const (
-	requestDirectHTTP requestType = iota
-	requestDirectHTTPS
-	requestProxyHTTP
-	requestProxyHTTPS
-	requestProxySOCKS5
+var (
+	errNilReq        = errors.New("nil request")
+	errNilResp       = errors.New("nil response")
+	errNilBufiopool  = errors.New("nil buffer io pool")
+	errNilTargetHost = errors.New("nil target host provided")
 )
 
 // Do performs the given http request and fills the given http response.
@@ -168,31 +122,31 @@ const (
 //
 // ErrNoFreeConns is returned if all Client.MaxConnsPerHost connections
 // to the requested host are busy.
-func (c *Client) Do(req Request, resp Response) error {
+func (c *Client) Do(req Request, resp Response) (reqReadNum, reqWriteNum, respNum int, err error) {
 	if req == nil {
-		return errors.New("nil request")
+		return reqReadNum, reqWriteNum, respNum, errNilReq
 	}
 	if resp == nil {
-		return errors.New("nil response")
+		return reqReadNum, reqWriteNum, respNum, errNilResp
 	}
 	if c.BufioPool == nil {
-		return errors.New("nil buffer io pool")
+		return reqReadNum, reqWriteNum, respNum, errNilBufiopool
 	}
 	//fetch request type
 	viaProxy := (req.GetProxy() != nil)
-	reqType := parseRequestType(req.GetProxy(), req.IsTLS())
+	reqType := parseRequestType(req)
 
 	//get target dialing host with port
 	hostWithPort := ""
 	if viaProxy {
 		hostWithPort = req.GetProxy().HostWithPort()
 		if len(hostWithPort) == 0 {
-			return errors.New("nil superproxy proxy host provided")
+			return reqReadNum, reqWriteNum, respNum, errors.New("nil superproxy proxy host provided")
 		}
 	} else {
-		hostWithPort = req.HostInfo().HostWithPort()
+		hostWithPort = req.TargetWithPort()
 		if len(hostWithPort) == 0 {
-			return errors.New("nil target host provided")
+			return reqReadNum, reqWriteNum, respNum, errNilTargetHost
 		}
 	}
 
@@ -302,25 +256,30 @@ func (c *HostClient) LastUseTime() time.Time {
 //
 // ErrNoFreeConns is returned if all HostClient.MaxConns connections
 // to the host are busy.
-func (c *HostClient) Do(req Request, resp Response) error {
+func (c *HostClient) Do(req Request, resp Response) (reqReadNum, reqWriteNum, respNum int, err error) {
 	if req == nil {
-		return errors.New("nil request")
+		return reqReadNum, reqWriteNum, respNum, errors.New("nil request")
 	}
 	if resp == nil {
-		return errors.New("nil response")
+		return reqReadNum, reqWriteNum, respNum, errors.New("nil response")
 	}
 	if c.BufioPool == nil {
-		return errors.New("nil buffer io pool")
+		return reqReadNum, reqWriteNum, respNum, errors.New("nil buffer io pool")
 	}
-	var err error
-	var retry bool
 	const maxAttempts = 5
 	attempts := 0
 
 	atomic.AddUint64(&c.pendingRequests, 1)
 	buffer := bytebufferpool.Get()
+	var retry bool
+	var currentReqReadNum int
+	var currentReqWriteNum int
+	var currentRespNum int
 	for {
-		retry, err = c.do(req, resp, buffer)
+		retry, currentReqReadNum, currentReqWriteNum, currentRespNum, err = c.do(req, resp, buffer)
+		reqReadNum += currentReqReadNum
+		reqWriteNum += currentReqWriteNum
+		respNum += currentRespNum
 		if err == nil || !retry {
 			break
 		}
@@ -348,7 +307,7 @@ func (c *HostClient) Do(req Request, resp Response) error {
 	if err == io.EOF {
 		err = ErrConnectionClosed
 	}
-	return err
+	return reqReadNum, reqWriteNum, respNum, err
 }
 
 // PendingRequests returns the current number of requests the client
@@ -361,53 +320,17 @@ func (c *HostClient) PendingRequests() int {
 }
 
 func (c *HostClient) do(req Request, resp Response,
-	reqCacheForRetry *bytebufferpool.ByteBuffer) (bool, error) {
+	reqCacheForRetry *bytebufferpool.ByteBuffer) (retry bool, reqReadNum, reqWriteNum, respNum int, err error) {
 	//set hostclient's last used time
 	atomic.StoreUint32(&c.lastUseTime, uint32(servertime.CoarseTimeNow().Unix()-startTimeUnix))
 
 	//analysis request type
 	viaProxy := (req.GetProxy() != nil)
-	reqType := parseRequestType(req.GetProxy(), req.IsTLS())
-
-	//set https tls config
-	if c.tlsServerConfig == nil {
-		if reqType == requestDirectHTTPS {
-			c.tlsServerConfig = cert.MakeClientTLSConfig(req.HostInfo().HostWithPort(), req.TLSServerName())
-		} else if reqType == requestProxyHTTPS {
-			c.tlsServerConfig = &tls.Config{
-				ClientSessionCache: tls.NewLRUClientSessionCache(0),
-				InsecureSkipVerify: true, //TODO: cache every host config in more safe way in a concurrent map
-			}
-		}
-	}
 
 	//get the connection
-	dialer := func() (net.Conn, error) {
-		switch reqType {
-		case requestDirectHTTP:
-			return transport.Dial(req.HostInfo().HostWithPort())
-		case requestDirectHTTPS:
-			return transport.DialTLS(req.HostInfo().HostWithPort(), c.tlsServerConfig)
-		case requestProxyHTTP:
-			return transport.Dial(req.GetProxy().HostWithPort())
-		case requestProxyHTTPS:
-			fallthrough
-		case requestProxySOCKS5:
-			tunnelConn, err := req.GetProxy().MakeTunnel(c.BufioPool, req.HostInfo().TargetWithPort())
-			if err != nil {
-				return nil, err
-			}
-			if reqType == requestProxyHTTPS {
-				conn := tls.Client(tunnelConn, c.tlsServerConfig)
-				return conn, nil
-			}
-			return tunnelConn, nil
-		}
-		return nil, errors.New("request type not implemented")
-	}
-	cc, err := c.ConnManager.AcquireConn(dialer)
+	cc, err := c.ConnManager.AcquireConn(c.makeDialer(req))
 	if err != nil {
-		return false, err
+		return false, reqReadNum, reqWriteNum, respNum, err
 	}
 	conn := cc.Get()
 
@@ -420,7 +343,7 @@ func (c *HostClient) do(req Request, resp Response,
 		if currentTime.Sub(cc.LastWriteDeadlineTime) > (c.WriteTimeout >> 2) {
 			if err = conn.SetWriteDeadline(currentTime.Add(c.WriteTimeout)); err != nil {
 				c.ConnManager.CloseConn(cc)
-				return true, err
+				return true, reqReadNum, reqWriteNum, respNum, err
 			}
 			cc.LastWriteDeadlineTime = currentTime
 		}
@@ -443,24 +366,32 @@ func (c *HostClient) do(req Request, resp Response,
 		} else {
 			reqWriteToTarget = conn
 		}
-		if err := c.readFromReqAndWriteToIOWriter(req,
-			reqType == requestProxyHTTP, reqWriteToTarget); err != nil {
+		rn, wn, err := c.readFromReqAndWriteToIOWriter(req, reqWriteToTarget)
+		if err != nil {
 			if shouldCacheReqForRetry {
 				reqCacheForRetry.Reset()
 			}
 			c.ConnManager.CloseConn(cc)
 			//cannot even read a complete request, do NOT retry
-			return false, err
+			return false, reqReadNum, reqWriteNum, respNum, err
+		}
+		if shouldCacheReqForRetry {
+			reqReadNum += rn
+		} else {
+			reqReadNum += rn
+			reqWriteNum += wn
 		}
 	}
 	if isCachedReqAvailable() {
 		//write the cached http requests to conn
-		if err := c.writeData(reqCacheForRetry.Bytes(), conn); err != nil {
+		n, err := c.writeData(reqCacheForRetry.Bytes(), conn)
+		if err != nil {
 			if err != nil {
 				c.ConnManager.CloseConn(cc)
-				return true, err
+				return true, reqReadNum, reqWriteNum, respNum, err
 			}
 		}
+		reqWriteNum += n
 	}
 
 	//get response
@@ -472,7 +403,7 @@ func (c *HostClient) do(req Request, resp Response,
 		if currentTime.Sub(cc.LastReadDeadlineTime) > (c.ReadTimeout >> 2) {
 			if err = conn.SetReadDeadline(currentTime.Add(c.ReadTimeout)); err != nil {
 				c.ConnManager.CloseConn(cc)
-				return true, err
+				return true, reqReadNum, reqWriteNum, respNum, err
 			}
 			cc.LastReadDeadlineTime = currentTime
 		}
@@ -481,17 +412,20 @@ func (c *HostClient) do(req Request, resp Response,
 	//read a byte from response to test if the connection has been closed by remote
 	if b, err := br.Peek(1); err != nil {
 		if err == io.EOF {
-			return true, io.EOF
+			return true, reqReadNum, reqWriteNum, respNum, io.EOF
 		}
-		return false, err
+		return false, reqReadNum, reqWriteNum, respNum, err
 	} else if len(b) == 0 {
-		return true, io.EOF
+		return true, reqReadNum, reqWriteNum, respNum, io.EOF
 	}
-	if err = resp.ReadFrom(isHead(req.Method()), br); err != nil {
+
+	n, err := resp.ReadFrom(isHead(req.Method()), br)
+	if err != nil {
 		c.BufioPool.ReleaseReader(br)
 		c.ConnManager.CloseConn(cc)
-		return false, err
+		return false, reqReadNum, reqWriteNum, respNum, err
 	}
+	respNum += n
 	c.BufioPool.ReleaseReader(br)
 
 	//release or close connection
@@ -501,58 +435,66 @@ func (c *HostClient) do(req Request, resp Response,
 		c.ConnManager.ReleaseConn(cc)
 	}
 
-	return false, err
+	return false, reqReadNum, reqWriteNum, respNum, err
 }
 
-func (c *HostClient) writeData(data []byte, w io.Writer) error {
+func (c *HostClient) writeData(data []byte, w io.Writer) (int, error) {
 	bw := c.BufioPool.AcquireWriter(w)
 	defer c.BufioPool.ReleaseWriter(bw)
-	if nw, err := bw.Write(data); err != nil {
-		return err
-	} else if nw != len(data) {
-		return io.ErrShortWrite
+	wn, err := bw.Write(data)
+	if err != nil {
+		return 0, err
+	} else if wn != len(data) {
+		return 0, io.ErrShortWrite
 	}
-	return bw.Flush()
+	return wn, bw.Flush()
 }
 
-func (c *HostClient) readFromReqAndWriteToIOWriter(req Request,
-	isReqProxyHTTP bool, w io.Writer) error {
+func (c *HostClient) readFromReqAndWriteToIOWriter(req Request, w io.Writer) (readNum, writeNum int, err error) {
 	bw := c.BufioPool.AcquireWriter(w)
 	defer c.BufioPool.ReleaseWriter(bw)
-
+	isReqProxyHTTP := (parseRequestType(req) == requestProxyHTTP)
 	//start line
 	if isReqProxyHTTP {
-		nw, _ := writeRequestLine(bw, true, req.Method(),
-			req.HostInfo().TargetWithPort(), req.PathWithQueryFragment(), req.Protocol())
-		req.AddWriteSize(nw)
+		wn, _ := writeRequestLine(bw, true, req.Method(),
+			req.TargetWithPort(), req.PathWithQueryFragment(), req.Protocol())
+		writeNum += wn
 	} else {
-		nw, _ := writeRequestLine(bw, false, req.Method(),
-			req.HostInfo().HostWithPort(), req.PathWithQueryFragment(), req.Protocol())
-		req.AddWriteSize(nw)
+		wn, _ := writeRequestLine(bw, false, req.Method(),
+			"", req.PathWithQueryFragment(), req.Protocol())
+		writeNum += wn
 	}
 
 	//auth header if needed
 	if isReqProxyHTTP {
 		if authHeader := req.GetProxy().HTTPProxyAuthHeaderWithCRLF(); authHeader != nil {
 			if nw, err := bw.Write(authHeader); err != nil {
-				return err
+				return 0, 0, err
 			} else if nw != len(authHeader) {
-				return io.ErrShortWrite
+				return 0, 0, io.ErrShortWrite
 			}
-			req.AddWriteSize(len(authHeader))
+			writeNum += len(authHeader)
 		}
 	}
 	//other request headers
-	if err := req.WriteHeaderTo(bw); err != nil {
-		return err
+	rn, wn, err := req.WriteHeaderTo(bw)
+	if err != nil {
+		return readNum, writeNum, err
 	}
+	readNum += rn
+	writeNum += wn
+
 	//do not read contents for get and head
 	if isHeadOrGet(req.Method()) {
-		return bw.Flush()
+		return readNum, writeNum, bw.Flush()
 	}
 	//request body
-	if err := req.WriteBodyTo(bw); err != nil {
-		return err
+	n, err := req.WriteBodyTo(bw)
+	if err != nil {
+		return readNum, writeNum, err
 	}
-	return bw.Flush()
+	readNum += n
+	writeNum += n
+
+	return readNum, writeNum, bw.Flush()
 }
