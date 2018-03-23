@@ -36,8 +36,7 @@ func TestNewSuperProxy(t *testing.T) {
 	}()
 	testNewSuperProxyWithHTTPSProxy(t)
 	testNewSuperProxyWithHTTPType(t)
-
-	testNewSuperProxyWithSocksType(t)
+	testNewSuperProxyWithSocks5Type(t)
 }
 
 // test new super proxy with http type

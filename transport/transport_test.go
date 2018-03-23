@@ -53,13 +53,12 @@ func TestTransportForwordAndDial(t *testing.T) {
 }
 
 func TestTransportDialTLS(t *testing.T) {
-	cfg := cert.MakeClientTLSConfigByCA("localhost", "", "/Users/xiangyu/Documents/workstation/nginx-forward-proxy/etc/server.crt")
-	cfg.InsecureSkipVerify = true
-	conn, err := DialTLS("localhost:443", cfg)
+	cfg := cert.MakeClientTLSConfig("127.0.0.1", "server")
+	conn, err := DialTLS("127.0.0.1:443", cfg)
 	if err != nil {
 		t.Fatalf("Dial error: %s", err.Error())
 	}
-	_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: localhost:443\r\n"))
+	_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: 127.0.0.1:443\r\n\r\n"))
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
