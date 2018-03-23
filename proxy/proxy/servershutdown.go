@@ -27,6 +27,9 @@ type GracefulNetListener struct {
 
 // NewGracefulListener wraps the given listener into 'graceful shutdown' listener.
 func NewGracefulListener(ln net.Listener, maxWaitTime time.Duration) net.Listener {
+	if ln == nil {
+		return nil
+	}
 	return &GracefulNetListener{
 		ln:          ln,
 		maxWaitTime: maxWaitTime,
