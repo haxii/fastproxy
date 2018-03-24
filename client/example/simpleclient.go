@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/haxii/fastproxy/bufiopool"
@@ -29,7 +30,7 @@ func (r *simpleReq) Protocol() []byte {
 }
 
 func (r *simpleReq) WriteHeaderTo(w *bufio.Writer) (int, int, error) {
-	header := "Host: www.bing.com\r\nUser-Agent: test client\r\n\r\n"
+	header := "Host: localhost\r\nUser-Agent: test client\r\n\r\n"
 	n, err := w.WriteString(header)
 	if err != nil {
 		return len(header), n, err
@@ -72,6 +73,38 @@ func (r *simpleResp) ConnectionClose() bool {
 	return false
 }
 
+type simpleReadWriter struct {
+	readNum int
+}
+
+var reqRawbytes = []byte("GET / HTTP/1.1\r\nHost: 0.0.0.0:8090\r\n\r\n")
+
+func (rw *simpleReadWriter) Read(p []byte) (n int, err error) {
+	numOfBytesToWrite := len(reqRawbytes) - rw.readNum
+
+	if numOfBytesToWrite > 0 {
+		if numOfBytesToWrite > len(p) {
+			numOfBytesToWrite = len(p)
+		}
+		copy(p[:numOfBytesToWrite], reqRawbytes[rw.readNum:rw.readNum+numOfBytesToWrite])
+		rw.readNum += numOfBytesToWrite
+	} else {
+		// stuck here for further read
+		time.Sleep(time.Hour)
+	}
+
+	return numOfBytesToWrite, nil
+}
+
+func (rw *simpleReadWriter) Write(p []byte) (n int, err error) {
+	fmt.Printf("%s", p)
+	if len(p) == 0 {
+		// stuck here for further write
+		time.Sleep(time.Hour)
+	}
+	return len(p), nil
+}
+
 func main() {
 	go func() {
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -79,9 +112,21 @@ func main() {
 		})
 		http.ListenAndServe("0.0.0.0:8090", nil)
 	}()
+
+	// Do
 	time.Sleep(time.Second)
+	fmt.Println()
 	client := &client.Client{BufioPool: bufiopool.New(1, 1)}
-	if _, _, _, err := client.Do(&simpleReq{}, &simpleResp{}); err != nil {
-		fmt.Println("error occurred when making client request: \n", err)
-	}
+	fmt.Println(client.Do(&simpleReq{}, &simpleResp{}))
+
+	// Do Fake
+	time.Sleep(time.Second)
+	fmt.Println()
+	fmt.Println(client.DoFake(&simpleReq{}, &simpleResp{}, strings.NewReader("HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nhello!")))
+
+	// Do Raw
+	time.Sleep(time.Second)
+	fmt.Println()
+	fmt.Println(client.DoRaw(&simpleReadWriter{}, nil, "0.0.0.0:8090", nil))
+
 }

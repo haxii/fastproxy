@@ -15,6 +15,7 @@ import (
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
 	"github.com/haxii/fastproxy/usage"
+	"github.com/haxii/fastproxy/util"
 )
 
 // ErrConnectionClosed may be returned from client methods if the server
@@ -29,19 +30,19 @@ var ErrConnectionClosed = errors.New("the server closed connection before return
 
 // Request http request used for client
 type Request interface {
-	//Method request method in UPPER case
+	// Method request method in UPPER case
 	Method() []byte
-	//TargetWithPort, expected ip with port, if not, domain with port
+	// TargetWithPort, expected ip with port, if not, domain with port
 	TargetWithPort() string
-	//Path request relative path
+	// Path request relative path
 	PathWithQueryFragment() []byte
-	//Protocol HTTP/1.0, HTTP/1.1 etc.
+	// Protocol HTTP/1.0, HTTP/1.1 etc.
 	Protocol() []byte
 
-	//WriteHeaderTo read header from request, then Write To buffer IO writer
+	// WriteHeaderTo read header from request, then Write To buffer IO writer
 	WriteHeaderTo(*bufio.Writer) (readNum int, writeNum int, err error)
 
-	//WriteBodyTo read body from request, then Write To buffer IO writer
+	// WriteBodyTo read body from request, then Write To buffer IO writer
 	WriteBodyTo(*bufio.Writer) (int, error)
 
 	// ConnectionClose if the request's "Connection" header value is
@@ -50,17 +51,17 @@ type Request interface {
 	// this determines weather the client reusing the connections
 	ConnectionClose() bool
 
-	//specified in request's start line usually
+	// specified in request's start line usually
 	IsTLS() bool
 	TLSServerName() string
 
-	//super proxy
+	// super proxy
 	GetProxy() *superproxy.SuperProxy
 }
 
 // Response http response used for client
 type Response interface {
-	//ReadFrom read the http response from the buffer IO reader
+	// ReadFrom read the http response from the buffer IO reader
 	ReadFrom(discardBody bool, br *bufio.Reader) (int, error)
 
 	// ConnectionClose if the response's "Connection" header value is
@@ -83,8 +84,7 @@ type Client struct {
 
 	// Idle keep-alive connections are closed after this duration.
 	//
-	// By default idle connections are closed
-	// after DefaultMaxIdleConnDuration.
+	// By default idle connections are closed after DefaultMaxIdleConnDuration.
 	MaxIdleConnDuration time.Duration
 
 	BufioPool *bufiopool.Pool
@@ -100,26 +100,50 @@ type Client struct {
 	WriteTimeout time.Duration
 
 	hostClientsLock sync.Mutex
-	//refers to all possibilities of requestType i.e. isTLS x isProxy
-	hostClientsList [5]hostClients
+	// host clients pool, separate common and TLS clients
+	hostClients    map[string]*HostClient
+	hostTLSClients map[string]*HostClient
 
-	//usage
+	// usage
 	Usage usage.ProxyUsage
 }
 
-type hostClients map[string]*HostClient
-
 var (
-	errNilReq        = errors.New("nil request")
-	errNilResp       = errors.New("nil response")
-	errNilBufiopool  = errors.New("nil buffer io pool")
-	errNilTargetHost = errors.New("nil target host provided")
+	errNilReq            = errors.New("nil request")
+	errNilResp           = errors.New("nil response")
+	errNilFakeResp       = errors.New("nil fake response")
+	errNilBufiopool      = errors.New("nil buffer io pool")
+	errNilReadWriter     = errors.New("nil readwriter provided")
+	errNilTargetHost     = errors.New("nil target host provided")
+	errNilSuperProxyHost = errors.New("nil superproxy proxy host provided")
 )
 
-//DoFake make a client request by giving a faked response
-func (c *Client) DoFake(req Request, resp Response, fakeRespReader io.Reader) (reqReadNum int,
-	reqWriteNum int, responseNum int, err error) {
-	if reqReadNum, reqWriteNum, err = c.writeReqToDevNull(req); err != nil {
+// DoFake make a client request by giving a faked response
+// TODO: @xiangyu test this
+func (c *Client) DoFake(req Request, resp Response, fakeRespReader io.Reader) (reqReadNum,
+	reqWriteNum, responseNum int, err error) {
+	writeReqToDevNull := func(req Request) (readNum, writeNum int, err error) {
+		devNullBufferedWriter := c.BufioPool.AcquireWriter(defaultDevNullWriter)
+		defer c.BufioPool.ReleaseWriter(devNullBufferedWriter)
+		if readNum, writeNum, err = req.WriteHeaderTo(devNullBufferedWriter); err != nil {
+			return readNum, writeNum, err
+		}
+		n, err := req.WriteBodyTo(devNullBufferedWriter)
+		readNum += n
+		writeNum += n
+		return readNum, writeNum, err
+	}
+
+	if req == nil {
+		return 0, 0, 0, errNilReq
+	}
+	if resp == nil {
+		return 0, 0, 0, errNilResp
+	}
+	if fakeRespReader == nil {
+		return 0, 0, 0, errNilFakeResp
+	}
+	if reqReadNum, reqWriteNum, err = writeReqToDevNull(req); err != nil {
 		return reqReadNum, reqWriteNum, responseNum, err
 	}
 	bufFakeRespReader := c.BufioPool.AcquireReader(fakeRespReader)
@@ -128,16 +152,24 @@ func (c *Client) DoFake(req Request, resp Response, fakeRespReader io.Reader) (r
 	return reqReadNum, reqWriteNum, responseNum, err
 }
 
-func (c *Client) writeReqToDevNull(req Request) (readNum int, writeNum int, err error) {
-	devNullBufferedWriter := c.BufioPool.AcquireWriter(defaultDevNullWriter)
-	defer c.BufioPool.ReleaseWriter(devNullBufferedWriter)
-	if readNum, writeNum, err = req.WriteHeaderTo(devNullBufferedWriter); err != nil {
-		return readNum, writeNum, err
+// DoRaw make simple raw traffic forwarding
+func (c *Client) DoRaw(rw io.ReadWriter, sProxy *superproxy.SuperProxy,
+	targetWithPort string, onTunnelMade func()) (rwReadNum, rwWriteNum int64, err error) {
+	//TODO: TEST DoRaw, Do and DoFake with the same super proxy
+	if rw == nil {
+		return 0, 0, errNilReadWriter
 	}
-	n, err := req.WriteBodyTo(devNullBufferedWriter)
-	readNum += n
-	writeNum += n
-	return readNum, writeNum, err
+	connectHostWithPort := targetWithPort
+	isConnectHostTLS := false
+	if sProxy != nil {
+		connectHostWithPort = sProxy.HostWithPort()
+		if len(connectHostWithPort) == 0 {
+			return 0, 0, errNilSuperProxyHost
+		}
+		isConnectHostTLS = (sProxy.GetProxyType() == superproxy.ProxyTypeHTTPS)
+	}
+	return c.getHostClient(connectHostWithPort,
+		isConnectHostTLS).DoRaw(rw, sProxy, targetWithPort, onTunnelMade)
 }
 
 // Do performs the given http request and fills the given http response.
@@ -148,42 +180,56 @@ func (c *Client) writeReqToDevNull(req Request) (readNum int, writeNum int, err 
 // to the requested host are busy.
 func (c *Client) Do(req Request, resp Response) (reqReadNum, reqWriteNum, respNum int, err error) {
 	if req == nil {
-		return reqReadNum, reqWriteNum, respNum, errNilReq
+		return 0, 0, 0, errNilReq
 	}
 	if resp == nil {
-		return reqReadNum, reqWriteNum, respNum, errNilResp
+		return 0, 0, 0, errNilResp
 	}
 	if c.BufioPool == nil {
-		return reqReadNum, reqWriteNum, respNum, errNilBufiopool
+		return 0, 0, 0, errNilBufiopool
 	}
-	//fetch request type
-	viaProxy := (req.GetProxy() != nil)
-	reqType := parseRequestType(req)
 
-	//get target dialing host with port
-	hostWithPort := ""
-	if viaProxy {
-		hostWithPort = req.GetProxy().HostWithPort()
-		if len(hostWithPort) == 0 {
-			return reqReadNum, reqWriteNum, respNum, errors.New("nil superproxy proxy host provided")
+	connectHostWithPort := ""
+	isConnectHostTLS := false
+	if sProxy := req.GetProxy(); sProxy != nil {
+		connectHostWithPort = req.GetProxy().HostWithPort()
+		if len(connectHostWithPort) == 0 {
+			return 0, 0, 0, errNilSuperProxyHost
 		}
+		isConnectHostTLS = (sProxy.GetProxyType() == superproxy.ProxyTypeHTTPS)
 	} else {
-		hostWithPort = req.TargetWithPort()
-		if len(hostWithPort) == 0 {
-			return reqReadNum, reqWriteNum, respNum, errNilTargetHost
+		connectHostWithPort = req.TargetWithPort()
+		if len(connectHostWithPort) == 0 {
+			return 0, 0, 0, errNilTargetHost
 		}
+		isConnectHostTLS = req.IsTLS()
 	}
 
+	return c.getHostClient(connectHostWithPort, isConnectHostTLS).Do(req, resp)
+}
+
+// getHostClient get a host client with providing the host to connect
+// and whether it supports TLS. For a direct connection, connectHostWithPort
+// is the target server. For a proxy connection, connectHostWithPort is the proxy server
+func (c *Client) getHostClient(connectHostWithPort string,
+	isConnectHostTLS bool) *HostClient {
 	startCleaner := false
 
-	//add or get a host client
+	// add or get a host client
 	c.hostClientsLock.Lock()
-	if c.hostClientsList[reqType.Value()] == nil {
-		c.hostClientsList[reqType.Value()] =
-			make(map[string]*HostClient)
+	var hostClients map[string]*HostClient
+	if isConnectHostTLS {
+		if c.hostTLSClients == nil {
+			c.hostTLSClients = make(map[string]*HostClient)
+		}
+		hostClients = c.hostTLSClients
+	} else {
+		if c.hostClients == nil {
+			c.hostClients = make(map[string]*HostClient)
+		}
+		hostClients = c.hostClients
 	}
-	hostClients := c.hostClientsList[reqType.Value()]
-	hc := c.hostClientsList[reqType.Value()][hostWithPort]
+	hc := hostClients[connectHostWithPort]
 	if hc == nil {
 		hc = &HostClient{
 			BufioPool:    c.BufioPool,
@@ -194,7 +240,7 @@ func (c *Client) Do(req Request, resp Response) (reqReadNum, reqWriteNum, respNu
 				MaxIdleConnDuration: c.MaxIdleConnDuration,
 			},
 		}
-		hostClients[hostWithPort] = hc
+		hostClients[connectHostWithPort] = hc
 		if len(hostClients) == 1 {
 			startCleaner = true
 		}
@@ -204,8 +250,7 @@ func (c *Client) Do(req Request, resp Response) (reqReadNum, reqWriteNum, respNu
 	if startCleaner {
 		go c.mCleaner(hostClients)
 	}
-
-	return hc.Do(req, resp)
+	return hc
 }
 
 func (c *Client) mCleaner(m map[string]*HostClient) {
@@ -244,7 +289,7 @@ type HostClient struct {
 	// cached TLS server config
 	tlsServerConfig *tls.Config
 
-	//TODO: should I give each HostClient a bufio pool rather than share one?
+	// TODO: should I give each HostClient a bufio pool rather than share one?
 	// BufioPool buffer connection reader & writer pool
 	BufioPool *bufiopool.Pool
 
@@ -258,7 +303,7 @@ type HostClient struct {
 	// By default request write timeout is unlimited.
 	WriteTimeout time.Duration
 
-	//ConnManager manager of the connections
+	// ConnManager manager of the connections
 	ConnManager transport.ConnManager
 
 	lastUseTime uint32
@@ -272,6 +317,49 @@ var startTimeUnix = time.Now().Unix()
 func (c *HostClient) LastUseTime() time.Time {
 	n := atomic.LoadUint32(&c.lastUseTime)
 	return time.Unix(startTimeUnix+int64(n), 0)
+}
+
+// DoRaw make simple raw traffic forwarding
+func (c *HostClient) DoRaw(rw io.ReadWriter, superProxy *superproxy.SuperProxy,
+	targetWithPort string, onTunnelMade func()) (rwReadNum, rwWriteNum int64, err error) {
+	// set hostclient's last used time
+	atomic.StoreUint32(&c.lastUseTime, uint32(servertime.CoarseTimeNow().Unix()-startTimeUnix))
+
+	// retrieve a connection from pool
+	var cc *transport.Conn
+	cc, err = c.ConnManager.AcquireConn(c.makeDialer(superProxy, targetWithPort, false, ""))
+	if err != nil {
+		return 0, 0, err
+	}
+	if onTunnelMade != nil {
+		onTunnelMade()
+	}
+
+	conn := cc.Get()
+
+	var wg sync.WaitGroup
+	var rwWriteErr, rwReadErr error
+	wg.Add(2)
+	go func() {
+		rwReadNum, rwReadErr = transport.Forward(conn, rw, c.ConnManager.MaxIdleConnDuration)
+		wg.Done()
+	}()
+	go func() {
+		rwWriteNum, rwWriteErr = transport.Forward(rw, conn, c.ConnManager.MaxIdleConnDuration)
+		wg.Done()
+	}()
+	wg.Wait()
+
+	if rwReadErr != nil {
+		err = util.ErrWrapper(rwReadErr, "error occurred when tunneling request")
+	}
+	if rwWriteErr != nil {
+		err = util.ErrWrapper(rwWriteErr, "error occurred when tunneling response")
+	}
+
+	//TODO: should reuse these connections????? only close socks5 connections? more tests?
+	c.ConnManager.CloseConn(cc)
+	return
 }
 
 // Do performs the given http request and sets the corresponding response.
@@ -345,24 +433,25 @@ func (c *HostClient) PendingRequests() int {
 
 func (c *HostClient) do(req Request, resp Response,
 	reqCacheForRetry *bytebufferpool.ByteBuffer) (retry bool, reqReadNum, reqWriteNum, respNum int, err error) {
-	//set hostclient's last used time
+	// set hostclient's last used time
 	atomic.StoreUint32(&c.lastUseTime, uint32(servertime.CoarseTimeNow().Unix()-startTimeUnix))
 
-	//analysis request type
+	// analysis request type
 	viaProxy := (req.GetProxy() != nil)
 
-	//get the connection
-	cc, err := c.ConnManager.AcquireConn(c.makeDialer(req))
+	// get the connection
+	cc, err := c.ConnManager.AcquireConn(c.makeDialer(req.GetProxy(),
+		req.TargetWithPort(), req.IsTLS(), req.TLSServerName()))
 	if err != nil {
 		return false, reqReadNum, reqWriteNum, respNum, err
 	}
 	conn := cc.Get()
 
-	//pre-setup
+	// pre-setup
 	if c.WriteTimeout > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
-		// See https://github.com/golang/go/issues/15133 for details.
+		// See https:// github.com/golang/go/issues/15133 for details.
 		currentTime := servertime.CoarseTimeNow()
 		if currentTime.Sub(cc.LastWriteDeadlineTime) > (c.WriteTimeout >> 2) {
 			if err = conn.SetWriteDeadline(currentTime.Add(c.WriteTimeout)); err != nil {
@@ -379,11 +468,11 @@ func (c *HostClient) do(req Request, resp Response,
 		resetConnection = true
 	}
 
-	//write request
+	// write request
 	shouldCacheReqForRetry := (reqCacheForRetry != nil) && isHeadOrGet(req.Method())
 	isCachedReqAvailable := func() bool { return shouldCacheReqForRetry && (reqCacheForRetry.Len() > 0) }
 	if (!shouldCacheReqForRetry) || (!isCachedReqAvailable()) {
-		//determine where the parsed request should write to
+		// determine where the parsed request should write to
 		var reqWriteToTarget io.Writer
 		if shouldCacheReqForRetry {
 			reqWriteToTarget = reqCacheForRetry
@@ -396,7 +485,7 @@ func (c *HostClient) do(req Request, resp Response,
 				reqCacheForRetry.Reset()
 			}
 			c.ConnManager.CloseConn(cc)
-			//cannot even read a complete request, do NOT retry
+			// cannot even read a complete request, do NOT retry
 			return false, reqReadNum, reqWriteNum, respNum, err
 		}
 		if shouldCacheReqForRetry {
@@ -407,7 +496,7 @@ func (c *HostClient) do(req Request, resp Response,
 		}
 	}
 	if isCachedReqAvailable() {
-		//write the cached http requests to conn
+		// write the cached http requests to conn
 		n, err := c.writeData(reqCacheForRetry.Bytes(), conn)
 		if err != nil {
 			if err != nil {
@@ -418,11 +507,11 @@ func (c *HostClient) do(req Request, resp Response,
 		reqWriteNum += n
 	}
 
-	//get response
+	// get response
 	if c.ReadTimeout > 0 {
 		// Optimization: update read deadline only if more than 25%
 		// of the last read deadline exceeded.
-		// See https://github.com/golang/go/issues/15133 for details.
+		// See https:// github.com/golang/go/issues/15133 for details.
 		currentTime := servertime.CoarseTimeNow()
 		if currentTime.Sub(cc.LastReadDeadlineTime) > (c.ReadTimeout >> 2) {
 			if err = conn.SetReadDeadline(currentTime.Add(c.ReadTimeout)); err != nil {
@@ -433,7 +522,7 @@ func (c *HostClient) do(req Request, resp Response,
 		}
 	}
 	br := c.BufioPool.AcquireReader(conn)
-	//read a byte from response to test if the connection has been closed by remote
+	// read a byte from response to test if the connection has been closed by remote
 	if b, err := br.Peek(1); err != nil {
 		if err == io.EOF {
 			return true, reqReadNum, reqWriteNum, respNum, io.EOF
@@ -452,8 +541,9 @@ func (c *HostClient) do(req Request, resp Response,
 	respNum += n
 	c.BufioPool.ReleaseReader(br)
 
-	//release or close connection
+	// release or close connection
 	if viaProxy || resetConnection || req.ConnectionClose() || resp.ConnectionClose() {
+		//TODO: reuse super proxy connections
 		c.ConnManager.CloseConn(cc)
 	} else {
 		c.ConnManager.ReleaseConn(cc)
@@ -477,8 +567,8 @@ func (c *HostClient) writeData(data []byte, w io.Writer) (int, error) {
 func (c *HostClient) readFromReqAndWriteToIOWriter(req Request, w io.Writer) (readNum, writeNum int, err error) {
 	bw := c.BufioPool.AcquireWriter(w)
 	defer c.BufioPool.ReleaseWriter(bw)
-	isReqProxyHTTP := (parseRequestType(req) == requestProxyHTTP)
-	//start line
+	isReqProxyHTTP := (parseRequestType(req.GetProxy(), req.IsTLS()) == requestProxyHTTP)
+	// start line
 	if isReqProxyHTTP {
 		wn, _ := writeRequestLine(bw, true, req.Method(),
 			req.TargetWithPort(), req.PathWithQueryFragment(), req.Protocol())
@@ -489,7 +579,7 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request, w io.Writer) (re
 		writeNum += wn
 	}
 
-	//auth header if needed
+	// auth header if needed
 	if isReqProxyHTTP {
 		if authHeader := req.GetProxy().HTTPProxyAuthHeaderWithCRLF(); authHeader != nil {
 			if nw, err := bw.Write(authHeader); err != nil {
@@ -500,7 +590,7 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request, w io.Writer) (re
 			writeNum += len(authHeader)
 		}
 	}
-	//other request headers
+	// other request headers
 	rn, wn, err := req.WriteHeaderTo(bw)
 	if err != nil {
 		return readNum, writeNum, err
@@ -508,11 +598,11 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request, w io.Writer) (re
 	readNum += rn
 	writeNum += wn
 
-	//do not read contents for get and head
+	// do not read contents for get and head
 	if isHeadOrGet(req.Method()) {
 		return readNum, writeNum, bw.Flush()
 	}
-	//request body
+	// request body
 	n, err := req.WriteBodyTo(bw)
 	if err != nil {
 		return readNum, writeNum, err
