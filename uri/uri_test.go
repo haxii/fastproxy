@@ -76,8 +76,8 @@ func testURIParse(t *testing.T, u *URI, isConnect bool, uri,
 	if !bytes.Equal(u.Host(), []byte(expectedHost)) {
 		t.Fatalf("Unexpected Host %q, Expected %q", u.Host(), []byte(expectedHost))
 	}
-	if u.HostWithPort() != expectedHostWithPort {
-		t.Fatalf("Unexpected HostWithPort %q, Expected %q", u.HostWithPort(), expectedHostWithPort)
+	if u.hostInfo.HostWithPort() != expectedHostWithPort {
+		t.Fatalf("Unexpected HostWithPort %q, Expected %q", u.hostInfo.HostWithPort(), expectedHostWithPort)
 	}
 	if !bytes.Equal(u.PathWithQueryFragment(), []byte(expectedPathQueryFragment)) {
 		t.Fatalf("Unexpected PathWithQueryFragment %q, Expected %q", u.PathWithQueryFragment(), []byte(expectedPathQueryFragment))

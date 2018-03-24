@@ -2,6 +2,8 @@ package uri
 
 import (
 	"bytes"
+	"net"
+	"strings"
 )
 
 //URI http URI helper
@@ -16,7 +18,7 @@ type URI struct {
 	queries   []byte
 	fragments []byte
 
-	hostWithPort string
+	hostInfo HostInfo
 
 	pathWithQueryFragment       []byte
 	pathWithQueryFragmentParsed bool
@@ -69,9 +71,9 @@ func (uri *URI) Fragments() []byte {
 	return uri.fragments
 }
 
-//HostWithPort host with port
-func (uri *URI) HostWithPort() string {
-	return uri.hostWithPort
+//HostInfo the host info
+func (uri *URI) HostInfo() *HostInfo {
+	return &uri.hostInfo
 }
 
 //Reset reset the request URI
@@ -79,7 +81,7 @@ func (uri *URI) Reset() {
 	uri.isTLS = false
 	uri.full = uri.full[:0]
 	uri.host = uri.host[:0]
-	uri.hostWithPort = ""
+	uri.hostInfo.reset()
 	uri.scheme = uri.scheme[:0]
 	uri.path = uri.path[:0]
 	uri.queries = uri.queries[:0]
@@ -112,7 +114,7 @@ func (uri *URI) Parse(isTLS bool, reqURI []byte) {
 		uri.queries = uri.queries[:0]
 		uri.fragments = uri.fragments[:0]
 	}
-	uri.fillHostWithPort(isTLS)
+	uri.hostInfo.parseHostWithPort(string(uri.host), isTLS)
 }
 
 //parse uri with out fragments
@@ -194,21 +196,98 @@ func getSchemeIndex(rawurl []byte) int {
 	return -1
 }
 
-//fillHostWithPort ...
-func (uri *URI) fillHostWithPort(isTLS bool) {
-	hasPortFuncByte := func(host []byte) bool {
-		return bytes.LastIndexByte(host, ':') >
-			bytes.LastIndexByte(host, ']')
+// HostInfo host info
+// TODO: test host info
+type HostInfo struct {
+	domain       string
+	ip           net.IP
+	port         string
+	hostWithPort string
+	// ip with port if ip not nil, else domain with port
+	targetWithPort string
+}
+
+// reset the host info
+func (h *HostInfo) reset() {
+	h.domain = ""
+	h.ip = nil
+	h.port = ""
+	h.hostWithPort = ""
+	h.targetWithPort = ""
+}
+
+// Domain return domain
+func (h *HostInfo) Domain() string {
+	return h.domain
+}
+
+// IP return ip
+func (h *HostInfo) IP() net.IP {
+	return h.ip
+}
+
+// Port return port
+func (h *HostInfo) Port() string {
+	return h.port
+}
+
+// HostWithPort return hostWithPort
+func (h *HostInfo) HostWithPort() string {
+	return h.hostWithPort
+}
+
+// TargetWithPort return targetWithPort
+func (h *HostInfo) TargetWithPort() string {
+	return h.targetWithPort
+}
+
+// ParseHostWithPort parse host with port, and set host, ip,
+// port, hostWithPort, targetWithPort
+func (h *HostInfo) parseHostWithPort(host string, isTLS bool) {
+	hasPortFuncByte := func(host string) bool {
+		return strings.LastIndexByte(host, ':') >
+			strings.LastIndexByte(host, ']')
 	}
-	if len(uri.host) == 0 {
+	if len(host) == 0 {
 		return
 	}
-	uri.hostWithPort = string(uri.host)
-	if !hasPortFuncByte(uri.host) {
+
+	// separate domain and port
+	if !hasPortFuncByte(host) {
+		h.domain = host
 		if isTLS {
-			uri.hostWithPort += ":443"
+			h.port = "443"
 		} else {
-			uri.hostWithPort += ":80"
+			h.port = "80"
+		}
+	} else {
+		var err error
+		h.domain, h.port, err = net.SplitHostPort(host)
+		if err != nil {
+			h.reset()
+			return
 		}
 	}
+	if len(h.domain) == 0 {
+		return
+	}
+
+	// determine whether the given domain is already an IP Address
+	ip := net.ParseIP(h.domain)
+	if ip != nil {
+		h.ip = ip
+	}
+
+	// host and target with port
+	h.hostWithPort = h.domain + ":" + h.port
+	h.targetWithPort = h.hostWithPort
+}
+
+// SetIP set ip and update targetWithPort
+func (h *HostInfo) SetIP(ip net.IP) {
+	if ip == nil {
+		return
+	}
+	h.ip = ip
+	h.targetWithPort = ip.String() + ":" + h.port
 }
