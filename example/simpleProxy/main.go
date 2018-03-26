@@ -10,40 +10,29 @@ import (
 	"sync"
 	"time"
 
-	"github.com/haxii/fastproxy/bufiopool"
-	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
+	"github.com/haxii/fastproxy/uri"
 	"github.com/haxii/log"
 )
 
 func main() {
-	superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8888, superproxy.ProxyTypeHTTP, "", "", "")
+	superProxy, _ := superproxy.NewSuperProxy("a.b", 1080, superproxy.ProxyTypeHTTP, "", "", "")
 	superProxy.SetMaxConcurrency(20)
 
 	proxy := proxy.Proxy{
-		BufioPool:   &bufiopool.Pool{},
-		Client:      client.Client{},
-		ProxyLogger: &log.DefaultLogger{},
+		Logger: &log.DefaultLogger{},
 		Handler: proxy.Handler{
 			ShouldAllowConnection: func(conn net.Addr) bool {
 				fmt.Printf("allowed connection from %s\n", conn.String())
 				return true
 			},
 			ShouldDecryptHost: func(hostWithPort string) bool {
-				return true
+				return false
 			},
-			URLProxy: func(hostInfo *proxy.HostInfo, uri []byte) *superproxy.SuperProxy {
-				hostWithPort := hostInfo.HostWithPort()
-				if strings.Contains(hostWithPort, "lumtest") {
-					return nil
-				}
-				if len(uri) == 0 {
-					//this is a connections should not decrypt
-					fmt.Println(hostWithPort)
-				}
-				return superProxy
+			URLProxy: func(hostInfo *uri.HostInfo, uri []byte) *superproxy.SuperProxy {
+				return nil
 			},
 			HijackerPool: &SimpleHijackerPool{},
 			LookupIP: func(domain string) net.IP {
@@ -55,10 +44,10 @@ func main() {
 				return ips[randInt]
 			},
 		},
-		MaxClientIdleDuration: time.Second * 30,
+		ServerIdleDuration: time.Second * 30,
 	}
 
-	panic(proxy.Serve("0.0.0.0:8080"))
+	panic(proxy.Serve("tcp", "0.0.0.0:8081"))
 }
 
 //SimpleHijackerPool implements the HijackerPool based on simpleHijacker & sync.Pool
