@@ -22,12 +22,12 @@ type Server struct {
 	// Listener server's listener
 	Listener net.Listener
 	// connections handler
-	Handler ConnHandler
+	ConnHandler ConnHandler
 
 	// Logger server's logger
 	Logger log.Logger
-	// Name, server's service name, used for logging
-	Name string
+	// ServiceName, server's service name, used for logging
+	ServiceName string
 }
 
 // DefaultConcurrency is the maximum number of concurrent connections
@@ -40,15 +40,15 @@ func (s *Server) ListenAndServe() error {
 	if s.Listener == nil {
 		return errors.New("No net.listener provided")
 	}
-	if s.Handler == nil {
+	if s.ConnHandler == nil {
 		return errors.New("No connection handler provided")
 	}
 
 	if s.Concurrency <= 0 {
 		s.Concurrency = DefaultConcurrency
 	}
-	if len(s.Name) == 0 {
-		s.Name = "fastproxy.server"
+	if len(s.ServiceName) == 0 {
+		s.ServiceName = "fastproxy.server"
 	}
 
 	var lastOverflowErrorTime time.Time
@@ -57,7 +57,7 @@ func (s *Server) ListenAndServe() error {
 	var err error
 
 	wp := &WorkerPool{
-		WorkerFunc:      s.Handler,
+		WorkerFunc:      s.ConnHandler,
 		MaxWorkersCount: s.Concurrency,
 		Logger:          s.Logger,
 	}
@@ -77,7 +77,7 @@ func (s *Server) ListenAndServe() error {
 			}
 			c.Close()
 			if time.Since(lastOverflowErrorTime) > time.Minute {
-				s.Logger.Error(s.Name, nil, "The incoming connection cannot be served, "+
+				s.Logger.Error(s.ServiceName, nil, "The incoming connection cannot be served, "+
 					"because %d concurrent connections are served. Try increasing server's concurrency",
 					s.Concurrency)
 				lastOverflowErrorTime = servertime.CoarseTimeNow()
@@ -96,12 +96,12 @@ func (s *Server) acceptConn(ln net.Listener, lastPerIPErrorTime *time.Time) (net
 				panic("BUG: net.Listener returned non-nil conn and non-nil error")
 			}
 			if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
-				s.Logger.Error(s.Name, netErr, "Temporary error when accepting new connections")
+				s.Logger.Error(s.ServiceName, netErr, "Temporary error when accepting new connections")
 				time.Sleep(time.Second)
 				continue
 			}
 			if err != io.EOF && !strings.Contains(err.Error(), "use of closed network connection") {
-				s.Logger.Error(s.Name, err, "Permanent error when accepting new connections")
+				s.Logger.Error(s.ServiceName, err, "Permanent error when accepting new connections")
 				return nil, err
 			}
 			return nil, io.EOF
