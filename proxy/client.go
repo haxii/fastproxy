@@ -2,12 +2,11 @@ package proxy
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"io"
-	"net"
 	"sync"
 
-	"github.com/haxii/fastproxy/bytebufferpool"
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/util"
@@ -78,7 +77,6 @@ type Request struct {
 	// TLS request settings
 	isTLS         bool
 	tlsServerName string
-	hostInfo      HostInfo
 }
 
 // Reset reset request
@@ -86,16 +84,15 @@ func (r *Request) Reset() {
 	r.reader = nil
 	r.reqLine.Reset()
 	r.header.Reset()
-	r.hostInfo.Reset()
 	r.hijacker = nil
 	r.proxy = nil
 	r.isTLS = false
 	r.tlsServerName = ""
 }
 
-// ReadFrom init request with reader
+// parseStartLine inits request with provided reader
 // then parse the start line of the http request
-func (r *Request) ReadFrom(reader *bufio.Reader) (int, error) {
+func (r *Request) parseStartLine(reader *bufio.Reader) (int, error) {
 	var rn int
 	if r.reader != nil {
 		return rn, errors.New("request already initialized")
@@ -113,7 +110,6 @@ func (r *Request) ReadFrom(reader *bufio.Reader) (int, error) {
 	rn += len(r.reqLine.GetRequestLine())
 
 	r.reader = reader
-	r.hostInfo.ParseHostWithPort(r.reqLine.HostWithPort())
 	return rn, nil
 }
 
@@ -143,19 +139,9 @@ func (r *Request) Method() []byte {
 	return r.reqLine.Method()
 }
 
-// HostInfo returns host info
-func (r *Request) HostInfo() *HostInfo {
-	return &r.hostInfo
-}
-
-// SetHostWithPort set host with port
-func (r *Request) SetHostWithPort(hostWithPort string) {
-	r.hostInfo.ParseHostWithPort(hostWithPort)
-}
-
-// TargetWithPort returns tartgetWithPort
+// TargetWithPort the target IP with port is exists, otherwise the domain with ip
 func (r *Request) TargetWithPort() string {
-	return r.hostInfo.TargetWithPort()
+	return r.reqLine.HostInfo().TargetWithPort()
 }
 
 // PathWithQueryFragment request path with query and fragment
@@ -199,7 +185,7 @@ func (r *Request) WriteBodyTo(writer *bufio.Writer) (int, error) {
 }
 
 // ConnectionClose if the request's "Connection" or "Proxy-Connection" header value is set as "close".
-// this determines how the client reusing the connetions.
+// this determines how the client reusing the connections.
 // this func. result is only valid after `WriteTo` method is called
 func (r *Request) ConnectionClose() bool {
 	return r.header.IsConnectionClose() || r.header.IsProxyConnectionClose()
@@ -303,7 +289,7 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) (int, error)
 }
 
 // ConnectionClose if the request's "Connection" header value is set as "Close"
-// this determines how the client reusing the connetions
+// this determines how the client reusing the connections
 func (r *Response) ConnectionClose() bool {
 	return false
 }
@@ -314,28 +300,75 @@ type additionalDst func([]byte)
 func copyHeader(header *http.Header,
 	src *bufio.Reader, dst1 io.Writer, dst2 additionalDst) (int, int, error) {
 	// read and write header
-	buffer := bytebufferpool.Get()
-	defer bytebufferpool.Put(buffer)
-	var rn, wn int
+	var orginalHeaderLen, copiedHeaderLen int
 	var err error
-	if rn, err = header.ParseHeaderFields(src, buffer); err != nil {
-		return rn, 0, util.ErrWrapper(err, "fail to parse http headers")
+	if orginalHeaderLen, err = header.ParseHeaderFields(src); err != nil {
+		return orginalHeaderLen, 0, util.ErrWrapper(err, "fail to parse http headers")
 	}
-	wn, err = parallelWrite(dst1, dst2, buffer.B)
-	return rn, wn, err
+	var rawHeader []byte
+	rawHeader, err = src.Peek(orginalHeaderLen)
+	if err != nil {
+		// should NOT have any errors
+		return orginalHeaderLen, 0, util.ErrWrapper(err, "fail to reader raw headers")
+	}
+	defer src.Discard(orginalHeaderLen)
+
+	copiedHeaderLen, err = parallelWriteHeader(dst1, dst2, rawHeader)
+	return orginalHeaderLen, copiedHeaderLen, err
+}
+
+// parallelWriteBody write body data to dst1 dst2 concurrently
+// TODO: @daizong with timeout
+func parallelWriteHeader(dst1 io.Writer, dst2 additionalDst, header []byte) (int, error) {
+	var wg sync.WaitGroup
+	var wn int
+	var err error
+	wg.Add(2)
+	go func() {
+		m := 0
+		unReadHeader := header
+		for {
+			unReadHeader = unReadHeader[m:]
+			m = bytes.IndexByte(unReadHeader, '\n')
+			if m < 0 {
+				break
+			}
+			m++
+			headerLine := unReadHeader[:m]
+			if !http.IsProxyHeader(headerLine) {
+				n, e := util.WriteWithValidation(dst1, headerLine)
+				wn += n
+				if e != nil {
+					err = e
+					break
+				}
+			}
+
+		}
+		wg.Done()
+	}()
+	go func() {
+		dst2(header)
+		wg.Done()
+	}()
+	wg.Wait()
+	if err != nil {
+		return wn, util.ErrWrapper(err, "error occurred when write to dst")
+	}
+	return wn, nil
 }
 
 func copyBody(header *http.Header, body *http.Body,
 	src *bufio.Reader, dst1 io.Writer, dst2 additionalDst) (int, error) {
 	w := func(isChunkHeader bool, data []byte) (int, error) {
-		return parallelWrite(dst1, dst2, data)
+		return parallelWriteBody(dst1, dst2, data)
 	}
 	return body.Parse(src, header.BodyType(), header.ContentLength(), w)
 }
 
-// parallelWrite write data to dst1 dst2 concurrently
-// TODO: with timeout?
-func parallelWrite(dst1 io.Writer, dst2 additionalDst, data []byte) (int, error) {
+// parallelWriteBody write body data to dst1 dst2 concurrently
+// TODO: @daizong with timeout
+func parallelWriteBody(dst1 io.Writer, dst2 additionalDst, data []byte) (int, error) {
 	var wg sync.WaitGroup
 	var wn int
 	var err error
@@ -353,75 +386,4 @@ func parallelWrite(dst1 io.Writer, dst2 additionalDst, data []byte) (int, error)
 		return wn, util.ErrWrapper(err, "error occurred when write to dst")
 	}
 	return wn, nil
-}
-
-// HostInfo host info
-type HostInfo struct {
-	domain       string
-	ip           net.IP
-	port         string
-	hostWithPort string
-	// ip with port if ip not nil, else domain with port
-	targetWithPort string
-}
-
-// Reset reset host info
-func (h *HostInfo) Reset() {
-	h.domain = ""
-	h.ip = nil
-	h.port = ""
-	h.hostWithPort = ""
-	h.targetWithPort = ""
-}
-
-// Domain return domain
-func (h *HostInfo) Domain() string {
-	return h.domain
-}
-
-// Port return port
-func (h *HostInfo) Port() string {
-	return h.port
-}
-
-// IP return ip
-func (h *HostInfo) IP() net.IP {
-	return h.ip
-}
-
-// HostWithPort return hostWithPort
-func (h *HostInfo) HostWithPort() string {
-	return h.hostWithPort
-}
-
-// TargetWithPort return targetWithPort
-func (h *HostInfo) TargetWithPort() string {
-	return h.targetWithPort
-}
-
-// ParseHostWithPort parse host with port, and set host, ip,
-// port, hostWithPort, targetWithPort
-func (h *HostInfo) ParseHostWithPort(hostWithPort string) {
-	host, port, err := net.SplitHostPort(hostWithPort)
-	if err != nil {
-		return
-	}
-	ip := net.ParseIP(host)
-	if ip != nil {
-		h.ip = ip
-	} else {
-		h.domain = host
-	}
-	h.port = port
-	h.hostWithPort = hostWithPort
-	h.targetWithPort = hostWithPort
-}
-
-// SetIP set ip and update targetWithPort
-func (h *HostInfo) SetIP(ip net.IP) {
-	if ip == nil {
-		return
-	}
-	h.ip = ip
-	h.targetWithPort = ip.String() + ":" + h.port
 }
