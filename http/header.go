@@ -8,11 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/haxii/fastproxy/bytebufferpool"
 	"github.com/haxii/fastproxy/util"
 )
 
-//Header header part of http request & respose
+// Header header part of http request & response
 type Header struct {
 	isConnectionClose      bool
 	isProxyConnectionClose bool
@@ -20,29 +19,29 @@ type Header struct {
 	contentType            string
 }
 
-//Reset reset header info into default val
+// Reset reset header info into default val
 func (header *Header) Reset() {
 	header.isConnectionClose = false
 	header.contentLength = 0
 	header.contentType = ""
 }
 
-//IsConnectionClose is connection header set to `close`
+// IsConnectionClose is connection header set to `close`
 func (header *Header) IsConnectionClose() bool {
 	return header.isConnectionClose
 }
 
-//IsProxyConnectionClose is Proxy-Connection header set to `close`
+// IsProxyConnectionClose is Proxy-Connection header set to `close`
 func (header *Header) IsProxyConnectionClose() bool {
 	return header.isProxyConnectionClose
 }
 
-//ContentType content type in header
+// ContentType content type in header
 func (header *Header) ContentType() string {
 	return header.contentType
 }
 
-//ContentLength content length header value,
+// ContentLength content length header value,
 func (header *Header) ContentLength() int64 {
 	if header.contentLength > 0 {
 		return header.contentLength
@@ -50,7 +49,7 @@ func (header *Header) ContentLength() int64 {
 	return 0
 }
 
-//BodyType return body type parsed from header
+// BodyType return body type parsed from header
 func (header *Header) BodyType() BodyType {
 	// negative means transfer encoding: -1 means chunked;  -2 means identity
 	switch header.contentLength {
@@ -63,37 +62,35 @@ func (header *Header) BodyType() BodyType {
 }
 
 /*
-//IsBodyChunked if body is set `chunked`
+// IsBodyChunked if body is set `chunked`
 func (header *Header) IsBodyChunked() bool {
 	// negative means transfer encoding: -1 means chunked;  -2 means identity
 	return header.contentLength == -1
 }
 
-//IsBodyIdentity if body is set `identity`
+// IsBodyIdentity if body is set `identity`
 func (header *Header) IsBodyIdentity() bool {
 	// negative means transfer encoding: -1 means chunked;  -2 means identity
 	return header.contentLength == -2
 }
 */
 
-// ParseHeaderFields parse http header fields from reader and write it into buffer,
+// ParseHeaderFields parse http header fields from reader and return the
+// header size in reader's buffer, error returned when the header is malformed
 //
 // Each header field consists of a case-insensitive field name followed
 // by a colon (":"), optional leading whitespace, the field value, and
 // optional trailing whitespace.
-func (header *Header) ParseHeaderFields(reader *bufio.Reader,
-	buffer *bytebufferpool.ByteBuffer) (int, error) {
-	originalLen := buffer.Len()
+func (header *Header) ParseHeaderFields(reader *bufio.Reader) (int, error) {
 	n := 1
 	readNum := 0
 
 	for {
-		rn, err := header.tryRead(reader, buffer, n)
+		rn, err := header.tryRead(reader, n)
 		readNum += rn
 		if err == nil {
 			return readNum, nil
 		}
-		buffer.B = buffer.B[:originalLen]
 		if err != errNeedMore {
 			return readNum, err
 		}
@@ -101,43 +98,37 @@ func (header *Header) ParseHeaderFields(reader *bufio.Reader,
 	}
 }
 
-var errNeedMore = errors.New("need more data: cannot find trailing lf")
+var errNeedMore = errors.New("need more data: cannot find trailing LF")
 
-func (header *Header) tryRead(reader *bufio.Reader,
-	buffer *bytebufferpool.ByteBuffer, n int) (int, error) {
-	//do NOT use reader.ReadBytes here
-	//which would allocate extra byte memory
+func (header *Header) tryRead(reader *bufio.Reader, n int) (int, error) {
+	// do NOT use reader.ReadBytes here
+	// which would allocate extra byte memory
 	if b, err := reader.Peek(n); err != nil {
 		return 0, err
 	} else if len(b) == 0 {
 		return 0, io.EOF
 	}
-	//must read buffed bytes
+	// must read buffed bytes
 	b := util.PeekBuffered(reader)
-	//try to read it into buffer
-	headersLen, errParse := header.readHeaders(b, buffer)
+	// try to read it into buffer
+	headersLen, errParse := header.readHeaders(b)
 	if errParse != nil {
 		if errParse == errNeedMore {
 			return headersLen, errNeedMore
 		}
 		return headersLen, errParse
 	}
-	//jump over the header fields
-	if _, err := reader.Discard(headersLen); err != nil {
-		return headersLen, err
-	}
 	return headersLen, nil
 }
 
-func (header *Header) readHeaders(buf []byte,
-	buffer *bytebufferpool.ByteBuffer) (headerLength int, err error) {
-	parseThenWriteBuffer := func(rawHeaderLine []byte) error {
+func (header *Header) readHeaders(buf []byte) (headerLength int, err error) {
+	parseBuffer := func(rawHeaderLine []byte) error {
 		// Connection, Authenticate and Authorization are single hop Header:
-		// http://www.w3.org/Protocols/rfc2616/rfc2616.txt
+		// http:// www.w3.org/Protocols/rfc2616/rfc2616.txt
 		// 14.10 Connection
-		//   The Connection general-header field allows the sender to specify
-		//   options that are desired for that particular connection and MUST NOT
-		//   be communicated by proxies over further connections.
+		// The Connection general-header field allows the sender to specify
+		// options that are desired for that particular connection and MUST NOT
+		// be communicated by proxies over further connections.
 		if isConnectionHeader(rawHeaderLine) {
 			changeToLowerCase(rawHeaderLine)
 			if bytes.Contains(rawHeaderLine, []byte("close")) {
@@ -157,10 +148,10 @@ func (header *Header) readHeaders(buf []byte,
 		// parse content length
 		// content length > 0 means the length of the body
 		// content length < 0 means the transfer encoding is set,
-		//  -1 means chunked
-		//  -2 means identity
+		// -1 means chunked
+		// -2 means identity
 		if isContentLengthHeader(rawHeaderLine) && header.contentLength >= 0 {
-			//content-length header can only be set with transfer encoding unset
+			// content-length header can only be set with transfer encoding unset
 			lengthBytesIndex := bytes.IndexByte(rawHeaderLine, ':')
 			if lengthBytesIndex > 0 {
 				lengthBytes := rawHeaderLine[lengthBytesIndex+1:]
@@ -183,30 +174,24 @@ func (header *Header) readHeaders(buf []byte,
 				)
 			}
 		}
-		//remove proxy header
-		if !isProxyHeader(rawHeaderLine) {
-			_, err := util.WriteWithValidation(buffer, rawHeaderLine)
-			return err
-		}
 		return nil
 	}
 
-	//read 1st line
+	// read 1st line
 	n := bytes.IndexByte(buf, '\n')
 	if n < 0 {
 		return 0, errNeedMore
 	}
 	if (n == 1 && buf[0] == '\r') || n == 0 {
 		// empty headers, write \n or \r\n
-		util.WriteWithValidation(buffer, buf[:n+1])
 		return n + 1, nil
 	}
 	n++
-	if e := parseThenWriteBuffer(buf[:n]); e != nil {
+	if e := parseBuffer(buf[:n]); e != nil {
 		return 0, e
 	}
 
-	//read rest lines
+	// read rest lines
 	b := buf
 	m := n
 	for {
@@ -216,7 +201,7 @@ func (header *Header) readHeaders(buf []byte,
 			return 0, errNeedMore
 		}
 		m++
-		if e := parseThenWriteBuffer(b[:m]); e != nil {
+		if e := parseBuffer(b[:m]); e != nil {
 			return 0, e
 		}
 		n += m
@@ -224,26 +209,6 @@ func (header *Header) readHeaders(buf []byte,
 			return n, nil
 		}
 	}
-}
-
-var proxyHeaders = [][]byte{
-	// If no Accept-Encoding header exists, Transport will add the headers it can accept
-	// and would wrap the response body with the relevant reader.
-	[]byte("Accept-Encoding"),
-	// curl can add that, see
-	// https://jdebp.eu./FGA/web-proxy-connection-header.html
-	[]byte("Proxy-Connection"),
-	[]byte("Proxy-Authenticate"),
-	[]byte("Proxy-Authorization"),
-}
-
-func isProxyHeader(header []byte) bool {
-	for _, proxyHeaderKey := range proxyHeaders {
-		if hasPrefixIgnoreCase(header, proxyHeaderKey) {
-			return true
-		}
-	}
-	return false
 }
 
 var connectionHeader = []byte("Connection")
@@ -273,4 +238,24 @@ var transferEncoding = []byte("Transfer-Encoding")
 
 func isTransferEncodingHeader(header []byte) bool {
 	return hasPrefixIgnoreCase(header, transferEncoding)
+}
+
+var proxyHeaders = [][]byte{
+	// If no Accept-Encoding header exists, Transport will add the headers it can accept
+	// and would wrap the response body with the relevant reader.
+	[]byte("Accept-Encoding"),
+	// curl can add that
+	[]byte("Proxy-Connection"),
+	[]byte("Proxy-Authenticate"),
+	[]byte("Proxy-Authorization"),
+}
+
+// IsProxyHeader is the given header a proxy related header
+func IsProxyHeader(header []byte) bool {
+	for _, proxyHeaderKey := range proxyHeaders {
+		if hasPrefixIgnoreCase(header, proxyHeaderKey) {
+			return true
+		}
+	}
+	return false
 }
