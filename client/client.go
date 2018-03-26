@@ -75,7 +75,7 @@ type Response interface {
 //
 // Copying Client by value is prohibited. Create new instance instead.
 //
-// It is safe calling Client methods from concurrently running goroutines.
+// It is safe calling Client methods from concurrently running go routines.
 type Client struct {
 	// Maximum number of connections per each host which may be established.
 	//
@@ -113,7 +113,7 @@ var (
 	errNilResp           = errors.New("nil response")
 	errNilFakeResp       = errors.New("nil fake response")
 	errNilBufiopool      = errors.New("nil buffer io pool")
-	errNilReadWriter     = errors.New("nil readwriter provided")
+	errNilReadWriter     = errors.New("nil read writer provided")
 	errNilTargetHost     = errors.New("nil target host provided")
 	errNilSuperProxyHost = errors.New("nil superproxy proxy host provided")
 )
@@ -154,17 +154,17 @@ func (c *Client) DoFake(req Request, resp Response, fakeRespReader io.Reader) (r
 
 // DoRaw make simple raw traffic forwarding
 func (c *Client) DoRaw(rw io.ReadWriter, sProxy *superproxy.SuperProxy,
-	targetWithPort string, onTunnelMade func()) (rwReadNum, rwWriteNum int64, err error) {
+	targetWithPort string, onTunnelMade func(error) error) (rwReadNum, rwWriteNum int64, err error) {
 	//TODO: TEST DoRaw, Do and DoFake with the same super proxy
 	if rw == nil {
-		return 0, 0, errNilReadWriter
+		return 0, 0, onTunnelMade(errNilReadWriter)
 	}
 	connectHostWithPort := targetWithPort
 	isConnectHostTLS := false
 	if sProxy != nil {
 		connectHostWithPort = sProxy.HostWithPort()
 		if len(connectHostWithPort) == 0 {
-			return 0, 0, errNilSuperProxyHost
+			return 0, 0, onTunnelMade(errNilSuperProxyHost)
 		}
 		isConnectHostTLS = (sProxy.GetProxyType() == superproxy.ProxyTypeHTTPS)
 	}
@@ -284,7 +284,7 @@ func (c *Client) mCleaner(m map[string]*HostClient) {
 //
 // It is forbidden copying HostClient instances. Create new instances instead.
 //
-// It is safe calling HostClient methods from concurrently running goroutines.
+// It is safe calling HostClient methods from concurrently running go routines.
 type HostClient struct {
 	// cached TLS server config
 	tlsServerConfig *tls.Config
@@ -321,18 +321,20 @@ func (c *HostClient) LastUseTime() time.Time {
 
 // DoRaw make simple raw traffic forwarding
 func (c *HostClient) DoRaw(rw io.ReadWriter, superProxy *superproxy.SuperProxy,
-	targetWithPort string, onTunnelMade func()) (rwReadNum, rwWriteNum int64, err error) {
-	// set hostclient's last used time
+	targetWithPort string, onTunnelMade func(error) error) (rwReadNum, rwWriteNum int64, err error) {
+	// set hostClient's last used time
 	atomic.StoreUint32(&c.lastUseTime, uint32(servertime.CoarseTimeNow().Unix()-startTimeUnix))
 
 	// retrieve a connection from pool
 	var cc *transport.Conn
 	cc, err = c.ConnManager.AcquireConn(c.makeDialer(superProxy, targetWithPort, false, ""))
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, onTunnelMade(err)
 	}
 	if onTunnelMade != nil {
-		onTunnelMade()
+		if err := onTunnelMade(nil); err != nil {
+			return 0, 0, err
+		}
 	}
 
 	conn := cc.Get()
@@ -433,7 +435,7 @@ func (c *HostClient) PendingRequests() int {
 
 func (c *HostClient) do(req Request, resp Response,
 	reqCacheForRetry *bytebufferpool.ByteBuffer) (retry bool, reqReadNum, reqWriteNum, respNum int, err error) {
-	// set hostclient's last used time
+	// set hostClient's last used time
 	atomic.StoreUint32(&c.lastUseTime, uint32(servertime.CoarseTimeNow().Unix()-startTimeUnix))
 
 	// analysis request type

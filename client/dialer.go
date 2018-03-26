@@ -85,7 +85,7 @@ func (c *HostClient) makeDialer(superProxy *superproxy.SuperProxy,
 	return dialerWrapper(nil, errors.New("request type not implemented"))
 }
 
-// wrap a connection and error into a tranport Dialer
+// wrap a connection and error into a transport Dialer
 func dialerWrapper(c net.Conn, e error) transport.Dialer {
 	return func() (net.Conn, error) {
 		return c, e

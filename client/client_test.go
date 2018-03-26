@@ -202,7 +202,7 @@ func testClientDoTimeoutSuccess(t *testing.T, c *Client, n int) {
 
 		_, _, _, err = c.Do(req, resp)
 		if err != nil {
-			t.Fatalf("unexpecting error: %s", err.Error())
+			t.Fatalf("unexpected error: %s", err.Error())
 		}
 		if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
 			t.Fatal("Response body is wrong")
@@ -282,7 +282,7 @@ func testClientDoWithEmptyRequestAndResponse(t *testing.T) {
 	}
 }
 
-// test client do timeout paramter will get timeout
+// test client do timeout parameter will get timeout
 func testClientDoTimeoutError(t *testing.T, c *Client, n int) {
 	var err error
 	if c == nil {
