@@ -6,24 +6,24 @@ import (
 	"sync"
 )
 
-//Pool buff io read and writer pool
+// Pool buff io read and writer pool
 type Pool struct {
 	readBufferSize  int
 	writeBufferSize int
 
-	//pool for bytes reader & writer
+	// pool for bytes reader & writer
 	readerPool sync.Pool
 	writerPool sync.Pool
 }
 
 const (
-	//MinReadBufferSize default read size for buffer io
+	// MinReadBufferSize default read size for buffer io
 	MinReadBufferSize = 4096
-	//MinWriteBufferSize default write size for buffer io
+	// MinWriteBufferSize default write size for buffer io
 	MinWriteBufferSize = 4096
 )
 
-//New make a new buff io pool
+// New make a new buff io pool
 // min read / write buffer size is set if they are
 // smaller than MinReadBufferSize / MinWriteBufferSize
 func New(readBufferSize, writeBufferSize int) *Pool {
@@ -39,7 +39,7 @@ func New(readBufferSize, writeBufferSize int) *Pool {
 	}
 }
 
-//AcquireReader acquire a buffered reader based on net connection
+// AcquireReader acquire a buffered reader based on net connection
 func (p *Pool) AcquireReader(c io.Reader) *bufio.Reader {
 	v := p.readerPool.Get()
 	if v == nil {
@@ -54,12 +54,12 @@ func (p *Pool) AcquireReader(c io.Reader) *bufio.Reader {
 	return r
 }
 
-//ReleaseReader release a buffered reader
+// ReleaseReader release a buffered reader
 func (p *Pool) ReleaseReader(r *bufio.Reader) {
 	p.readerPool.Put(r)
 }
 
-//AcquireWriter acquire a buffered writer based on net connection
+// AcquireWriter acquire a buffered writer based on net connection
 func (p *Pool) AcquireWriter(c io.Writer) *bufio.Writer {
 	v := p.writerPool.Get()
 	if v == nil {
@@ -74,7 +74,7 @@ func (p *Pool) AcquireWriter(c io.Writer) *bufio.Writer {
 	return bw
 }
 
-//ReleaseWriter release a buffered writer
+// ReleaseWriter release a buffered writer
 func (p *Pool) ReleaseWriter(bw *bufio.Writer) {
 	p.writerPool.Put(bw)
 }
