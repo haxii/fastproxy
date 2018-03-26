@@ -27,16 +27,17 @@ var (
 // handshake if the clients support SNI see http://tools.ietf.org/html/rfc4366#section-3.1 )
 // onHandshake is called before the fake server handshaking is made with the connection
 func HijackTLSConnection(certAuthority *tls.Certificate, c net.Conn, domainName string,
-	onHandshake func() error) (serverConn *tls.Conn, targetServerName string, err error) {
+	onHandshake func(error) error) (serverConn *tls.Conn, targetServerName string, err error) {
 	targetServerName = domainName
 	if len(domainName) == 0 || strings.Contains(domainName, ":") {
-		err = errWrongDomain
+		err = onHandshake(errWrongDomain)
 		return
 	}
 	// make a cert for the provided domain
 	var fakeTargetServerCert *tls.Certificate
 	fakeTargetServerCert, err = SignLeafCertUsingCertAuthority(certAuthority, []string{domainName})
 	if err != nil {
+		err = onHandshake(err)
 		return
 	}
 	fakeTargetServerTLSConfig := &tls.Config{
@@ -51,7 +52,7 @@ func HijackTLSConnection(certAuthority *tls.Certificate, c net.Conn, domainName 
 	// perform the fake handshake with the connection given
 	serverConn = tls.Server(c, fakeTargetServerTLSConfig)
 	if onHandshake != nil {
-		if err = onHandshake(); err != nil {
+		if err = onHandshake(nil); err != nil {
 			return
 		}
 	}
