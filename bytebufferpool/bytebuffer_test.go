@@ -155,3 +155,111 @@ func TestByteBufferCopy(t *testing.T) {
 		t.Fatal("Copy content is wrong")
 	}
 }
+
+func TestCopyWithIdleDuration(t *testing.T) {
+
+	b := Get()
+	b.Reset()
+	src := GetSleepByteBuffer()
+	dst := Get()
+	dst.Reset()
+
+	s := "hello world!"
+	src.Write([]byte(s))
+	src.SetTime(0)
+
+	n, err := b.CopyWithIdleDuration(dst, src, 0)
+	if err != nil {
+		t.Fatalf("unexpected err: %s", err.Error())
+	}
+	if int(n) != src.Len() {
+		t.Fatal("Copy size is wrong")
+	}
+	if !bytes.Equal(dst.Bytes(), src.Bytes()) {
+		t.Fatal("Copy content is wrong")
+	}
+
+	dst.Reset()
+	src.Reset()
+	src.SetTime(1 * time.Second)
+	n, err = b.CopyWithIdleDuration(dst, src, 2*time.Second)
+	if err != nil {
+		t.Fatalf("unexpected err: %s", err.Error())
+	}
+	if int(n) != src.Len() {
+		t.Fatal("Copy size is wrong")
+	}
+	if !bytes.Equal(dst.Bytes(), src.Bytes()) {
+		t.Fatal("Copy content is wrong")
+	}
+
+	dst.Reset()
+	src.Reset()
+	src.SetTime(4 * time.Second)
+	n, err = b.CopyWithIdleDuration(dst, src, 1*time.Second)
+	if err == nil {
+		t.Fatal("expected err: idle time out")
+	}
+	if !strings.Contains(err.Error(), "idle time out") {
+		t.Fatalf("expected err: idle time out, but get unexpected error: %s", err)
+	}
+}
+
+type ByteBufferWithSleeping struct {
+	B            []byte
+	readIdleTime time.Duration
+	used         int
+	i            int
+}
+
+func (b *ByteBufferWithSleeping) Write(p []byte) (int, error) {
+	n := len(b.B) - b.used
+	var err error
+	var writingLength int
+	if len(p) < n {
+		writingLength = copy(b.B[b.used:], p)
+		b.used += len(p)
+		err = nil
+	} else {
+		writingLength = copy(b.B[b.used:], p[:n])
+		err = io.ErrShortBuffer
+		b.used = len(b.B)
+	}
+	return writingLength, err
+}
+
+func (b *ByteBufferWithSleeping) SetTime(readIdle time.Duration) {
+	b.readIdleTime = readIdle
+}
+
+func (b *ByteBufferWithSleeping) Read(p []byte) (int, error) {
+	if b.i >= len(b.B) {
+		return 0, io.EOF
+	}
+	time.Sleep(b.readIdleTime)
+	n := copy(p, b.B[b.i:])
+	b.i += n
+	fmt.Println(n)
+	return n, nil
+}
+
+func (b *ByteBufferWithSleeping) Bytes() []byte {
+	return b.B
+}
+
+func (b *ByteBufferWithSleeping) Len() int {
+	return b.i
+}
+
+func (b *ByteBufferWithSleeping) Reset() {
+	b.i = 0
+	b.used = 0
+}
+
+func GetSleepByteBuffer() *ByteBufferWithSleeping {
+	return &ByteBufferWithSleeping{
+		B:    make([]byte, 20),
+		used: 0,
+		i:    0,
+	}
+}

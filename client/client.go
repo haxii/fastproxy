@@ -271,11 +271,15 @@ func (c *HostClient) Do(req Request, resp Response) (reqReadNum, reqWriteNum, re
 
 	atomic.AddUint64(&c.pendingRequests, 1)
 	buffer := bytebufferpool.Get()
+	var retry bool
+	var currentReqReadNum int
+	var currentReqWriteNum int
+	var currentRespNum int
 	for {
-		retry, thisReqReadNum, thisReqWriteNum, thisRespNum, err := c.do(req, resp, buffer)
-		reqReadNum += thisReqReadNum
-		reqWriteNum += thisReqWriteNum
-		respNum += thisRespNum
+		retry, currentReqReadNum, currentReqWriteNum, currentRespNum, err = c.do(req, resp, buffer)
+		reqReadNum += currentReqReadNum
+		reqWriteNum += currentReqWriteNum
+		respNum += currentRespNum
 		if err == nil || !retry {
 			break
 		}
@@ -339,7 +343,7 @@ func (c *HostClient) do(req Request, resp Response,
 		if currentTime.Sub(cc.LastWriteDeadlineTime) > (c.WriteTimeout >> 2) {
 			if err = conn.SetWriteDeadline(currentTime.Add(c.WriteTimeout)); err != nil {
 				c.ConnManager.CloseConn(cc)
-				return false, reqReadNum, reqWriteNum, respNum, err
+				return true, reqReadNum, reqWriteNum, respNum, err
 			}
 			cc.LastWriteDeadlineTime = currentTime
 		}
@@ -384,7 +388,7 @@ func (c *HostClient) do(req Request, resp Response,
 		if err != nil {
 			if err != nil {
 				c.ConnManager.CloseConn(cc)
-				return false, reqReadNum, reqWriteNum, respNum, err
+				return true, reqReadNum, reqWriteNum, respNum, err
 			}
 		}
 		reqWriteNum += n
@@ -399,7 +403,7 @@ func (c *HostClient) do(req Request, resp Response,
 		if currentTime.Sub(cc.LastReadDeadlineTime) > (c.ReadTimeout >> 2) {
 			if err = conn.SetReadDeadline(currentTime.Add(c.ReadTimeout)); err != nil {
 				c.ConnManager.CloseConn(cc)
-				return false, reqReadNum, reqWriteNum, respNum, err
+				return true, reqReadNum, reqWriteNum, respNum, err
 			}
 			cc.LastReadDeadlineTime = currentTime
 		}
@@ -408,11 +412,11 @@ func (c *HostClient) do(req Request, resp Response,
 	//read a byte from response to test if the connection has been closed by remote
 	if b, err := br.Peek(1); err != nil {
 		if err == io.EOF {
-			return false, reqReadNum, reqWriteNum, respNum, io.EOF
+			return true, reqReadNum, reqWriteNum, respNum, io.EOF
 		}
 		return false, reqReadNum, reqWriteNum, respNum, err
 	} else if len(b) == 0 {
-		return false, reqReadNum, reqWriteNum, respNum, io.EOF
+		return true, reqReadNum, reqWriteNum, respNum, io.EOF
 	}
 
 	n, err := resp.ReadFrom(isHead(req.Method()), br)

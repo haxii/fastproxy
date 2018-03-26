@@ -18,6 +18,11 @@ import (
 	"github.com/haxii/fastproxy/util"
 )
 
+var (
+	//ErrSessionUnavailable means that proxy can't serve this session
+	ErrSessionUnavailable = errors.New("session unavailable")
+)
+
 //Handler proxy handler
 type Handler struct {
 	//ShouldAllowConnection should allow the connection to proxy, return false to drop the conn
@@ -27,7 +32,7 @@ type Handler struct {
 	ShouldDecryptHost func(host string) bool
 
 	//URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
-	URLProxy func(hostWithPort string, path []byte) *superproxy.SuperProxy
+	URLProxy func(hostInfo *http.HostInfo, path []byte) *superproxy.SuperProxy
 
 	//LookupIP returns ip string,
 	//should not block for long time
@@ -81,7 +86,11 @@ func (h *Handler) do(c net.Conn, req *http.Request,
 	}
 
 	//set requests proxy
-	superProxy := h.URLProxy(req.HostInfo().HostWithPort(), req.PathWithQueryFragment())
+	superProxy := h.URLProxy(req.HostInfo(), req.PathWithQueryFragment())
+	if len(req.HostInfo().HostWithPort()) == 0 {
+		return ErrSessionUnavailable
+	}
+
 	req.SetProxy(superProxy)
 	if superProxy != nil {
 		domain := req.HostInfo().Domain()
@@ -143,11 +152,17 @@ func (h *Handler) sendHTTPSProxyStatusBadGateway(c net.Conn) (err error) {
 }
 
 //proxy https traffic directly
-func (h *Handler) tunnelConnect(conn net.Conn,
-	bufioPool *bufiopool.Pool, hostWithPort string, usage *usage.ProxyUsage, idle time.Duration) error {
-	superProxy := h.URLProxy(hostWithPort, nil)
-
+func (h *Handler) tunnelConnect(conn net.Conn, bufioPool *bufiopool.Pool,
+	hostWithPort string, usage *usage.ProxyUsage, idle time.Duration) error {
+	hostInfo := &http.HostInfo{}
+	hostInfo.ParseHostWithPort(hostWithPort)
+	superProxy := h.URLProxy(hostInfo, nil)
+	if len(hostInfo.HostWithPort()) == 0 {
+		return ErrSessionUnavailable
+	}
+	hostWithPort = hostInfo.HostWithPort()
 	targetWithPort := hostWithPort
+
 	if superProxy != nil {
 		host, port, _ := net.SplitHostPort(hostWithPort)
 		if len(host) > 0 && net.ParseIP(host) == nil {

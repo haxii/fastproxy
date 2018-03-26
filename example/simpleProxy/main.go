@@ -17,6 +17,8 @@ import (
 	"github.com/haxii/fastproxy/proxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/log"
+
+	proxyhttp "github.com/haxii/fastproxy/proxy/http"
 )
 
 func main() {
@@ -39,7 +41,8 @@ func main() {
 			ShouldDecryptHost: func(hostWithPort string) bool {
 				return true
 			},
-			URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
+			URLProxy: func(hostInfo *proxyhttp.HostInfo, uri []byte) *superproxy.SuperProxy {
+				hostWithPort := hostInfo.HostWithPort()
 				if strings.Contains(hostWithPort, "lumtest") {
 					return nil
 				}
