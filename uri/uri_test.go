@@ -4,6 +4,7 @@ import "testing"
 import "bytes"
 
 func TestParse(t *testing.T) {
+	t.Fatal("test host info parseHostWithPort using all kinds of possibilities")
 	u := &URI{}
 	//uri1: connect www.example.com:443 http/1.1
 	testURIParse(t, u, true, "www.example.com:443",
