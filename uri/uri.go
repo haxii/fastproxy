@@ -114,7 +114,7 @@ func (uri *URI) Parse(isTLS bool, reqURI []byte) {
 		uri.queries = uri.queries[:0]
 		uri.fragments = uri.fragments[:0]
 	}
-	uri.hostInfo.parseHostWithPort(string(uri.host), isTLS)
+	uri.hostInfo.ParseHostWithPort(string(uri.host), isTLS)
 }
 
 //parse uri with out fragments
@@ -243,7 +243,7 @@ func (h *HostInfo) TargetWithPort() string {
 
 // ParseHostWithPort parse host with port, and set host, ip,
 // port, hostWithPort, targetWithPort
-func (h *HostInfo) parseHostWithPort(host string, isTLS bool) {
+func (h *HostInfo) ParseHostWithPort(host string, isTLS bool) {
 	hasPortFuncByte := func(host string) bool {
 		return strings.LastIndexByte(host, ':') >
 			strings.LastIndexByte(host, ']')

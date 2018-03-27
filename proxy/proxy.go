@@ -245,6 +245,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		}
 
 		//TODO: test connection close & keep alive @xiangyu
+		//TODO: test if the server had closed the connection after ServerIdleDuration @xiangyu
 		//TODO: test different kinds of connection types in one TCP: proxyHTTP, proxyHTTPS .... @xiangyu
 		if req.ConnectionClose() {
 			break
@@ -336,6 +337,7 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	defer hijackedConn.Close()
 
 	// reset request to a new one for hijacked request purpose
+	hostWithPort := req.reqLine.HostInfo().TargetWithPort()
 	req.Reset()
 	hijackedConnreader := p.bufioPool.AcquireReader(hijackedConn)
 	defer p.bufioPool.ReleaseReader(hijackedConnreader)
@@ -344,6 +346,7 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 		return util.ErrWrapper(err, "fail to read fake tls server request header")
 	}
 	req.SetTLS(serverName)
+	req.reqLine.HostInfo().ParseHostWithPort(hostWithPort, true)
 	return p.proxyHTTP(c, req)
 }
 
