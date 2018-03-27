@@ -262,12 +262,12 @@ func (p *Proxy) writeFastError(w io.Writer, statusCode int, msg string) error {
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(w,
+	_, err = fmt.Fprintf(w, "Connection: close\r\n"+
 		"Date: %s\r\n"+
-			"Content-Type: text/plain\r\n"+
-			"Content-Length: %d\r\n"+
-			"\r\n"+
-			"%s",
+		"Content-Type: text/plain\r\n"+
+		"Content-Length: %d\r\n"+
+		"\r\n"+
+		"%s",
 		servertime.ServerDate(), len(msg), msg)
 	return err
 }
