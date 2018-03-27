@@ -15,7 +15,7 @@ import (
 	"github.com/haxii/fastproxy/server"
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
-	"github.com/haxii/fastproxy/uri"
+	"github.com/haxii/fastproxy/userdata"
 	"github.com/haxii/fastproxy/util"
 	"github.com/haxii/log"
 )
@@ -79,6 +79,9 @@ type Proxy struct {
 	reqPool  RequestPool
 	respPool ResponsePool
 
+	// user data pool, used by handler funcitions
+	userDataPool userdata.Pool
+
 	// Handler proxy handler
 	Handler Handler
 }
@@ -89,13 +92,16 @@ type Handler struct {
 	ShouldAllowConnection func(connAddr net.Addr) bool
 
 	// HTTPSDecryptEnable test if host's https connection should be decrypted
-	ShouldDecryptHost func(host string) bool
+	ShouldDecryptHost func(userdata *userdata.Data, host string) bool
+
+	// RewriteURL rewrites url
+	RewriteURL func(userdata *userdata.Data, hostWithPort string) string
 
 	// URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
-	URLProxy func(hostInfo *uri.HostInfo, path []byte) *superproxy.SuperProxy
+	URLProxy func(userdata *userdata.Data, hostWithPort string, path []byte) *superproxy.SuperProxy
 
 	// LookupIP returns ip string, should not block for long time
-	LookupIP func(domain string) net.IP
+	LookupIP func(userdata *userdata.Data, domain string) net.IP
 
 	// hijacker pool for making a hijacker for every incoming request
 	HijackerPool HijackerPool
@@ -140,17 +146,17 @@ func (p *Proxy) Serve(network, addr string) error {
 		}
 	}
 	if p.Handler.ShouldDecryptHost == nil {
-		p.Handler.ShouldDecryptHost = func(string) bool {
+		p.Handler.ShouldDecryptHost = func(*userdata.Data, string) bool {
 			return false
 		}
 	}
 	if p.Handler.URLProxy == nil {
-		p.Handler.URLProxy = func(hostInfo *uri.HostInfo, path []byte) *superproxy.SuperProxy {
+		p.Handler.URLProxy = func(userdata *userdata.Data, hostWithPort string, path []byte) *superproxy.SuperProxy {
 			return nil
 		}
 	}
 	if p.Handler.LookupIP == nil {
-		p.Handler.LookupIP = func(domain string) net.IP {
+		p.Handler.LookupIP = func(userdata *userdata.Data, domain string) net.IP {
 			return nil
 		}
 	}
@@ -175,7 +181,9 @@ func (p *Proxy) serveConn(c net.Conn) error {
 	// convert c into a http request
 	reader := p.bufioPool.AcquireReader(c)
 	req := p.reqPool.Acquire()
+	req.userdata = p.userDataPool.Acquire()
 	releaseReqAndReader := func() {
+		p.userDataPool.Release(req.userdata)
 		p.reqPool.Release(req)
 		p.bufioPool.ReleaseReader(reader)
 	}
@@ -216,23 +224,27 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			return nil
 		}
 
-		// do a manual DNS look up
-		domain := req.reqLine.HostInfo().Domain()
-		if len(domain) > 0 {
-			ip := p.Handler.LookupIP(domain)
-			req.reqLine.HostInfo().SetIP(ip)
-		}
-
-		// set requests proxy
-		// TODO: session in context refactoring
-		superProxy := p.Handler.URLProxy(req.reqLine.HostInfo(), req.PathWithQueryFragment())
-		if len(req.reqLine.HostInfo().HostWithPort()) == 0 {
+		newHostWithPort := p.Handler.RewriteURL(req.userdata, req.reqLine.HostInfo().HostWithPort())
+		if len(newHostWithPort) == 0 {
 			if e := writeFastError(c, http.StatusSessionUnavailable,
 				"Sorry, server can't keep this session.\n"); e != nil {
 				return util.ErrWrapper(e, "fail to response session unavailable")
 			}
 			return nil
 		}
+		if newHostWithPort != req.reqLine.HostInfo().HostWithPort() {
+			req.reqLine.HostInfo().ParseHostWithPort(newHostWithPort, req.IsTLS())
+		}
+
+		// do a manual DNS look up
+		domain := req.reqLine.HostInfo().Domain()
+		if len(domain) > 0 {
+			ip := p.Handler.LookupIP(req.userdata, domain)
+			req.reqLine.HostInfo().SetIP(ip)
+		}
+
+		// set requests proxy
+		superProxy := p.Handler.URLProxy(req.userdata, req.reqLine.HostInfo().HostWithPort(), req.PathWithQueryFragment())
 		req.SetProxy(superProxy)
 		if superProxy != nil { //set up super proxy concurrency limits
 			superProxy.AcquireToken()
@@ -266,7 +278,7 @@ func (p *Proxy) do(c net.Conn, req *Request) error {
 	// TODO: where did I jumper over the rest http headers? @zichao
 
 	// make the tunnel HTTPS requests
-	if !p.Handler.ShouldDecryptHost(req.reqLine.HostInfo().Domain()) {
+	if !p.Handler.ShouldDecryptHost(req.userdata, req.reqLine.HostInfo().Domain()) {
 		return p.tunnelHTTPS(c, req)
 	}
 
@@ -290,7 +302,7 @@ func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
 		hijacker = defaultNilHijacker
 	} else {
 		hijacker = p.Handler.HijackerPool.Get(c.RemoteAddr(), req.reqLine.HostInfo().HostWithPort(),
-			req.Method(), req.PathWithQueryFragment())
+			req.Method(), req.PathWithQueryFragment(), req.UserData())
 		defer p.Handler.HijackerPool.Put(hijacker)
 	}
 	req.SetHijacker(hijacker)
@@ -338,15 +350,18 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 
 	// reset request to a new one for hijacked request purpose
 	hostWithPort := req.reqLine.HostInfo().TargetWithPort()
-	req.Reset()
+	ip := req.reqLine.HostInfo().IP()
 	hijackedConnreader := p.bufioPool.AcquireReader(hijackedConn)
 	defer p.bufioPool.ReleaseReader(hijackedConnreader)
+
+	req.reqLine.Reset()
 	_, err = req.parseStartLine(hijackedConnreader)
 	if err != nil {
 		return util.ErrWrapper(err, "fail to read fake tls server request header")
 	}
 	req.SetTLS(serverName)
 	req.reqLine.HostInfo().ParseHostWithPort(hostWithPort, true)
+	req.reqLine.HostInfo().SetIP(ip)
 	return p.proxyHTTP(c, req)
 }
 

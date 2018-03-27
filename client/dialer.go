@@ -1,11 +1,9 @@
 package client
 
 import (
-	"crypto/tls"
 	"errors"
 	"net"
 
-	"github.com/haxii/fastproxy/cert"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
 )
@@ -55,30 +53,17 @@ func (c *HostClient) makeDialer(superProxy *superproxy.SuperProxy,
 	//set https tls config
 	switch reqType {
 	case requestDirectHTTP:
-		return dialerWrapper(transport.Dial(targetWithPort))
+		fallthrough
 	case requestDirectHTTPS:
-		if c.tlsServerConfig == nil {
-			c.tlsServerConfig = cert.MakeClientTLSConfig("", targetTLSServerName)
-		}
-		return dialerWrapper(transport.DialTLS(targetWithPort, c.tlsServerConfig))
+		return dialerWrapper(transport.Dial(targetWithPort))
 	case requestProxyHTTP:
 		return dialerWrapper(transport.Dial(superProxy.HostWithPort()))
 	case requestProxyHTTPS:
-		if c.tlsServerConfig == nil {
-			c.tlsServerConfig = &tls.Config{
-				ClientSessionCache: tls.NewLRUClientSessionCache(0),
-				InsecureSkipVerify: true, //TODO: cache every host config in more safe way in a concurrent map
-			}
-		}
 		fallthrough
 	case requestProxySOCKS5:
 		tunnelConn, err := superProxy.MakeTunnel(c.BufioPool, targetWithPort)
 		if err != nil {
 			return dialerWrapper(nil, err)
-		}
-		if reqType == requestProxyHTTPS {
-			conn := tls.Client(tunnelConn, c.tlsServerConfig)
-			return dialerWrapper(conn, nil)
 		}
 		return dialerWrapper(tunnelConn, nil)
 	}

@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"os"
 	"strings"
@@ -13,7 +12,7 @@ import (
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
-	"github.com/haxii/fastproxy/uri"
+	"github.com/haxii/fastproxy/userdata"
 	"github.com/haxii/log"
 )
 
@@ -28,20 +27,18 @@ func main() {
 				fmt.Printf("allowed connection from %s\n", conn.String())
 				return true
 			},
-			ShouldDecryptHost: func(hostWithPort string) bool {
+			ShouldDecryptHost: func(userdata *userdata.Data, hostWithPort string) bool {
 				return false
 			},
-			URLProxy: func(hostInfo *uri.HostInfo, uri []byte) *superproxy.SuperProxy {
+			RewriteURL: func(userdata *userdata.Data, hostWithPort string) string {
+				return hostWithPort
+			},
+			URLProxy: func(userdata *userdata.Data, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 				return nil
 			},
 			HijackerPool: &SimpleHijackerPool{},
-			LookupIP: func(domain string) net.IP {
-				ips, err := net.LookupIP(domain)
-				if err != nil || len(ips) == 0 {
-					return nil
-				}
-				randInt := rand.Intn(len(ips))
-				return ips[randInt]
+			LookupIP: func(userdata *userdata.Data, domain string) net.IP {
+				return nil
 			},
 		},
 		ServerIdleDuration: time.Second * 30,
@@ -57,7 +54,7 @@ type SimpleHijackerPool struct {
 
 //Get get a simple hijacker from pool
 func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
-	targetHost string, method, path []byte) proxy.Hijacker {
+	targetHost string, method, path []byte, userdata *userdata.Data) proxy.Hijacker {
 	v := p.pool.Get()
 	var h *simpleHijacker
 	if v == nil {
@@ -65,7 +62,7 @@ func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
 	} else {
 		h = v.(*simpleHijacker)
 	}
-	h.Set(clientAddr, targetHost, method, path)
+	h.Set(clientAddr, targetHost, method, path, userdata)
 	return h
 }
 
@@ -77,14 +74,16 @@ func (p *SimpleHijackerPool) Put(s proxy.Hijacker) {
 type simpleHijacker struct {
 	clientAddr, targetHost string
 	method, path           []byte
+	userdata               *userdata.Data
 }
 
 func (s *simpleHijacker) Set(clientAddr net.Addr,
-	host string, method, path []byte) {
+	host string, method, path []byte, userdata *userdata.Data) {
 	s.clientAddr = clientAddr.String()
 	s.targetHost = host
 	s.method = method
 	s.path = path
+	s.userdata = userdata
 }
 
 func (s *simpleHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {

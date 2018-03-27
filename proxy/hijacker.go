@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/haxii/fastproxy/http"
+	"github.com/haxii/fastproxy/userdata"
 )
 
 // Hijacker hijacker of each http connection and decrypted https connection
@@ -28,7 +29,7 @@ type Hijacker interface {
 // HijackerPool pooling hijacker instances
 type HijackerPool interface {
 	// Get get a hijacker with client address
-	Get(clientAddr net.Addr, host string, method, path []byte) Hijacker
+	Get(clientAddr net.Addr, host string, method, path []byte, userdata *userdata.Data) Hijacker
 	// Put put a hijacker back to pool
 	Put(Hijacker)
 }
