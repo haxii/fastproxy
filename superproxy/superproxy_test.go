@@ -105,7 +105,7 @@ func testNewSuperProxyWithSocks5Type(t *testing.T) {
 	defer conn.Close()
 }
 
-// // test new super proxy with https type
+// test new super proxy with https type
 func testNewSuperProxyWithHTTPSProxy(t *testing.T) {
 	serverCrt := `-----BEGIN CERTIFICATE-----
 MIICnzCCAggCCQDbF8N9hzgLKTANBgkqhkiG9w0BAQUFADCBkzELMAkGA1UEBhMC

@@ -21,10 +21,10 @@ const (
 	DefaultMaxIdleConnDuration = 10 * time.Second
 )
 
-//ConnManager manages a poll of connections
+// ConnManager manages a poll of connections
 type ConnManager struct {
 	// Maximum number of connections which may be established to all hosts
-	// listed in Addr.
+	// listed in Address
 	//
 	// DefaultMaxConnsPerHost is used if not set.
 	MaxConns int
@@ -62,7 +62,7 @@ var (
 // Dialer returns a connection
 type Dialer func() (net.Conn, error)
 
-//AcquireConn acquire a connection
+// AcquireConn acquire a connection
 func (c *ConnManager) AcquireConn(dialer Dialer) (*Conn, error) {
 	var cc *Conn
 	createConn := false
@@ -114,13 +114,14 @@ func (c *ConnManager) AcquireConn(dialer Dialer) (*Conn, error) {
 }
 
 func (c *ConnManager) connsCleaner() {
+	if c.MaxIdleConnDuration <= 0 {
+		c.MaxIdleConnDuration = DefaultMaxIdleConnDuration
+	}
+
 	var (
 		scratch             []*Conn
 		maxIdleConnDuration = c.MaxIdleConnDuration
 	)
-	if maxIdleConnDuration <= 0 {
-		maxIdleConnDuration = DefaultMaxIdleConnDuration
-	}
 	for {
 		currentTime := time.Now()
 
@@ -163,7 +164,7 @@ func (c *ConnManager) connsCleaner() {
 	}
 }
 
-//CloseConn close the connection
+// CloseConn close the connection
 func (c *ConnManager) CloseConn(cc *Conn) {
 	c.decConnsCount()
 	cc.c.Close()
@@ -176,9 +177,9 @@ func (c *ConnManager) decConnsCount() {
 	c.connsLock.Unlock()
 }
 
-//ReleaseConn release the connection back into host connection pool
+// ReleaseConn release the connection back into host connection pool
 func (c *ConnManager) ReleaseConn(cc *Conn) {
-	go func() { //release the connection in new go routine cause of the delay
+	go func() { // release the connection in new go routine cause of the delay
 		if c.isConnClosedByRemote(cc.c, 10*time.Microsecond) {
 			c.CloseConn(cc)
 			return
@@ -219,29 +220,29 @@ func releaseClientConn(cc *Conn) {
 	connPool.Put(cc)
 }
 
-//Conn wrapper of net.conn as a manager
+// Conn wrapper of net.conn as a manager
 type Conn struct {
 	c net.Conn
 
 	createdTime time.Time
 	lastUseTime time.Time
 
-	//last read and write deadline time
+	// last read and write deadline time
 	LastReadDeadlineTime  time.Time
 	LastWriteDeadlineTime time.Time
 }
 
-//Get get the net conn in cc
+// Get get the net conn in cc
 func (cc *Conn) Get() net.Conn {
 	return cc.c
 }
 
-//CreatedTime get the net conn created time
+// CreatedTime get the net conn created time
 func (cc *Conn) CreatedTime() time.Time {
 	return cc.createdTime
 }
 
-//LastUseTime get the net conn last use time
+// LastUseTime get the net conn last use time
 func (cc *Conn) LastUseTime() time.Time {
 	return cc.lastUseTime
 }

@@ -158,7 +158,7 @@ func init() {
 	statusLines.Store(make(map[int][]byte))
 }
 
-//StatusLine make a status line based on a given status code
+// StatusLine make a status line based on a given status code
 func StatusLine(statusCode int) []byte {
 	m := statusLines.Load().(map[int][]byte)
 	h := m[statusCode]

@@ -122,3 +122,13 @@ func writeRequestLine(bw *bufio.Writer, fullURL bool,
 
 	return writeSize, nil
 }
+
+// defaultDevNullWriter
+// a simple implentation of /dev/null based on io.Writer
+var defaultDevNullWriter = &devNullWriter{}
+
+type devNullWriter struct{}
+
+func (d *devNullWriter) Write(p []byte) (n int, err error) {
+	return len(p), nil
+}

@@ -1,66 +1,98 @@
-package http
+package proxy
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"io"
-	"net"
 	"sync"
 
-	"github.com/haxii/fastproxy/bytebufferpool"
-	"github.com/haxii/fastproxy/hijack"
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/util"
 )
 
+// RequestPool pooling requests
+type RequestPool struct{ pool sync.Pool }
+
+// Acquire get a request from pool
+func (r *RequestPool) Acquire() *Request {
+	v := r.pool.Get()
+	if v == nil {
+		return &Request{}
+	}
+	return v.(*Request)
+}
+
+// Release put a request back into pool
+func (r *RequestPool) Release(req *Request) {
+	req.Reset()
+	r.pool.Put(req)
+}
+
+// ResponsePool pooling responses
+type ResponsePool struct{ pool sync.Pool }
+
+// Acquire get a response from pool
+func (r *ResponsePool) Acquire() *Response {
+	v := r.pool.Get()
+	if v == nil {
+		return &Response{}
+	}
+	return v.(*Response)
+}
+
+// Release put a response back into pool
+func (r *ResponsePool) Release(resp *Response) {
+	resp.Reset()
+	r.pool.Put(resp)
+}
+
 /*
  * implements basic http request & response based on client
  */
 
-//Request http request implementation of http client
+// Request http request implementation of http client
 type Request struct {
-	//reader stores the original raw data of request
+	// reader stores the original raw data of request
 	reader *bufio.Reader
 
-	//start line of http request, i.e. request line
-	//build from reader
+	// start line of http request, i.e. request line
+	// build from reader
 	reqLine http.RequestLine
 
-	//headers info, includes conn close and content length
+	// headers info, includes conn close and content length
 	header http.Header
 
-	//body body parser
+	// body body parser
 	body http.Body
 
-	//hijacker, used for recording the http traffic
-	hijacker           hijack.Hijacker
+	// hijacker, used for recording the http traffic
+	hijacker           Hijacker
 	hijackerBodyWriter io.Writer
 
-	//proxy super proxy used for target connection
+	// proxy super proxy used for target connection
 	proxy *superproxy.SuperProxy
 
-	//TLS request settings
+	// TLS request settings
 	isTLS         bool
 	tlsServerName string
-	hostInfo      HostInfo
 }
 
-//Reset reset request
+// Reset reset request
 func (r *Request) Reset() {
 	r.reader = nil
 	r.reqLine.Reset()
 	r.header.Reset()
-	r.hostInfo.Reset()
 	r.hijacker = nil
 	r.proxy = nil
 	r.isTLS = false
 	r.tlsServerName = ""
 }
 
-// ReadFrom init request with reader
+// parseStartLine inits request with provided reader
 // then parse the start line of the http request
-func (r *Request) ReadFrom(reader *bufio.Reader) (int, error) {
+func (r *Request) parseStartLine(reader *bufio.Reader) (int, error) {
 	var rn int
 	if r.reader != nil {
 		return rn, errors.New("request already initialized")
@@ -78,73 +110,57 @@ func (r *Request) ReadFrom(reader *bufio.Reader) (int, error) {
 	rn += len(r.reqLine.GetRequestLine())
 
 	r.reader = reader
-	r.hostInfo.ParseHostWithPort(r.reqLine.HostWithPort())
 	return rn, nil
 }
 
-//SetTLS set request as TLS
+// SetTLS set request as TLS
 func (r *Request) SetTLS(tlsServerName string) {
 	r.isTLS = true
 	r.tlsServerName = tlsServerName
 }
 
-//SetHijacker set hijacker for this request
-func (r *Request) SetHijacker(h hijack.Hijacker) {
+// SetHijacker set hijacker for this request
+func (r *Request) SetHijacker(h Hijacker) {
 	r.hijacker = h
 }
 
-//GetHijacker get hijacker for this request
-func (r *Request) GetHijacker() hijack.Hijacker {
-	return r.hijacker
-}
-
-//SetProxy set super proxy for this request
+// SetProxy set super proxy for this request
 func (r *Request) SetProxy(p *superproxy.SuperProxy) {
 	r.proxy = p
 }
 
-//GetProxy get super proxy for this request
+// GetProxy get super proxy for this request
 func (r *Request) GetProxy() *superproxy.SuperProxy {
 	return r.proxy
 }
 
-//Method request method in UPPER case
+// Method request method in UPPER case
 func (r *Request) Method() []byte {
 	return r.reqLine.Method()
 }
 
-//HostInfo returns host info
-func (r *Request) HostInfo() *HostInfo {
-	return &r.hostInfo
-}
-
-//SetHostWithPort set host with port
-func (r *Request) SetHostWithPort(hostWithPort string) {
-	r.hostInfo.ParseHostWithPort(hostWithPort)
-}
-
-// TargetWithPort returns tartgetWithPort
+// TargetWithPort the target IP with port is exists, otherwise the domain with ip
 func (r *Request) TargetWithPort() string {
-	return r.hostInfo.TargetWithPort()
+	return r.reqLine.HostInfo().TargetWithPort()
 }
 
-//PathWithQueryFragment request path with query and fragment
+// PathWithQueryFragment request path with query and fragment
 func (r *Request) PathWithQueryFragment() []byte {
 	return r.reqLine.PathWithQueryFragment()
 }
 
-//Protocol HTTP/1.0, HTTP/1.1 etc.
+// Protocol HTTP/1.0, HTTP/1.1 etc.
 func (r *Request) Protocol() []byte {
 	return r.reqLine.Protocol()
 }
 
-//WriteHeaderTo write raw http request header to http client
-//implemented client's request interface
+// WriteHeaderTo write raw http request header to http client
+// implemented client's request interface
 func (r *Request) WriteHeaderTo(writer *bufio.Writer) (int, int, error) {
 	if r.reader == nil {
 		return 0, 0, errors.New("Empty request, nothing to write")
 	}
-	//read & write the headers
+	// read & write the headers
 	return copyHeader(&r.header, r.reader, writer,
 		func(rawHeader []byte) {
 			r.hijackerBodyWriter = r.hijacker.OnRequest(r.header, rawHeader)
@@ -152,56 +168,56 @@ func (r *Request) WriteHeaderTo(writer *bufio.Writer) (int, int, error) {
 	)
 }
 
-//WriteBodyTo write raw http request body to http client
-//implemented client's request interface
+// WriteBodyTo write raw http request body to http client
+// implemented client's request interface
 func (r *Request) WriteBodyTo(writer *bufio.Writer) (int, error) {
 	if r.reader == nil {
 		return 0, errors.New("Empty request, nothing to write")
 	}
-	//write the request body (if any)
+	// write the request body (if any)
 	return copyBody(&r.header, &r.body, r.reader, writer,
 		func(rawBody []byte) {
 			if _, err := util.WriteWithValidation(r.hijackerBodyWriter, rawBody); err != nil {
-				//TODO: log the sniffer error
+				// TODO: log the sniffer error
 			}
 		},
 	)
 }
 
 // ConnectionClose if the request's "Connection" or "Proxy-Connection" header value is set as "close".
-// this determines how the client reusing the connetions.
+// this determines how the client reusing the connections.
 // this func. result is only valid after `WriteTo` method is called
 func (r *Request) ConnectionClose() bool {
 	return r.header.IsConnectionClose() || r.header.IsProxyConnectionClose()
 }
 
-//IsTLS is tls requests
+// IsTLS is tls requests
 func (r *Request) IsTLS() bool {
 	return r.isTLS
 }
 
-//TLSServerName server name for handshaking
+// TLSServerName server name for handshaking
 func (r *Request) TLSServerName() string {
 	return r.tlsServerName
 }
 
-//Response http response implementation of http client
+// Response http response implementation of http client
 type Response struct {
 	writer   *bufio.Writer
-	hijacker hijack.Hijacker
+	hijacker Hijacker
 
-	//start line of http response, i.e. request line
-	//build from reader
+	// start line of http response, i.e. request line
+	// build from reader
 	respLine http.ResponseLine
 
-	//headers info, includes conn close and content length
+	// headers info, includes conn close and content length
 	header http.Header
 
-	//body http body parser
+	// body http body parser
 	body http.Body
 }
 
-//Reset reset response
+// Reset reset response
 func (r *Response) Reset() {
 	r.writer = nil
 	r.respLine.Reset()
@@ -222,34 +238,29 @@ func (r *Response) WriteTo(writer *bufio.Writer) error {
 	return nil
 }
 
-//SetHijacker set hijacker for this response
-func (r *Response) SetHijacker(h hijack.Hijacker) {
+// SetHijacker set hijacker for this response
+func (r *Response) SetHijacker(h Hijacker) {
 	r.hijacker = h
 }
 
-//GetHijacker get hijacker for this response
-func (r *Response) GetHijacker() hijack.Hijacker {
-	return r.hijacker
-}
-
-//ReadFrom read data from http response got
+// ReadFrom read data from http response got
 func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) (int, error) {
 	var num, wn int
 	var err error
-	//write back the start line to writer(i.e. net/connection)
+	// write back the start line to writer(i.e. net/connection)
 	if err = r.respLine.Parse(reader); err != nil {
 		return num, util.ErrWrapper(err, "fail to read start line of response")
 	}
 
-	//rebuild  the start line
+	// rebuild  the start line
 	respLineBytes := r.respLine.GetResponseLine()
-	//write start line
+	// write start line
 	if wn, err = util.WriteWithValidation(r.writer, respLineBytes); err != nil {
 		return num, util.ErrWrapper(err, "fail to write start line of response")
 	}
 	num += wn
 
-	//read & write the headers
+	// read & write the headers
 	var hijackerBodyWriter io.Writer
 	if _, wn, err = copyHeader(&r.header, reader, r.writer,
 		func(rawHeader []byte) {
@@ -265,11 +276,11 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) (int, error)
 		return num, nil
 	}
 
-	//write the request body (if any)
+	// write the request body (if any)
 	wn, err = copyBody(&r.header, &r.body, reader, r.writer,
 		func(rawBody []byte) {
 			if _, err := util.WriteWithValidation(hijackerBodyWriter, rawBody); err != nil {
-				//TODO: log the sniffer error
+				// TODO: log the sniffer error
 			}
 		},
 	)
@@ -277,40 +288,87 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) (int, error)
 	return num, err
 }
 
-//ConnectionClose if the request's "Connection" header value is set as "Close"
-//this determines how the client reusing the connetions
+// ConnectionClose if the request's "Connection" header value is set as "Close"
+// this determines how the client reusing the connections
 func (r *Response) ConnectionClose() bool {
 	return false
 }
 
-//additionalDst used by copyHeader and copyBody for additional write
+// additionalDst used by copyHeader and copyBody for additional write
 type additionalDst func([]byte)
 
 func copyHeader(header *http.Header,
 	src *bufio.Reader, dst1 io.Writer, dst2 additionalDst) (int, int, error) {
-	//read and write header
-	buffer := bytebufferpool.Get()
-	defer bytebufferpool.Put(buffer)
-	var rn, wn int
+	// read and write header
+	var orginalHeaderLen, copiedHeaderLen int
 	var err error
-	if rn, err = header.ParseHeaderFields(src, buffer); err != nil {
-		return rn, 0, util.ErrWrapper(err, "fail to parse http headers")
+	if orginalHeaderLen, err = header.ParseHeaderFields(src); err != nil {
+		return orginalHeaderLen, 0, util.ErrWrapper(err, "fail to parse http headers")
 	}
-	wn, err = parallelWrite(dst1, dst2, buffer.B)
-	return rn, wn, err
+	var rawHeader []byte
+	rawHeader, err = src.Peek(orginalHeaderLen)
+	if err != nil {
+		// should NOT have any errors
+		return orginalHeaderLen, 0, util.ErrWrapper(err, "fail to reader raw headers")
+	}
+	defer src.Discard(orginalHeaderLen)
+
+	copiedHeaderLen, err = parallelWriteHeader(dst1, dst2, rawHeader)
+	return orginalHeaderLen, copiedHeaderLen, err
+}
+
+// parallelWriteBody write body data to dst1 dst2 concurrently
+// TODO: @daizong with timeout
+func parallelWriteHeader(dst1 io.Writer, dst2 additionalDst, header []byte) (int, error) {
+	var wg sync.WaitGroup
+	var wn int
+	var err error
+	wg.Add(2)
+	go func() {
+		m := 0
+		unReadHeader := header
+		for {
+			unReadHeader = unReadHeader[m:]
+			m = bytes.IndexByte(unReadHeader, '\n')
+			if m < 0 {
+				break
+			}
+			m++
+			headerLine := unReadHeader[:m]
+			if !http.IsProxyHeader(headerLine) {
+				n, e := util.WriteWithValidation(dst1, headerLine)
+				wn += n
+				if e != nil {
+					err = e
+					break
+				}
+			}
+
+		}
+		wg.Done()
+	}()
+	go func() {
+		dst2(header)
+		wg.Done()
+	}()
+	wg.Wait()
+	if err != nil {
+		return wn, util.ErrWrapper(err, "error occurred when write to dst")
+	}
+	return wn, nil
 }
 
 func copyBody(header *http.Header, body *http.Body,
 	src *bufio.Reader, dst1 io.Writer, dst2 additionalDst) (int, error) {
 	w := func(isChunkHeader bool, data []byte) (int, error) {
-		return parallelWrite(dst1, dst2, data)
+		return parallelWriteBody(dst1, dst2, data)
 	}
 	return body.Parse(src, header.BodyType(), header.ContentLength(), w)
 }
 
-//parallelWrite write data to dst1 dst2 concurrently
-//TODO: with timeout?
-func parallelWrite(dst1 io.Writer, dst2 additionalDst, data []byte) (int, error) {
+// parallelWriteBody write body data to dst1 dst2 concurrently
+// TODO: @daizong with timeout
+func parallelWriteBody(dst1 io.Writer, dst2 additionalDst, data []byte) (int, error) {
 	var wg sync.WaitGroup
 	var wn int
 	var err error
@@ -328,75 +386,4 @@ func parallelWrite(dst1 io.Writer, dst2 additionalDst, data []byte) (int, error)
 		return wn, util.ErrWrapper(err, "error occurred when write to dst")
 	}
 	return wn, nil
-}
-
-// HostInfo host info
-type HostInfo struct {
-	domain       string
-	ip           net.IP
-	port         string
-	hostWithPort string
-	//ip with port if ip not nil, else domain with port
-	targetWithPort string
-}
-
-//Reset reset host info
-func (h *HostInfo) Reset() {
-	h.domain = ""
-	h.ip = nil
-	h.port = ""
-	h.hostWithPort = ""
-	h.targetWithPort = ""
-}
-
-//Domain return domain
-func (h *HostInfo) Domain() string {
-	return h.domain
-}
-
-//Port return port
-func (h *HostInfo) Port() string {
-	return h.port
-}
-
-//IP return ip
-func (h *HostInfo) IP() net.IP {
-	return h.ip
-}
-
-//HostWithPort return hostWithPort
-func (h *HostInfo) HostWithPort() string {
-	return h.hostWithPort
-}
-
-//TargetWithPort return targetWithPort
-func (h *HostInfo) TargetWithPort() string {
-	return h.targetWithPort
-}
-
-//ParseHostWithPort parse host with port, and set host, ip,
-//port, hostWithPort, targetWithPort
-func (h *HostInfo) ParseHostWithPort(hostWithPort string) {
-	host, port, err := net.SplitHostPort(hostWithPort)
-	if err != nil {
-		return
-	}
-	ip := net.ParseIP(host)
-	if ip != nil {
-		h.ip = ip
-	} else {
-		h.domain = host
-	}
-	h.port = port
-	h.hostWithPort = hostWithPort
-	h.targetWithPort = hostWithPort
-}
-
-//SetIP set ip and update targetWithPort
-func (h *HostInfo) SetIP(ip net.IP) {
-	if ip == nil {
-		return
-	}
-	h.ip = ip
-	h.targetWithPort = ip.String() + ":" + h.port
 }
