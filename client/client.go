@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -327,7 +328,13 @@ func (c *HostClient) DoRaw(rw io.ReadWriter, superProxy *superproxy.SuperProxy,
 
 	// retrieve a connection from pool
 	var cc *transport.Conn
-	cc, err = c.ConnManager.AcquireConn(c.makeDialer(superProxy, targetWithPort, true, ""))
+	var netConn net.Conn
+	if superProxy == nil {
+		netConn, err = transport.Dial(targetWithPort)
+	} else {
+		netConn, err = superProxy.MakeTunnel(c.BufioPool, targetWithPort)
+	}
+	cc, err = c.ConnManager.AcquireConn(dialerWrapper(netConn, err))
 	if err != nil {
 		return 0, 0, onTunnelMade(err)
 	}
