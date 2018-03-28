@@ -16,6 +16,7 @@ import (
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/uri"
+	"github.com/haxii/fastproxy/usage"
 	"github.com/haxii/fastproxy/util"
 	"github.com/haxii/log"
 )
@@ -81,6 +82,9 @@ type Proxy struct {
 
 	// Handler proxy handler
 	Handler Handler
+
+	// Usage usage
+	Usage usage.ProxyUsage
 }
 
 // Handler proxy handlers
@@ -206,6 +210,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			}
 			return util.ErrWrapper(err, "fail to read http request header")
 		}
+		p.Usage.AddIncomingSize(uint64(rn))
 
 		// discard direct HTTP requests
 		if len(req.reqLine.HostInfo().HostWithPort()) == 0 {
@@ -296,25 +301,37 @@ func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
 	req.SetHijacker(hijacker)
 	resp.SetHijacker(hijacker)
 	if hijackedRespReader := hijacker.HijackResponse(); hijackedRespReader != nil {
-		//TODO: usage refactoring, check the result
-		_, _, _, err := p.client.DoFake(req, resp, hijackedRespReader)
+		reqReadN, _, respN, err := p.client.DoFake(req, resp, hijackedRespReader)
+		p.Usage.AddIncomingSize(uint64(reqReadN))
+		p.Usage.AddOutgoingSize(uint64(respN))
 		return err
 	}
 
 	// make the request
-	_, _, _, err := p.client.Do(req, resp)
+	reqReadN, reqWriteN, respN, err := p.client.Do(req, resp)
+	p.Usage.AddIncomingSize(uint64(reqReadN))
+	p.Usage.AddOutgoingSize(uint64(respN))
+	if req.GetProxy() != nil {
+		req.GetProxy().Usage.AddIncomingSize(uint64(respN))
+		req.GetProxy().Usage.AddOutgoingSize(uint64(reqWriteN))
+	}
 	return err
 }
 
 func (p *Proxy) tunnelHTTPS(c net.Conn, req *Request) error {
-	// TODO: add traffic calculation
-	_, _, err := p.client.DoRaw(
+	rwReadNum, rwWriteNum, err := p.client.DoRaw(
 		c, req.GetProxy(), req.TargetWithPort(),
 		func(fail error) error { // on tunnel made, return the tunnel made or failed message
 			_, err := sendTunnelMessage(c, fail)
 			return err
 		},
 	)
+	p.Usage.AddIncomingSize(uint64(rwReadNum))
+	p.Usage.AddOutgoingSize(uint64(rwWriteNum))
+	if req.GetProxy() != nil {
+		req.GetProxy().Usage.AddIncomingSize(uint64(rwWriteNum))
+		req.GetProxy().Usage.AddOutgoingSize(uint64(rwReadNum))
+	}
 	return err
 }
 
@@ -341,10 +358,11 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	req.Reset()
 	hijackedConnreader := p.bufioPool.AcquireReader(hijackedConn)
 	defer p.bufioPool.ReleaseReader(hijackedConnreader)
-	_, err = req.parseStartLine(hijackedConnreader)
+	reqReadNum, err := req.parseStartLine(hijackedConnreader)
 	if err != nil {
 		return util.ErrWrapper(err, "fail to read fake tls server request header")
 	}
+	p.Usage.AddIncomingSize(uint64(reqReadNum))
 	req.SetTLS(serverName)
 	req.reqLine.HostInfo().ParseHostWithPort(hostWithPort, true)
 	return p.proxyHTTP(c, req)
