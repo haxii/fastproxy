@@ -15,6 +15,7 @@ import (
 	"github.com/haxii/fastproxy/server"
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
+	"github.com/haxii/fastproxy/usage"
 	"github.com/haxii/fastproxy/userdata"
 	"github.com/haxii/fastproxy/util"
 	"github.com/haxii/log"
@@ -53,6 +54,11 @@ type Proxy struct {
 	// TODO: http? @daizong refer fasthttp's idle handler
 	ServerIdleDuration time.Duration
 
+	// ServerReadTimeout read timeout for server connection
+	ServerReadTimeout time.Duration
+	// ServerWriteTimeout write timeout for server connection
+	ServerWriteTimeout time.Duration
+
 	// Concurrency max simultaneous connections per client
 	ServerConcurrency int
 
@@ -84,6 +90,9 @@ type Proxy struct {
 
 	// Handler proxy handler
 	Handler Handler
+
+	// Usage usage
+	Usage usage.ProxyUsage
 }
 
 // Handler proxy handlers
@@ -188,10 +197,21 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		p.bufioPool.ReleaseReader(reader)
 	}
 	defer releaseReqAndReader()
-	var err error
-	var rn int
+	var (
+		rn                    int
+		err                   error
+		lastReadDeadlineTime  time.Time
+		lastWriteDeadlineTime time.Time
+	)
 
 	for {
+		if p.ServerReadTimeout > 0 {
+			lastReadDeadlineTime, err = p.updateReadDeadline(c, servertime.CoarseTimeNow(), lastReadDeadlineTime)
+			if err != nil {
+				return err
+			}
+		}
+
 		// parse start line of the request: a.k.a. request line
 		if p.ServerIdleDuration == 0 {
 			rn, err = req.parseStartLine(reader)
@@ -214,6 +234,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			}
 			return util.ErrWrapper(err, "fail to read http request header")
 		}
+		p.Usage.AddIncomingSize(uint64(rn))
 
 		// discard direct HTTP requests
 		if len(req.reqLine.HostInfo().HostWithPort()) == 0 {
@@ -248,10 +269,23 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		req.SetProxy(superProxy)
 		if superProxy != nil { //set up super proxy concurrency limits
 			superProxy.AcquireToken()
-			defer superProxy.PushBackToken()
 		}
 
-		if err = p.do(c, req); err != nil {
+		if p.ServerWriteTimeout > 0 {
+			lastWriteDeadlineTime, err = p.updateWriteDeadline(c, servertime.CoarseTimeNow(), lastWriteDeadlineTime)
+			if err != nil {
+				if superProxy != nil {
+					superProxy.PushBackToken()
+				}
+				return err
+			}
+		}
+
+		err = p.do(c, req)
+		if superProxy != nil {
+			superProxy.PushBackToken()
+		}
+		if err != nil {
 			//TODO: should every error close the http connection? @daizong
 			return util.ErrWrapper(err, "error HTTP traffic")
 		}
@@ -308,25 +342,40 @@ func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
 	req.SetHijacker(hijacker)
 	resp.SetHijacker(hijacker)
 	if hijackedRespReader := hijacker.HijackResponse(); hijackedRespReader != nil {
-		//TODO: usage refactoring, check the result
-		_, _, _, err := p.client.DoFake(req, resp, hijackedRespReader)
+		reqReadN, _, respN, err := p.client.DoFake(req, resp, hijackedRespReader)
+		p.Usage.AddIncomingSize(uint64(reqReadN))
+		p.Usage.AddOutgoingSize(uint64(respN))
 		return err
 	}
 
 	// make the request
-	_, _, _, err := p.client.Do(req, resp)
+	reqReadN, reqWriteN, respN, err := p.client.Do(req, resp)
+	p.Usage.AddIncomingSize(uint64(reqReadN))
+	p.Usage.AddOutgoingSize(uint64(respN))
+	if req.GetProxy() != nil {
+		req.GetProxy().Usage.AddIncomingSize(uint64(respN))
+		req.GetProxy().Usage.AddOutgoingSize(uint64(reqWriteN))
+	}
+
 	return err
 }
 
 func (p *Proxy) tunnelHTTPS(c net.Conn, req *Request) error {
 	// TODO: add traffic calculation
-	_, _, err := p.client.DoRaw(
+	rwReadNum, rwWriteNum, err := p.client.DoRaw(
 		c, req.GetProxy(), req.TargetWithPort(),
 		func(fail error) error { // on tunnel made, return the tunnel made or failed message
 			_, err := sendTunnelMessage(c, fail)
 			return err
 		},
 	)
+
+	p.Usage.AddIncomingSize(uint64(rwReadNum))
+	p.Usage.AddOutgoingSize(uint64(rwWriteNum))
+	if req.GetProxy() != nil {
+		req.GetProxy().Usage.AddIncomingSize(uint64(rwWriteNum))
+		req.GetProxy().Usage.AddOutgoingSize(uint64(rwReadNum))
+	}
 	return err
 }
 
@@ -335,7 +384,8 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	hijackedConn, serverName, err := mitm.HijackTLSConnection(
 		p.Handler.MITMCertAuthority, c, req.reqLine.HostInfo().Domain(),
 		func(fail error) error { // before handshaking with client, return the tunnel made or failed message
-			_, err := sendTunnelMessage(c, fail)
+			wn, err := sendTunnelMessage(c, fail)
+			p.Usage.AddOutgoingSize(uint64(wn))
 			return err
 		},
 	)
@@ -355,7 +405,8 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	defer p.bufioPool.ReleaseReader(hijackedConnreader)
 
 	req.reqLine.Reset()
-	_, err = req.parseStartLine(hijackedConnreader)
+	reqReadNum, err := req.parseStartLine(hijackedConnreader)
+	p.Usage.AddIncomingSize(uint64(reqReadNum))
 	if err != nil {
 		return util.ErrWrapper(err, "fail to read fake tls server request header")
 	}
@@ -363,6 +414,35 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	req.reqLine.HostInfo().ParseHostWithPort(hostWithPort, true)
 	req.reqLine.HostInfo().SetIP(ip)
 	return p.proxyHTTP(c, req)
+}
+
+func (p *Proxy) updateReadDeadline(c net.Conn, currentTime time.Time, lastDeadlineTime time.Time) (time.Time, error) {
+	readTimeout := p.ServerReadTimeout
+
+	// Optimization: update read deadline only if more than 25%
+	// of the last read deadline exceeded.
+	// See https://github.com/golang/go/issues/15133 for details.
+	if currentTime.Sub(lastDeadlineTime) > (readTimeout >> 2) {
+		if err := c.SetReadDeadline(currentTime.Add(readTimeout)); err != nil {
+			return lastDeadlineTime, util.ErrWrapper(err, "BUG: error in SetReadDeadline(%s)", readTimeout)
+		}
+		lastDeadlineTime = currentTime
+	}
+	return lastDeadlineTime, nil
+}
+
+func (p *Proxy) updateWriteDeadline(c net.Conn, currentTime time.Time, lastDeadlineTime time.Time) (time.Time, error) {
+	writeTimeout := p.ServerWriteTimeout
+	// Optimization: update write deadline only if more than 25%
+	// of the last write deadline exceeded.
+	// See https://github.com/golang/go/issues/15133 for details.
+	if currentTime.Sub(lastDeadlineTime) > (writeTimeout >> 2) {
+		if err := c.SetWriteDeadline(currentTime.Add(writeTimeout)); err != nil {
+			return lastDeadlineTime, util.ErrWrapper(err, "BUG: error in SetWriteDeadline(%s)", writeTimeout)
+		}
+		lastDeadlineTime = currentTime
+	}
+	return lastDeadlineTime, nil
 }
 
 var (
@@ -373,6 +453,9 @@ var (
 func sendTunnelMessage(c net.Conn, fail error) (int, error) {
 	if fail != nil {
 		n, err := util.WriteWithValidation(c, httpTunnelMadeFailedBytes)
+		if err == nil {
+			return n, fail
+		}
 		err = util.ErrWrapper(fail, "fail to write error message to client with error %s", err)
 		return n, err
 	}

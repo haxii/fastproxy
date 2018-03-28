@@ -334,6 +334,9 @@ func (c *HostClient) DoRaw(rw io.ReadWriter, superProxy *superproxy.SuperProxy,
 	} else {
 		netConn, err = superProxy.MakeTunnel(c.BufioPool, targetWithPort)
 	}
+	if err != nil {
+		return 0, 0, onTunnelMade(err)
+	}
 	cc, err = c.ConnManager.AcquireConn(dialerWrapper(netConn, err))
 	if err != nil {
 		return 0, 0, onTunnelMade(err)
@@ -345,6 +348,34 @@ func (c *HostClient) DoRaw(rw io.ReadWriter, superProxy *superproxy.SuperProxy,
 	}
 
 	conn := cc.Get()
+
+	if c.ReadTimeout > 0 {
+		// Optimization: update read deadline only if more than 25%
+		// of the last read deadline exceeded.
+		// See https:// github.com/golang/go/issues/15133 for details.
+		currentTime := servertime.CoarseTimeNow()
+		if currentTime.Sub(cc.LastReadDeadlineTime) > (c.ReadTimeout >> 2) {
+			if err = conn.SetReadDeadline(currentTime.Add(c.ReadTimeout)); err != nil {
+				c.ConnManager.CloseConn(cc)
+				return rwReadNum, rwWriteNum, err
+			}
+			cc.LastReadDeadlineTime = currentTime
+		}
+	}
+
+	if c.WriteTimeout > 0 {
+		// Optimization: update write deadline only if more than 25%
+		// of the last write deadline exceeded.
+		// See https:// github.com/golang/go/issues/15133 for details.
+		currentTime := servertime.CoarseTimeNow()
+		if currentTime.Sub(cc.LastWriteDeadlineTime) > (c.WriteTimeout >> 2) {
+			if err = conn.SetWriteDeadline(currentTime.Add(c.WriteTimeout)); err != nil {
+				c.ConnManager.CloseConn(cc)
+				return rwReadNum, rwWriteNum, err
+			}
+			cc.LastWriteDeadlineTime = currentTime
+		}
+	}
 
 	var wg sync.WaitGroup
 	var rwWriteErr, rwReadErr error
