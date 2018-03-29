@@ -77,6 +77,9 @@ type Request struct {
 	// TLS request settings
 	isTLS         bool
 	tlsServerName string
+
+	// userdata
+	userdata *UserData
 }
 
 // Reset reset request
@@ -84,6 +87,7 @@ func (r *Request) Reset() {
 	r.reader = nil
 	r.reqLine.Reset()
 	r.header.Reset()
+	r.userdata.Reset()
 	r.hijacker = nil
 	r.proxy = nil
 	r.isTLS = false
@@ -199,6 +203,11 @@ func (r *Request) IsTLS() bool {
 // TLSServerName server name for handshaking
 func (r *Request) TLSServerName() string {
 	return r.tlsServerName
+}
+
+// UserData user data
+func (r *Request) UserData() *UserData {
+	return r.userdata
 }
 
 // Response http response implementation of http client

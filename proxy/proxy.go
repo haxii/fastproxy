@@ -15,7 +15,7 @@ import (
 	"github.com/haxii/fastproxy/server"
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
-	"github.com/haxii/fastproxy/uri"
+	"github.com/haxii/fastproxy/usage"
 	"github.com/haxii/fastproxy/util"
 	"github.com/haxii/log"
 )
@@ -53,6 +53,11 @@ type Proxy struct {
 	// TODO: http? @daizong refer fasthttp's idle handler
 	ServerIdleDuration time.Duration
 
+	// ServerReadTimeout read timeout for server connection
+	ServerReadTimeout time.Duration
+	// ServerWriteTimeout write timeout for server connection
+	ServerWriteTimeout time.Duration
+
 	// Concurrency max simultaneous connections per client
 	ServerConcurrency int
 
@@ -79,8 +84,14 @@ type Proxy struct {
 	reqPool  RequestPool
 	respPool ResponsePool
 
+	// user data pool, used by handler funcitions
+	userDataPool userDataPool
+
 	// Handler proxy handler
 	Handler Handler
+
+	// Usage usage
+	Usage usage.ProxyUsage
 }
 
 // Handler proxy handlers
@@ -89,13 +100,16 @@ type Handler struct {
 	ShouldAllowConnection func(connAddr net.Addr) bool
 
 	// HTTPSDecryptEnable test if host's https connection should be decrypted
-	ShouldDecryptHost func(host string) bool
+	ShouldDecryptHost func(userdata *UserData, host string) bool
+
+	// RewriteURL rewrites url
+	RewriteURL func(userdata *UserData, hostWithPort string) string
 
 	// URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
-	URLProxy func(hostInfo *uri.HostInfo, path []byte) *superproxy.SuperProxy
+	URLProxy func(userdata *UserData, hostWithPort string, path []byte) *superproxy.SuperProxy
 
 	// LookupIP returns ip string, should not block for long time
-	LookupIP func(domain string) net.IP
+	LookupIP func(userdata *UserData, domain string) net.IP
 
 	// hijacker pool for making a hijacker for every incoming request
 	HijackerPool HijackerPool
@@ -140,17 +154,17 @@ func (p *Proxy) Serve(network, addr string) error {
 		}
 	}
 	if p.Handler.ShouldDecryptHost == nil {
-		p.Handler.ShouldDecryptHost = func(string) bool {
+		p.Handler.ShouldDecryptHost = func(*UserData, string) bool {
 			return false
 		}
 	}
 	if p.Handler.URLProxy == nil {
-		p.Handler.URLProxy = func(hostInfo *uri.HostInfo, path []byte) *superproxy.SuperProxy {
+		p.Handler.URLProxy = func(userdata *UserData, hostWithPort string, path []byte) *superproxy.SuperProxy {
 			return nil
 		}
 	}
 	if p.Handler.LookupIP == nil {
-		p.Handler.LookupIP = func(domain string) net.IP {
+		p.Handler.LookupIP = func(userdata *UserData, domain string) net.IP {
 			return nil
 		}
 	}
@@ -175,15 +189,28 @@ func (p *Proxy) serveConn(c net.Conn) error {
 	// convert c into a http request
 	reader := p.bufioPool.AcquireReader(c)
 	req := p.reqPool.Acquire()
+	req.userdata = p.userDataPool.Acquire()
 	releaseReqAndReader := func() {
+		p.userDataPool.Release(req.userdata)
 		p.reqPool.Release(req)
 		p.bufioPool.ReleaseReader(reader)
 	}
 	defer releaseReqAndReader()
-	var err error
-	var rn int
+	var (
+		rn                    int
+		err                   error
+		lastReadDeadlineTime  time.Time
+		lastWriteDeadlineTime time.Time
+	)
 
 	for {
+		if p.ServerReadTimeout > 0 {
+			lastReadDeadlineTime, err = p.updateReadDeadline(c, servertime.CoarseTimeNow(), lastReadDeadlineTime)
+			if err != nil {
+				return err
+			}
+		}
+
 		// parse start line of the request: a.k.a. request line
 		if p.ServerIdleDuration == 0 {
 			rn, err = req.parseStartLine(reader)
@@ -206,6 +233,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			}
 			return util.ErrWrapper(err, "fail to read http request header")
 		}
+		p.Usage.AddIncomingSize(uint64(rn))
 
 		// discard direct HTTP requests
 		if len(req.reqLine.HostInfo().HostWithPort()) == 0 {
@@ -216,30 +244,47 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			return nil
 		}
 
-		// do a manual DNS look up
-		domain := req.reqLine.HostInfo().Domain()
-		if len(domain) > 0 {
-			ip := p.Handler.LookupIP(domain)
-			req.reqLine.HostInfo().SetIP(ip)
-		}
-
-		// set requests proxy
-		// TODO: session in context refactoring
-		superProxy := p.Handler.URLProxy(req.reqLine.HostInfo(), req.PathWithQueryFragment())
-		if len(req.reqLine.HostInfo().HostWithPort()) == 0 {
+		newHostWithPort := p.Handler.RewriteURL(req.userdata, req.reqLine.HostInfo().HostWithPort())
+		if len(newHostWithPort) == 0 {
 			if e := writeFastError(c, http.StatusSessionUnavailable,
 				"Sorry, server can't keep this session.\n"); e != nil {
 				return util.ErrWrapper(e, "fail to response session unavailable")
 			}
 			return nil
 		}
+		if newHostWithPort != req.reqLine.HostInfo().HostWithPort() {
+			req.reqLine.HostInfo().ParseHostWithPort(newHostWithPort, req.IsTLS())
+		}
+
+		// do a manual DNS look up
+		domain := req.reqLine.HostInfo().Domain()
+		if len(domain) > 0 {
+			ip := p.Handler.LookupIP(req.userdata, domain)
+			req.reqLine.HostInfo().SetIP(ip)
+		}
+
+		// set requests proxy
+		superProxy := p.Handler.URLProxy(req.userdata, req.reqLine.HostInfo().HostWithPort(), req.PathWithQueryFragment())
 		req.SetProxy(superProxy)
 		if superProxy != nil { //set up super proxy concurrency limits
 			superProxy.AcquireToken()
-			defer superProxy.PushBackToken()
 		}
 
-		if err = p.do(c, req); err != nil {
+		if p.ServerWriteTimeout > 0 {
+			lastWriteDeadlineTime, err = p.updateWriteDeadline(c, servertime.CoarseTimeNow(), lastWriteDeadlineTime)
+			if err != nil {
+				if superProxy != nil {
+					superProxy.PushBackToken()
+				}
+				return err
+			}
+		}
+
+		err = p.do(c, req)
+		if superProxy != nil {
+			superProxy.PushBackToken()
+		}
+		if err != nil {
 			//TODO: should every error close the http connection? @daizong
 			return util.ErrWrapper(err, "error HTTP traffic")
 		}
@@ -266,7 +311,7 @@ func (p *Proxy) do(c net.Conn, req *Request) error {
 	// TODO: where did I jumper over the rest http headers? @zichao
 
 	// make the tunnel HTTPS requests
-	if !p.Handler.ShouldDecryptHost(req.reqLine.HostInfo().Domain()) {
+	if !p.Handler.ShouldDecryptHost(req.userdata, req.reqLine.HostInfo().Domain()) {
 		return p.tunnelHTTPS(c, req)
 	}
 
@@ -290,31 +335,46 @@ func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
 		hijacker = defaultNilHijacker
 	} else {
 		hijacker = p.Handler.HijackerPool.Get(c.RemoteAddr(), req.reqLine.HostInfo().HostWithPort(),
-			req.Method(), req.PathWithQueryFragment())
+			req.Method(), req.PathWithQueryFragment(), req.UserData())
 		defer p.Handler.HijackerPool.Put(hijacker)
 	}
 	req.SetHijacker(hijacker)
 	resp.SetHijacker(hijacker)
 	if hijackedRespReader := hijacker.HijackResponse(); hijackedRespReader != nil {
-		//TODO: usage refactoring, check the result
-		_, _, _, err := p.client.DoFake(req, resp, hijackedRespReader)
+		reqReadN, _, respN, err := p.client.DoFake(req, resp, hijackedRespReader)
+		p.Usage.AddIncomingSize(uint64(reqReadN))
+		p.Usage.AddOutgoingSize(uint64(respN))
 		return err
 	}
 
 	// make the request
-	_, _, _, err := p.client.Do(req, resp)
+	reqReadN, reqWriteN, respN, err := p.client.Do(req, resp)
+	p.Usage.AddIncomingSize(uint64(reqReadN))
+	p.Usage.AddOutgoingSize(uint64(respN))
+	if req.GetProxy() != nil {
+		req.GetProxy().Usage.AddIncomingSize(uint64(respN))
+		req.GetProxy().Usage.AddOutgoingSize(uint64(reqWriteN))
+	}
+
 	return err
 }
 
 func (p *Proxy) tunnelHTTPS(c net.Conn, req *Request) error {
 	// TODO: add traffic calculation
-	_, _, err := p.client.DoRaw(
+	rwReadNum, rwWriteNum, err := p.client.DoRaw(
 		c, req.GetProxy(), req.TargetWithPort(),
 		func(fail error) error { // on tunnel made, return the tunnel made or failed message
 			_, err := sendTunnelMessage(c, fail)
 			return err
 		},
 	)
+
+	p.Usage.AddIncomingSize(uint64(rwReadNum))
+	p.Usage.AddOutgoingSize(uint64(rwWriteNum))
+	if req.GetProxy() != nil {
+		req.GetProxy().Usage.AddIncomingSize(uint64(rwWriteNum))
+		req.GetProxy().Usage.AddOutgoingSize(uint64(rwReadNum))
+	}
 	return err
 }
 
@@ -323,7 +383,8 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	hijackedConn, serverName, err := mitm.HijackTLSConnection(
 		p.Handler.MITMCertAuthority, c, req.reqLine.HostInfo().Domain(),
 		func(fail error) error { // before handshaking with client, return the tunnel made or failed message
-			_, err := sendTunnelMessage(c, fail)
+			wn, err := sendTunnelMessage(c, fail)
+			p.Usage.AddOutgoingSize(uint64(wn))
 			return err
 		},
 	)
@@ -338,16 +399,49 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 
 	// reset request to a new one for hijacked request purpose
 	hostWithPort := req.reqLine.HostInfo().TargetWithPort()
-	req.Reset()
+	ip := req.reqLine.HostInfo().IP()
 	hijackedConnreader := p.bufioPool.AcquireReader(hijackedConn)
 	defer p.bufioPool.ReleaseReader(hijackedConnreader)
-	_, err = req.parseStartLine(hijackedConnreader)
+
+	req.reqLine.Reset()
+	reqReadNum, err := req.parseStartLine(hijackedConnreader)
+	p.Usage.AddIncomingSize(uint64(reqReadNum))
 	if err != nil {
 		return util.ErrWrapper(err, "fail to read fake tls server request header")
 	}
 	req.SetTLS(serverName)
 	req.reqLine.HostInfo().ParseHostWithPort(hostWithPort, true)
+	req.reqLine.HostInfo().SetIP(ip)
 	return p.proxyHTTP(c, req)
+}
+
+func (p *Proxy) updateReadDeadline(c net.Conn, currentTime time.Time, lastDeadlineTime time.Time) (time.Time, error) {
+	readTimeout := p.ServerReadTimeout
+
+	// Optimization: update read deadline only if more than 25%
+	// of the last read deadline exceeded.
+	// See https://github.com/golang/go/issues/15133 for details.
+	if currentTime.Sub(lastDeadlineTime) > (readTimeout >> 2) {
+		if err := c.SetReadDeadline(currentTime.Add(readTimeout)); err != nil {
+			return lastDeadlineTime, util.ErrWrapper(err, "BUG: error in SetReadDeadline(%s)", readTimeout)
+		}
+		lastDeadlineTime = currentTime
+	}
+	return lastDeadlineTime, nil
+}
+
+func (p *Proxy) updateWriteDeadline(c net.Conn, currentTime time.Time, lastDeadlineTime time.Time) (time.Time, error) {
+	writeTimeout := p.ServerWriteTimeout
+	// Optimization: update write deadline only if more than 25%
+	// of the last write deadline exceeded.
+	// See https://github.com/golang/go/issues/15133 for details.
+	if currentTime.Sub(lastDeadlineTime) > (writeTimeout >> 2) {
+		if err := c.SetWriteDeadline(currentTime.Add(writeTimeout)); err != nil {
+			return lastDeadlineTime, util.ErrWrapper(err, "BUG: error in SetWriteDeadline(%s)", writeTimeout)
+		}
+		lastDeadlineTime = currentTime
+	}
+	return lastDeadlineTime, nil
 }
 
 var (
@@ -358,6 +452,9 @@ var (
 func sendTunnelMessage(c net.Conn, fail error) (int, error) {
 	if fail != nil {
 		n, err := util.WriteWithValidation(c, httpTunnelMadeFailedBytes)
+		if err == nil {
+			return n, fail
+		}
 		err = util.ErrWrapper(fail, "fail to write error message to client with error %s", err)
 		return n, err
 	}
