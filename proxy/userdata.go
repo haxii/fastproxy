@@ -1,4 +1,4 @@
-package userdata
+package proxy
 
 import (
 	"io"
@@ -10,11 +10,11 @@ type dataKV struct {
 	value interface{}
 }
 
-// Data user data
-type Data []dataKV
+// UserData user data
+type UserData []dataKV
 
 // Set sets key, value
-func (d *Data) Set(key string, value interface{}) {
+func (d *UserData) Set(key string, value interface{}) {
 	args := *d
 	n := len(args)
 	for i := 0; i < n; i++ {
@@ -42,7 +42,7 @@ func (d *Data) Set(key string, value interface{}) {
 }
 
 // Get gets value of key
-func (d *Data) Get(key string) interface{} {
+func (d *UserData) Get(key string) interface{} {
 	args := *d
 	n := len(args)
 	for i := 0; i < n; i++ {
@@ -55,7 +55,7 @@ func (d *Data) Get(key string) interface{} {
 }
 
 // Reset resets user data
-func (d *Data) Reset() {
+func (d *UserData) Reset() {
 	args := *d
 	n := len(args)
 	for i := 0; i < n; i++ {
@@ -67,20 +67,20 @@ func (d *Data) Reset() {
 	*d = (*d)[:0]
 }
 
-// Pool pooling user data
-type Pool struct{ pool sync.Pool }
+// userDataPool pooling user data
+type userDataPool struct{ pool sync.Pool }
 
 // Acquire get a response from pool
-func (r *Pool) Acquire() *Data {
+func (r *userDataPool) Acquire() *UserData {
 	v := r.pool.Get()
 	if v == nil {
-		return &Data{}
+		return &UserData{}
 	}
-	return v.(*Data)
+	return v.(*UserData)
 }
 
 // Release put a response back into pool
-func (r *Pool) Release(data *Data) {
+func (r *userDataPool) Release(data *UserData) {
 	data.Reset()
 	r.pool.Put(data)
 }

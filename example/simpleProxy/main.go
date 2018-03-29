@@ -12,7 +12,6 @@ import (
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
-	"github.com/haxii/fastproxy/userdata"
 	"github.com/haxii/log"
 )
 
@@ -27,17 +26,17 @@ func main() {
 				fmt.Printf("allowed connection from %s\n", conn.String())
 				return true
 			},
-			ShouldDecryptHost: func(userdata *userdata.Data, hostWithPort string) bool {
+			ShouldDecryptHost: func(userdata *proxy.UserData, hostWithPort string) bool {
 				return false
 			},
-			RewriteURL: func(userdata *userdata.Data, hostWithPort string) string {
+			RewriteURL: func(userdata *proxy.UserData, hostWithPort string) string {
 				return hostWithPort
 			},
-			URLProxy: func(userdata *userdata.Data, hostWithPort string, uri []byte) *superproxy.SuperProxy {
-				return nil
+			URLProxy: func(userdata *proxy.UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
+				return superProxy
 			},
 			HijackerPool: &SimpleHijackerPool{},
-			LookupIP: func(userdata *userdata.Data, domain string) net.IP {
+			LookupIP: func(userdata *proxy.UserData, domain string) net.IP {
 				return nil
 			},
 		},
@@ -54,7 +53,7 @@ type SimpleHijackerPool struct {
 
 //Get get a simple hijacker from pool
 func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
-	targetHost string, method, path []byte, userdata *userdata.Data) proxy.Hijacker {
+	targetHost string, method, path []byte, userdata *proxy.UserData) proxy.Hijacker {
 	v := p.pool.Get()
 	var h *simpleHijacker
 	if v == nil {
@@ -74,11 +73,11 @@ func (p *SimpleHijackerPool) Put(s proxy.Hijacker) {
 type simpleHijacker struct {
 	clientAddr, targetHost string
 	method, path           []byte
-	userdata               *userdata.Data
+	userdata               *proxy.UserData
 }
 
 func (s *simpleHijacker) Set(clientAddr net.Addr,
-	host string, method, path []byte, userdata *userdata.Data) {
+	host string, method, path []byte, userdata *proxy.UserData) {
 	s.clientAddr = clientAddr.String()
 	s.targetHost = host
 	s.method = method

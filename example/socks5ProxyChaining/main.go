@@ -3,7 +3,6 @@ package main
 import (
 	"github.com/haxii/fastproxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
-	"github.com/haxii/fastproxy/userdata"
 	"github.com/haxii/log"
 )
 
@@ -12,7 +11,7 @@ func main() {
 	proxy := proxy.Proxy{
 		Logger: &log.DefaultLogger{},
 		Handler: proxy.Handler{
-			URLProxy: func(userdata *userdata.Data, hostWithPort string, uri []byte) *superproxy.SuperProxy {
+			URLProxy: func(userdata *proxy.UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 				return superProxy
 			},
 		},

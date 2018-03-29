@@ -16,7 +16,6 @@ import (
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/usage"
-	"github.com/haxii/fastproxy/userdata"
 	"github.com/haxii/fastproxy/util"
 	"github.com/haxii/log"
 )
@@ -86,7 +85,7 @@ type Proxy struct {
 	respPool ResponsePool
 
 	// user data pool, used by handler funcitions
-	userDataPool userdata.Pool
+	userDataPool userDataPool
 
 	// Handler proxy handler
 	Handler Handler
@@ -101,16 +100,16 @@ type Handler struct {
 	ShouldAllowConnection func(connAddr net.Addr) bool
 
 	// HTTPSDecryptEnable test if host's https connection should be decrypted
-	ShouldDecryptHost func(userdata *userdata.Data, host string) bool
+	ShouldDecryptHost func(userdata *UserData, host string) bool
 
 	// RewriteURL rewrites url
-	RewriteURL func(userdata *userdata.Data, hostWithPort string) string
+	RewriteURL func(userdata *UserData, hostWithPort string) string
 
 	// URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
-	URLProxy func(userdata *userdata.Data, hostWithPort string, path []byte) *superproxy.SuperProxy
+	URLProxy func(userdata *UserData, hostWithPort string, path []byte) *superproxy.SuperProxy
 
 	// LookupIP returns ip string, should not block for long time
-	LookupIP func(userdata *userdata.Data, domain string) net.IP
+	LookupIP func(userdata *UserData, domain string) net.IP
 
 	// hijacker pool for making a hijacker for every incoming request
 	HijackerPool HijackerPool
@@ -155,17 +154,17 @@ func (p *Proxy) Serve(network, addr string) error {
 		}
 	}
 	if p.Handler.ShouldDecryptHost == nil {
-		p.Handler.ShouldDecryptHost = func(*userdata.Data, string) bool {
+		p.Handler.ShouldDecryptHost = func(*UserData, string) bool {
 			return false
 		}
 	}
 	if p.Handler.URLProxy == nil {
-		p.Handler.URLProxy = func(userdata *userdata.Data, hostWithPort string, path []byte) *superproxy.SuperProxy {
+		p.Handler.URLProxy = func(userdata *UserData, hostWithPort string, path []byte) *superproxy.SuperProxy {
 			return nil
 		}
 	}
 	if p.Handler.LookupIP == nil {
-		p.Handler.LookupIP = func(userdata *userdata.Data, domain string) net.IP {
+		p.Handler.LookupIP = func(userdata *UserData, domain string) net.IP {
 			return nil
 		}
 	}

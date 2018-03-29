@@ -9,7 +9,6 @@ import (
 
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/superproxy"
-	"github.com/haxii/fastproxy/userdata"
 	"github.com/haxii/fastproxy/util"
 )
 
@@ -80,7 +79,7 @@ type Request struct {
 	tlsServerName string
 
 	// userdata
-	userdata *userdata.Data
+	userdata *UserData
 }
 
 // Reset reset request
@@ -207,7 +206,7 @@ func (r *Request) TLSServerName() string {
 }
 
 // UserData user data
-func (r *Request) UserData() *userdata.Data {
+func (r *Request) UserData() *UserData {
 	return r.userdata
 }
 
