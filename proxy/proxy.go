@@ -401,6 +401,7 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	defer p.bufioPool.ReleaseReader(hijackedConnreader)
 
 	req.reqLine.Reset()
+	req.reader = nil
 	reqReadNum, err := req.parseStartLine(hijackedConnreader)
 	p.Usage.AddIncomingSize(uint64(reqReadNum))
 	if err != nil {

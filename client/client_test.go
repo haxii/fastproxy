@@ -59,6 +59,7 @@ func TestClientDo(t *testing.T) {
 
 	testClientUsage(t)
 
+	testClinetDoFake(t)
 }
 
 // Test Client do with big header or big body
@@ -690,6 +691,53 @@ func testClientDoWithSameConnectionGetMethod(t *testing.T) {
 			t.Fatal("Response size count error")
 		}
 	}
+}
+
+func testClinetDoFake(t *testing.T) {
+	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
+	currentClinet := &Client{
+		BufioPool: bPool,
+	}
+	currentClinet.Usage = usage.ProxyUsage{
+		Incoming: 0,
+		Outgoing: 0,
+	}
+	req := &SimpleRequest{}
+	req.SetTargetWithPort("0.0.0.0:10000")
+	resp := &SimpleResponse{}
+	s := "hello faker!"
+	nr := strings.NewReader(s)
+	_, _, _, err := currentClinet.DoFake(req, resp, nr)
+	if err != nil {
+		t.Fatalf("unexpected error:%s", err)
+	}
+	if !bytes.Contains(resp.GetBody(), []byte("hello faker!")) {
+		t.Fatalf("do fake error, expected data %s, but get unexpected data %s", s, string(resp.GetBody()))
+	}
+	_, _, _, err = currentClinet.DoFake(nil, resp, nr)
+	if err == nil {
+		t.Fatalf("expected error: %s", errNilReq)
+	}
+	if err != errNilReq {
+		t.Fatalf("expected error: %s, but get unexpected error: %s", errNilReq, err)
+	}
+
+	_, _, _, err = currentClinet.DoFake(req, nil, nr)
+	if err == nil {
+		t.Fatalf("expected error: %s", errNilResp)
+	}
+	if err != errNilResp {
+		t.Fatalf("expected error: %s, but get unexpected error: %s", errNilResp, err)
+	}
+
+	_, _, _, err = currentClinet.DoFake(req, resp, nil)
+	if err == nil {
+		t.Fatalf("expected error: %s", errNilFakeResp)
+	}
+	if err != errNilFakeResp {
+		t.Fatalf("expected error: %s, but get unexpected error: %s", errNilFakeResp, err)
+	}
+
 }
 
 func testClientUsage(t *testing.T) {

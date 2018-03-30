@@ -21,16 +21,61 @@ func TestParallelWriteHeader(t *testing.T) {
 	defer bytebufferpool.Put(buffer1)
 
 	var additionalDst string
-	n, _ := parallelWriteHeader(buffer1, func(p []byte) { additionalDst = string(p) }, []byte("Host: www.google.com\r\nUser-Agent: curl/7.54.0\r\n\r\n"))
-	t.Error("\n", buffer1.B, "\n", additionalDst, "\n", n, "==", len(buffer1.B), "?=", len(additionalDst))
+	n, err := parallelWriteHeader(buffer1, func(p []byte) { additionalDst = string(p) }, []byte("Host: www.google.com\r\nUser-Agent: curl/7.54.0\r\n\r\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if n != len(additionalDst) {
+		t.Fatalf("parallelWriteHeader function work error: %d != %d", n, len(additionalDst))
+	}
+	if len(buffer1.B) != len(additionalDst) {
+		t.Fatalf("parallelWriteHeader function work error: %d != %d", len(buffer1.B), len(additionalDst))
+	}
+	if !strings.Contains(string(buffer1.B), additionalDst) {
+		t.Fatal("error: additionalDst is not save buffer data")
+	}
 	buffer1.Reset()
 
-	n, _ = parallelWriteHeader(buffer1, func(p []byte) { additionalDst = string(p) }, []byte("Host: www.google.com\r\nUser-Agent: curl/7.54.0\n\n"))
-	t.Error("\n", buffer1.B, "\n", additionalDst, "\n", n, "==", len(buffer1.B), "?=", len(additionalDst))
+	n, err = parallelWriteHeader(buffer1, func(p []byte) { additionalDst = string(p) }, []byte("Host: www.google.com\r\nUser-Agent: curl/7.54.0\n\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if n != len(additionalDst) {
+		t.Fatalf("parallelWriteHeader function work error: %d != %d", n, len(additionalDst))
+	}
+	if len(buffer1.B) != len(additionalDst) {
+		t.Fatalf("parallelWriteHeader function work error: %d != %d", len(buffer1.B), len(additionalDst))
+	}
+	if !strings.Contains(string(buffer1.B), additionalDst) {
+		t.Fatal("error: additionalDst is not save buffer data")
+	}
 	buffer1.Reset()
 
-	n, _ = parallelWriteHeader(buffer1, func(p []byte) { additionalDst = string(p) }, []byte("Host: www.google.com\r\nProxy-Connection: Keep-Alive\r\nUser-Agent: curl/7.54.0\r\n\r\n"))
-	t.Error("\n", buffer1.B, "\n", additionalDst, "\n", n, "==", len(buffer1.B), "?=", len(additionalDst))
+	n, err = parallelWriteHeader(buffer1, func(p []byte) { additionalDst = string(p) }, []byte("Host: www.google.com\r\nProxy-Connection: Keep-Alive\r\nUser-Agent: curl/7.54.0\r\n\r\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if n != (len(additionalDst) - len("Proxy-Connection: Keep-Alive\r\n")) {
+		t.Fatalf("parallelWriteHeader function work error: %d != %d", n, (len(additionalDst) - len("Proxy-Connection: Keep-Alive\r\n")))
+	}
+	if len(buffer1.B) != n {
+		t.Fatalf("parallelWriteHeader function work error: %d != %d", len(buffer1.B), n)
+	}
+	if bytes.Contains(buffer1.B, []byte("Proxy-Connection: Keep-Alive\r\n")) {
+		t.Fatalf("buffer couldn't has this message: %s", "Proxy-Connection: Keep-Alive\r\n")
+	}
+	if !strings.Contains(additionalDst, "Proxy-Connection: Keep-Alive\r\n") {
+		t.Fatalf("buffer should has this message: %s", "Proxy-Connection: Keep-Alive\r\n")
+	}
+
+	fixedsizebytebuffer := bytebufferpool.MakeFixedSizeByteBuffer(5)
+	n, err = parallelWriteHeader(fixedsizebytebuffer, func(p []byte) { additionalDst = string(p) }, []byte("Host: www.google.com\r\nProxy-Connection: Keep-Alive\r\nUser-Agent: curl/7.54.0\r\n\r\n"))
+	if err == nil {
+		t.Fatal("expected error: error short buffer")
+	}
+	if !strings.Contains(err.Error(), "error short buffer") {
+		t.Fatalf("expected error: error short buffer, but error: %s", err)
+	}
 }
 
 func TestHTTPRequest(t *testing.T) {
@@ -178,7 +223,7 @@ func TestHTTPResponseError(t *testing.T) {
 
 func TestWithClient(t *testing.T) {
 	go func() {
-		nethttp.HandleFunc("/", func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		nethttp.HandleFunc("/client", func(w nethttp.ResponseWriter, r *nethttp.Request) {
 			fmt.Fprint(w, "Hello world!")
 		})
 		log.Fatal(nethttp.ListenAndServe(":10000", nil))
@@ -187,15 +232,17 @@ func TestWithClient(t *testing.T) {
 	c := &client.Client{
 		BufioPool: bPool,
 	}
-	getReq := "GET / HTTP/1.1\r\n" +
+	getReq := "GET /client HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:10000\r\n" +
 		"\r\n"
 	req := &Request{}
+	req.Reset()
 	br := bufio.NewReader(strings.NewReader(getReq))
 	_, err := req.parseStartLine(br)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
+	req.reqLine.HostInfo().ParseHostWithPort("127.0.0.1:10000", false)
 	sHijack := &simpleHijacker{}
 	req.SetHijacker(sHijack)
 	b := bytebufferpool.MakeFixedSizeByteBuffer(100)
@@ -216,17 +263,12 @@ func TestWithClient(t *testing.T) {
 	if !bytes.Contains(resp.respLine.GetResponseLine(), []byte("HTTP/1.1 200 OK")) {
 		t.Fatalf("No response data can get, client do with proxy http request and response error")
 	}
-
 	if !bytes.Contains(bReq.Bytes(), []byte("Host")) {
 		t.Fatal("Hijack does not save request data")
 	}
-
-	if !bytes.Contains(bReq.Bytes(), []byte("HTTP/1.1 200 ok")) {
-		t.Fatal("Hijack does not save reponse data")
-	}
 	req.Reset()
 	resp.Reset()
-	headReq := "HEAD / HTTP/1.1\r\n" +
+	headReq := "HEAD /client HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:10000\r\n" +
 		"\r\n"
 	br = bufio.NewReader(strings.NewReader(headReq))
@@ -234,6 +276,7 @@ func TestWithClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
+	req.reqLine.HostInfo().ParseHostWithPort("127.0.0.1:10000", false)
 	req.SetHijacker(sHijack)
 	b = bytebufferpool.MakeFixedSizeByteBuffer(100)
 	bw = bufio.NewWriter(b)
@@ -256,7 +299,7 @@ func TestWithClient(t *testing.T) {
 
 	req.Reset()
 	resp.Reset()
-	postReq := "POST / HTTP/1.1\r\n" +
+	postReq := "POST /client HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:10000\r\n" +
 		"\r\n"
 	br = bufio.NewReader(strings.NewReader(postReq))
@@ -264,6 +307,7 @@ func TestWithClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
+	req.reqLine.HostInfo().ParseHostWithPort("127.0.0.1:10000", false)
 	req.SetHijacker(sHijack)
 	b = bytebufferpool.MakeFixedSizeByteBuffer(100)
 	bw = bufio.NewWriter(b)
