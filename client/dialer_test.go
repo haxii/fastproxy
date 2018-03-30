@@ -12,13 +12,13 @@ func TestParseRequestType(t *testing.T) {
 	vRequest := &VariedRequest{}
 	vRequest.SetProxy(nil)
 	vRequest.SetIsTLS(false)
-	reqType := parseRequestType(vRequest)
+	reqType := parseRequestType(vRequest.GetProxy(), vRequest.IsTLS())
 	if reqType != requestDirectHTTP {
 		t.Fatal("reqType should be requestDirectHTTP")
 	}
 
 	vRequest.SetIsTLS(true)
-	reqType = parseRequestType(vRequest)
+	reqType = parseRequestType(vRequest.GetProxy(), vRequest.IsTLS())
 	if reqType != requestDirectHTTPS {
 		t.Fatal("reqType should be requestDirectHTTPS")
 	}
@@ -26,21 +26,21 @@ func TestParseRequestType(t *testing.T) {
 	vRequest.SetIsTLS(false)
 	s, _ := superproxy.NewSuperProxy("0.0.0.0", 8080, superproxy.ProxyTypeHTTP, "", "", "")
 	vRequest.SetProxy(s)
-	reqType = parseRequestType(vRequest)
+	reqType = parseRequestType(vRequest.GetProxy(), vRequest.IsTLS())
 	if reqType != requestProxyHTTP {
 		t.Fatal("reqType should be fallthrough")
 	}
 
 	s, _ = superproxy.NewSuperProxy("0.0.0.0", 8081, superproxy.ProxyTypeSOCKS5, "", "", "")
 	vRequest.SetProxy(s)
-	reqType = parseRequestType(vRequest)
+	reqType = parseRequestType(vRequest.GetProxy(), vRequest.IsTLS())
 	if reqType != requestProxySOCKS5 {
 		t.Fatal("reqType should be requestProxySOCKS5")
 	}
 
 	s, _ = superproxy.NewSuperProxy("0.0.0.0", 8082, superproxy.ProxyTypeHTTPS, "", "", "")
 	vRequest.SetProxy(s)
-	reqType = parseRequestType(vRequest)
+	reqType = parseRequestType(vRequest.GetProxy(), vRequest.IsTLS())
 	if reqType != requestProxyHTTP {
 		t.Fatal("reqType should be requestProxyHTTP")
 	}
@@ -48,7 +48,7 @@ func TestParseRequestType(t *testing.T) {
 	s, _ = superproxy.NewSuperProxy("0.0.0.0", 8083, superproxy.ProxyTypeHTTPS, "", "", "")
 	vRequest.SetProxy(s)
 	vRequest.SetIsTLS(true)
-	reqType = parseRequestType(vRequest)
+	reqType = parseRequestType(vRequest.GetProxy(), vRequest.IsTLS())
 	if reqType != requestProxyHTTPS {
 		t.Fatal("reqType should be requestProxyHTTPS")
 	}

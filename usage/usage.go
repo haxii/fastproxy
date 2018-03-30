@@ -4,11 +4,6 @@ import (
 	"sync/atomic"
 )
 
-const (
-	// DefaultChanCap ...
-	DefaultChanCap = 1000
-)
-
 // ProxyUsage a struct for counting the size of the data incoming and outgoing
 type ProxyUsage struct {
 	Incoming uint64 //byte size

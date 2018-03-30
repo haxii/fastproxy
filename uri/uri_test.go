@@ -4,6 +4,7 @@ import "testing"
 import "bytes"
 
 func TestParse(t *testing.T) {
+	t.Fatal("test host info parseHostWithPort using all kinds of possibilities")
 	u := &URI{}
 	//uri1: connect www.example.com:443 http/1.1
 	testURIParse(t, u, true, "www.example.com:443",
@@ -76,8 +77,8 @@ func testURIParse(t *testing.T, u *URI, isConnect bool, uri,
 	if !bytes.Equal(u.Host(), []byte(expectedHost)) {
 		t.Fatalf("Unexpected Host %q, Expected %q", u.Host(), []byte(expectedHost))
 	}
-	if u.HostWithPort() != expectedHostWithPort {
-		t.Fatalf("Unexpected HostWithPort %q, Expected %q", u.HostWithPort(), expectedHostWithPort)
+	if u.hostInfo.HostWithPort() != expectedHostWithPort {
+		t.Fatalf("Unexpected HostWithPort %q, Expected %q", u.hostInfo.HostWithPort(), expectedHostWithPort)
 	}
 	if !bytes.Equal(u.PathWithQueryFragment(), []byte(expectedPathQueryFragment)) {
 		t.Fatalf("Unexpected PathWithQueryFragment %q, Expected %q", u.PathWithQueryFragment(), []byte(expectedPathQueryFragment))
@@ -91,4 +92,23 @@ func testURIParse(t *testing.T, u *URI, isConnect bool, uri,
 	if !bytes.Equal(u.Fragments(), []byte(expectedFragment)) {
 		t.Fatalf("Unexpected Fragments %q, Expected %q", u.Fragments(), []byte(expectedFragment))
 	}
+}
+
+func TestHostInfo(t *testing.T) {
+	hostInfo := &HostInfo{}
+	hostInfo.ParseHostWithPort("127.0.0.1:8080")
+	hostInfo.SetIP([]byte("114.114.114.114"))
+
+	if hostInfo.HostWithPort() != "127.0.0.1:8080" {
+		t.Fatal("Host with port is wrong")
+	}
+
+	if !bytes.Equal(hostInfo.IP(), []byte("114.114.114.114")) {
+		t.Fatal("Setting IP is wrong")
+	}
+
+	if hostInfo.Port() != "8080" {
+		t.Fatal("Parsing port is wrong")
+	}
+
 }

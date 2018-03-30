@@ -17,42 +17,33 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fastfork/fastproxy/bytebufferpool"
-	"github.com/haxii/fastproxy/bufiopool"
-	"github.com/haxii/fastproxy/client"
-	"github.com/haxii/fastproxy/hijack"
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/log"
+	"github.com/haxii/zichao-fastproxy/hijack"
 )
 
 var (
-	simpleProxyPort = "5050"
-	simpleServerPort = ":9999"
+	simpleProxyPort       = "5050"
+	simpleServerPort      = ":9999"
 	simpleHTTPSServerPort = ":444"
-	httpsProxy = "0.0.0.0:5060"
-	httpsProxyPort = ":5060"
-	
+	httpsProxy            = "0.0.0.0:5060"
+	httpsProxyPort        = ":5060"
 )
 
 func TestProxyServe(t *testing.T) {
 	go func() {
-		ln, err := net.Listen("tcp4", "0.0.0.0:"+simpleProxyPort)
-		if err != nil {
-			return
-		}
 		proxy := Proxy{
-			BufioPool:   &bufiopool.Pool{},
-			Client:      client.Client{},
-			ProxyLogger: &log.DefaultLogger{},
+			ServerIdleDuration: 30 * time.Second,
+			Logger:             &log.DefaultLogger{},
 			Handler: Handler{
 				ShouldAllowConnection: func(conn net.Addr) bool {
 					return true
 				},
-				ShouldDecryptHost: func(hostWithPort string) bool {
+				ShouldDecryptHost: func(userData *UserData, hostWithPort string) bool {
 					return true
 				},
-				URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
+				URLProxy: func(userData *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 					if strings.Contains(hostWithPort, "lumtest") {
 						return nil
 					}
@@ -62,14 +53,16 @@ func TestProxyServe(t *testing.T) {
 					}
 					return nil
 				},
-				HijackerPool: &SimpleHijackerPool{},
+				RewriteURL: func(userdata *UserData, hostWithPort string) string {
+					return hostWithPort
+				},
 			},
 		}
-		if err := proxy.Serve(ln, 30*time.Second); err != nil {
+		if err := proxy.Serve("tcp4", "0.0.0.0:"+simpleProxyPort); err != nil {
 			panic(err)
 		}
 	}()
-	simpleServerAddr = "0.0.0.0:" + +simpleProxyPort
+	simpleServerAddr := "0.0.0.0:" + simpleProxyPort
 	conn, err := net.Dial("tcp4", simpleServerAddr)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
@@ -134,6 +127,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 -----END RSA PRIVATE KEY-----
 `
 		f, err := os.Create(".server.crt")
+		defer os.Remove(".server.crt")
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
 		}
@@ -141,6 +135,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 		f.Close()
 
 		f, err = os.Create(".server.key")
+		defer os.Remove(".server.key")
 		f.Write([]byte(serverKey))
 		f.Close()
 
@@ -151,120 +146,92 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	}()
 	go func() {
 		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 3129, superproxy.ProxyTypeHTTPS, "", "", "../proxy/proxy/.server.crt")
-		ln, err := net.Listen("tcp4", httpsProxy)
-		if err != nil {
-			return
-		}
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err)
-		}
 		proxy := Proxy{
-			BufioPool:   &bufiopool.Pool{},
-			Client:      client.Client{},
-			ProxyLogger: &log.DefaultLogger{},
+			ServerIdleDuration: 30 * time.Second,
+			Logger:             &log.DefaultLogger{},
 			Handler: Handler{
 				ShouldAllowConnection: func(conn net.Addr) bool {
 					return true
 				},
-				ShouldDecryptHost: func(hostWithPort string) bool {
+				ShouldDecryptHost: func(userData *UserData, hostWithPort string) bool {
 					return false
 				},
-				URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
+				URLProxy: func(userData *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 					return superProxy
 				},
-				HijackerPool: &SimpleHijackerPool{},
+				RewriteURL: func(userdata *UserData, hostWithPort string) string {
+					return hostWithPort
+				},
 			},
 		}
-		if err := proxy.Serve(ln, 30*time.Second); err != nil {
+		if err := proxy.Serve("tcp4", httpsProxy); err != nil {
 			panic(err)
 		}
 	}()
 	go func() {
 		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 9099, superproxy.ProxyTypeSOCKS5, "", "", "")
-		ln, err := net.Listen("tcp4", "0.0.0.0:5030")
-		if err != nil {
-			return
-		}
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err)
-		}
 		proxy := Proxy{
-			BufioPool:   &bufiopool.Pool{},
-			Client:      client.Client{},
-			ProxyLogger: &log.DefaultLogger{},
+			ServerIdleDuration: 30 * time.Second,
+			Logger:             &log.DefaultLogger{},
 			Handler: Handler{
 				ShouldAllowConnection: func(conn net.Addr) bool {
 					return true
 				},
-				ShouldDecryptHost: func(hostWithPort string) bool {
+				ShouldDecryptHost: func(userData *UserData, hostWithPort string) bool {
 					return false
 				},
-				URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
+				URLProxy: func(userData *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 					return superProxy
 				},
-				HijackerPool: &SimpleHijackerPool{},
+				RewriteURL: func(userdata *UserData, hostWithPort string) string {
+					return hostWithPort
+				},
 			},
 		}
-		if err := proxy.Serve(ln, 30*time.Second); err != nil {
+		if err := proxy.Serve("tcp4", "0.0.0.0:5030"); err != nil {
 			panic(err)
 		}
 	}()
 	go func() {
 		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 3128, superproxy.ProxyTypeHTTP, "", "", "")
-		ln, err := net.Listen("tcp4", "0.0.0.0:5040")
-		if err != nil {
-			return
-		}
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err)
-		}
 		proxy := Proxy{
-			BufioPool:   &bufiopool.Pool{},
-			Client:      client.Client{},
-			ProxyLogger: &log.DefaultLogger{},
+			ServerIdleDuration: 30 * time.Second,
+			Logger:             &log.DefaultLogger{},
 			Handler: Handler{
 				ShouldAllowConnection: func(conn net.Addr) bool {
 					return true
 				},
-				ShouldDecryptHost: func(hostWithPort string) bool {
+				ShouldDecryptHost: func(userData *UserData, hostWithPort string) bool {
 					return false
 				},
-				URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
+				URLProxy: func(userData *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 					return superProxy
 				},
-				HijackerPool: &SimpleHijackerPool{},
 			},
 		}
-		if err := proxy.Serve(ln, 30*time.Second); err != nil {
+		if err := proxy.Serve("tcp4", "0.0.0.0:5040"); err != nil {
 			panic(err)
 		}
 	}()
 	go func() {
-		ln, err := net.Listen("tcp4", "0.0.0.0:5050")
-		if err != nil {
-			return
-		}
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err)
-		}
 		proxy := Proxy{
-			BufioPool:   &bufiopool.Pool{},
-			Client:      client.Client{},
-			ProxyLogger: &log.DefaultLogger{},
+			Logger: &log.DefaultLogger{},
 			Handler: Handler{
 				ShouldAllowConnection: func(conn net.Addr) bool {
 					return true
 				},
-				ShouldDecryptHost: func(hostWithPort string) bool {
+				ShouldDecryptHost: func(userData *UserData, hostWithPort string) bool {
 					return true
 				},
-				URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
+				URLProxy: func(userData *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 					return nil
 				},
-				HijackerPool: &SimpleHijackerPool{},
+				RewriteURL: func(userdata *UserData, hostWithPort string) string {
+					return hostWithPort
+				},
 			},
 		}
-		if err := proxy.Serve(ln, 30*time.Second); err != nil {
+		if err := proxy.Serve("tcp4", "0.0.0.0:5050"); err != nil {
 			panic(err)
 		}
 	}()
@@ -281,8 +248,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	testBigHeader(t)
 
 	testUsingProxyHijackAndURLSendToDifferProxy(t)
-	defer os.Remove(".server.crt")
-	defer os.Remove(".server.key")
+
 }
 
 //test send http request with fastproxy
@@ -607,31 +573,22 @@ func testBigHeader(t *testing.T) {
 // test graceful shut down
 func TestGracefulShutDown(t *testing.T) {
 	proxy := Proxy{
-		BufioPool:   &bufiopool.Pool{},
-		Client:      client.Client{},
-		ProxyLogger: &log.DefaultLogger{},
+		ServerIdleDuration: 5 * time.Second,
+		Logger:             &log.DefaultLogger{},
 		Handler: Handler{
 			ShouldAllowConnection: func(conn net.Addr) bool {
 				return true
 			},
-			ShouldDecryptHost: func(hostWithPort string) bool {
+			ShouldDecryptHost: func(userData *UserData, hostWithPort string) bool {
 				return true
 			},
-			URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
+			URLProxy: func(userData *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 				return nil
 			},
-			HijackerPool: &SimpleHijackerPool{},
 		},
 	}
 	go func() {
-		ln, err := net.Listen("tcp4", "0.0.0.0:7078")
-		if err != nil {
-			return
-		}
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err)
-		}
-		proxy.Serve(ln, 5*time.Second)
+		proxy.Serve("tcp4", "0.0.0.0:7078")
 	}()
 	time.Sleep(1 * time.Second)
 	conn, err := net.Dial("tcp4", "0.0.0.0:7078")
@@ -639,7 +596,7 @@ func TestGracefulShutDown(t *testing.T) {
 		t.Fatalf("unexpected error: %s", err)
 	}
 	go func() {
-		err = proxy.GracefulShutdown()
+		err = proxy.ShutDown()
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
 		}
@@ -670,17 +627,15 @@ func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 3128, superproxy.ProxyTypeHTTP, "", "", "")
 	dataForSigning := ""
 	proxy := Proxy{
-		BufioPool:   &bufiopool.Pool{},
-		Client:      client.Client{},
-		ProxyLogger: &log.DefaultLogger{},
+		Logger: &log.DefaultLogger{},
 		Handler: Handler{
 			ShouldAllowConnection: func(conn net.Addr) bool {
 				return true
 			},
-			ShouldDecryptHost: func(hostWithPort string) bool {
+			ShouldDecryptHost: func(userdata *UserData, hostWithPort string) bool {
 				return false
 			},
-			URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
+			URLProxy: func(userdata *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 				if strings.Contains(hostWithPort, "127.0.0.1:9333") {
 					dataForSigning = "No super proxy can use for fast proxy"
 					return nil
@@ -691,15 +646,10 @@ func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 				}
 				return superProxy
 			},
-			HijackerPool: &CompleteHijackerPool{},
 		},
 	}
 	go func() {
-		ln, err := net.Listen("tcp4", "0.0.0.0:7555")
-		if err != nil {
-			return
-		}
-		if err := proxy.Serve(ln, 30*time.Second); err != nil {
+		if err := proxy.Serve("tcp4", "0.0.0.0:7555"); err != nil {
 			panic(err)
 		}
 	}()
@@ -799,27 +749,9 @@ func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
 	return h
 }
 
-var bReq = bytebufferpool.MakeFixedSizeByteBuffer(100)
-var bResp = bytebufferpool.MakeFixedSizeByteBuffer(100)
-
 //Put puts a simple hijacker back to pool
 func (p *SimpleHijackerPool) Put(s hijack.Hijacker) {
 	p.pool.Put(s)
-}
-
-type simpleHijacker struct{}
-
-func (s *simpleHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
-	return nil
-}
-
-func (s *simpleHijacker) HijackResponse() io.Reader {
-	return nil
-}
-
-func (s *simpleHijacker) OnResponse(respLine http.ResponseLine,
-	header http.Header, rawHeader []byte) io.Writer {
-	return nil
 }
 
 type CompleteHijackerPool struct {
