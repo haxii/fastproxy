@@ -1,7 +1,10 @@
 package uri
 
-import "testing"
-import "bytes"
+import (
+	"bytes"
+	"net"
+	"testing"
+)
 
 func TestParse(t *testing.T) {
 	//t.Fatal("test host info parseHostWithPort using all kinds of possibilities")
@@ -96,101 +99,53 @@ func testURIParse(t *testing.T, u *URI, isConnect bool, uri,
 
 func TestHostInfo(t *testing.T) {
 	hostInfo := &HostInfo{}
-	hostInfo.ParseHostWithPort("127.0.0.1:8080", false)
-	hostInfo.SetIP([]byte("114.114.114.114"))
+	testHostInfo(t, "127.0.0.1:80", false, "127.0.0.1", "80", "127.0.0.1:80", "127.0.0.1:80", "127.0.0.1", "", hostInfo)
+	testHostInfo(t, "127.0.0.1", true, "127.0.0.1", "443", "127.0.0.1:443", "127.0.0.1:443", "127.0.0.1", "", hostInfo)
 
-	if hostInfo.HostWithPort() != "127.0.0.1:8080" {
+	testHostInfo(t, "127.0.0.1:8080", false, "127.0.0.1", "8080", "127.0.0.1:8080", "127.0.0.1:8080", "127.0.0.1", "", hostInfo)
+	testHostInfo(t, "127.0.0.1:444", true, "127.0.0.1", "444", "127.0.0.1:444", "127.0.0.1:444", "127.0.0.1", "", hostInfo)
+
+	testHostInfo(t, "127.0.0.1", false, "127.0.0.1", "80", "127.0.0.1:80", "114.114.114.114:80", "114.114.114.114", "114.114.114.114", hostInfo)
+	testHostInfo(t, "127.0.0.1", true, "127.0.0.1", "443", "127.0.0.1:443", "114.114.114.114:443", "114.114.114.114", "114.114.114.114", hostInfo)
+
+	testHostInfo(t, "localhost", true, "localhost", "443", "localhost:443", "localhost:443", "localhost", "", hostInfo)
+	testHostInfo(t, "localhost", false, "localhost", "80", "localhost:80", "localhost:80", "localhost", "", hostInfo)
+
+	testHostInfo(t, "localhost:8080", false, "localhost", "8080", "localhost:8080", "localhost:8080", "localhost", "", hostInfo)
+	testHostInfo(t, "localhost:445", true, "localhost", "445", "localhost:445", "localhost:445", "localhost", "", hostInfo)
+
+	testHostInfo(t, ":::::", true, "", "", "", "", "", "", hostInfo)
+	testHostInfo(t, ":::::", false, "", "", "", "", "", "", hostInfo)
+
+}
+
+func testHostInfo(t *testing.T, host string, isTLS bool, domain, port, hostWithPort, targetWithPort, expIP string, ipSetting string, h *HostInfo) {
+
+	h.ParseHostWithPort(host, isTLS)
+	if len(ipSetting) != 0 {
+		ip := net.ParseIP(ipSetting)
+		h.SetIP(ip)
+	}
+	if h.Domain() != domain {
+		t.Fatal("Domain is wrong")
+	}
+	if h.HostWithPort() != hostWithPort {
 		t.Fatal("Host with port is wrong")
 	}
 
-	if !bytes.Equal(hostInfo.IP(), []byte("114.114.114.114")) {
-		t.Fatal("Setting IP is wrong")
+	if !bytes.Equal(h.IP(), []byte(expIP)) {
+		if expIP != "localhost" && expIP != h.IP().String() {
+			t.Fatal("Setting IP is wrong")
+		}
 	}
 
-	if hostInfo.Port() != "8080" {
+	if h.Port() != port {
 		t.Fatal("Parsing port is wrong")
 	}
 
-	hostInfo.reset()
-	if hostInfo.Port() == "8080" {
-		t.Fatal("reset host info is wrong")
+	if h.TargetWithPort() != targetWithPort {
+		t.Fatal("Parsing target with port error")
 	}
-	if hostInfo.HostWithPort() == "127.0.0.1:8080" {
-		t.Fatal("reset host info is wrong")
-	}
+	h.reset()
 
-	if bytes.Equal(hostInfo.IP(), []byte("114.114.114.114")) {
-		t.Fatal("reset host info is wrong")
-	}
-
-	hostInfo.ParseHostWithPort("localhost", true)
-	hostInfo.SetIP([]byte("114.114.115.115"))
-	if hostInfo.HostWithPort() != "localhost:443" {
-		t.Fatal("Host with port is wrong")
-	}
-
-	if !bytes.Equal(hostInfo.IP(), []byte("114.114.115.115")) {
-		t.Fatal("Setting IP is wrong")
-	}
-
-	if hostInfo.Port() != "443" {
-		t.Fatal("Parsing port is wrong")
-	}
-	if hostInfo.Domain() != "localhost" {
-		t.Fatal("Parsing host domain error")
-	}
-
-	hostInfo.reset()
-	hostInfo.ParseHostWithPort("localhost", false)
-	if hostInfo.HostWithPort() != "localhost:80" {
-		t.Fatal("Host with port is wrong")
-	}
-	if hostInfo.Port() != "80" {
-		t.Fatal("Parsing port is wrong")
-	}
-	if hostInfo.Domain() != "localhost" {
-		t.Fatal("Parsing host domain error")
-	}
-
-	hostInfo.reset()
-	hostInfo.ParseHostWithPort("127.0.0.1", false)
-	if hostInfo.HostWithPort() != "127.0.0.1:80" {
-		t.Fatal("Host with port is wrong")
-	}
-	if hostInfo.Port() != "80" {
-		t.Fatal("Parsing port is wrong")
-	}
-	if hostInfo.Domain() != "127.0.0.1" {
-		t.Fatal("Parsing host domain error")
-	}
-
-	hostInfo.reset()
-	hostInfo.ParseHostWithPort("127.0.0.1", true)
-	if hostInfo.HostWithPort() != "127.0.0.1:443" {
-		t.Fatal("Host with port is wrong")
-	}
-	if hostInfo.Port() != "443" {
-		t.Fatal("Parsing port is wrong")
-	}
-	if hostInfo.Domain() != "127.0.0.1" {
-		t.Fatal("Parsing host domain error")
-	}
-
-	hostInfo.reset()
-	hostInfo.ParseHostWithPort("", true)
-	if hostInfo.HostWithPort() == ":443" {
-		t.Fatal("Host with port is wrong")
-	}
-	if hostInfo.Port() == "443" {
-		t.Fatal("Parsing port is wrong")
-	}
-
-	hostInfo.reset()
-	hostInfo.ParseHostWithPort(":::::::1", true)
-	if hostInfo.HostWithPort() == ":::::::1:443" {
-		t.Fatal("Host with port is wrong")
-	}
-	if hostInfo.Port() == "443" {
-		t.Fatal("Parsing port is wrong")
-	}
 }
