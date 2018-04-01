@@ -289,9 +289,6 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			return util.ErrWrapper(err, "error HTTP traffic")
 		}
 
-		//TODO: test connection close & keep alive @xiangyu
-		//TODO: test if the server had closed the connection after ServerIdleDuration @xiangyu
-		//TODO: test different kinds of connection types in one TCP: proxyHTTP, proxyHTTPS .... @xiangyu
 		if req.ConnectionClose() {
 			break
 		}
@@ -404,6 +401,7 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	defer p.bufioPool.ReleaseReader(hijackedConnreader)
 
 	req.reqLine.Reset()
+	req.reader = nil
 	reqReadNum, err := req.parseStartLine(hijackedConnreader)
 	p.Usage.AddIncomingSize(uint64(reqReadNum))
 	if err != nil {

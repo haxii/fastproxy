@@ -87,7 +87,9 @@ func (r *Request) Reset() {
 	r.reader = nil
 	r.reqLine.Reset()
 	r.header.Reset()
-	r.userdata.Reset()
+	if r.userdata != nil {
+		r.userdata.Reset()
+	}
 	r.hijacker = nil
 	r.proxy = nil
 	r.isTLS = false
