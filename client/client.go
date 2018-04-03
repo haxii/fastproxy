@@ -432,7 +432,7 @@ func (c *HostClient) Do(req Request, resp Response) (reqReadNum, reqWriteNum, re
 			break
 		}
 
-		if isHeadOrGet(req.Method()) {
+		if !isHeadOrGet(req.Method()) {
 			// Retry non-idempotent requests if the server closes
 			// the connection before sending the response.
 			//
