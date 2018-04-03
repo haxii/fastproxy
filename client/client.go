@@ -15,7 +15,6 @@ import (
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
-	"github.com/haxii/fastproxy/usage"
 	"github.com/haxii/fastproxy/util"
 )
 
@@ -104,9 +103,6 @@ type Client struct {
 	// host clients pool, separate common and TLS clients
 	hostClients    map[string]*HostClient
 	hostTLSClients map[string]*HostClient
-
-	// usage
-	Usage usage.ProxyUsage
 }
 
 var (
