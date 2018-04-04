@@ -2,6 +2,9 @@ language: go
 
 go:
  - 1.9
+addons:
+  ssh_known_hosts:
+  - 127.0.0.1
 
 before_install:
  - go get -u -v github.com/golang/lint/golint
