@@ -8,10 +8,10 @@ addons:
 
 before_install:
  - go get -u -v github.com/golang/lint/golint
- - echo "deb http://mirrors.aliyun.com/ubuntu/ xenial main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
- - echo "deb http://mirrors.aliyun.com/ubuntu/ xenial-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
- - echo "deb http://mirrors.aliyun.com/ubuntu/ xenial-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
- - echo "deb http://mirrors.aliyun.com/ubuntu/ xenial-backports main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+ - echo "deb http://mirrors.aliyun.com/ubuntu/ precise main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+ - echo "deb http://mirrors.aliyun.com/ubuntu/ precise-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+ - echo "deb http://mirrors.aliyun.com/ubuntu/ precise-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+ - echo "deb http://mirrors.aliyun.com/ubuntu/ precise-backports main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
  - sudo apt-get update
  - sudo apt-get install sshpass -y
  - sudo apt-get install dnsmasq -y
