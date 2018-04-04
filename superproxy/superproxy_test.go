@@ -149,7 +149,7 @@ L/ib
 	}
 	superProxy.tlsConfig.InsecureSkipVerify = true
 	pool := bufiopool.New(1, 1)
-	conn, err := superProxy.MakeTunnel(pool, "127.0.0.1:9999")
+	conn, err := superProxy.MakeTunnel(pool, "localhost:9999")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
