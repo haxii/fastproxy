@@ -21,7 +21,6 @@ import (
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/log"
-	"github.com/haxii/zichao-fastproxy/hijack"
 )
 
 var (
@@ -773,7 +772,7 @@ type SimpleHijackerPool struct {
 
 //Get get a simple hijacker from pool
 func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
-	targetHost string, method, path []byte) hijack.Hijacker {
+	targetHost string, method, path []byte) Hijacker {
 	v := p.pool.Get()
 	var h *simpleHijacker
 	if v == nil {
@@ -785,7 +784,7 @@ func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
 }
 
 //Put puts a simple hijacker back to pool
-func (p *SimpleHijackerPool) Put(s hijack.Hijacker) {
+func (p *SimpleHijackerPool) Put(s Hijacker) {
 	p.pool.Put(s)
 }
 
@@ -795,7 +794,7 @@ type CompleteHijackerPool struct {
 
 //Get get a simple hijacker from pool
 func (p *CompleteHijackerPool) Get(clientAddr net.Addr,
-	targetHost string, method, path []byte) hijack.Hijacker {
+	targetHost string, method, path []byte) Hijacker {
 	v := p.pool.Get()
 	var h *completeHijacker
 	if v == nil {
@@ -808,7 +807,7 @@ func (p *CompleteHijackerPool) Get(clientAddr net.Addr,
 }
 
 //Put puts a simple hijacker back to pool
-func (p *CompleteHijackerPool) Put(s hijack.Hijacker) {
+func (p *CompleteHijackerPool) Put(s Hijacker) {
 	p.pool.Put(s)
 }
 
