@@ -5,11 +5,11 @@ go:
 
 before_install:
  - go get -u -v github.com/golang/lint/golint
- - sudo apt-get -qq update
+ - sudo apt-get update
  - sudo apt-get install sshpass -y
  - sudo apt-get install dnsmasq -y
- - sudo apt-get install squid -y
  - sudo apt-get install sshpass -y
+ - sudo apt-get --fix-missing install squid -y
 
 script:
   - echo "root:ssh" | chpasswd
