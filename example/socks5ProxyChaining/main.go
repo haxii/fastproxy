@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/haxii/fastproxy/proxy"
-	"github.com/haxii/fastproxy/superproxy"
-	"github.com/haxii/log"
+	"github.com/balinor2017/fastproxy/proxy"
+	"github.com/balinor2017/fastproxy/superproxy"
+	"github.com/balinor2017/log"
 )
 
 func main() {

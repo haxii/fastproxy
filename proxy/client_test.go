@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/haxii/fastproxy/bufiopool"
-	"github.com/haxii/fastproxy/bytebufferpool"
-	"github.com/haxii/fastproxy/client"
-	"github.com/haxii/fastproxy/http"
+	"github.com/balinor2017/fastproxy/bufiopool"
+	"github.com/balinor2017/fastproxy/bytebufferpool"
+	"github.com/balinor2017/fastproxy/client"
+	"github.com/balinor2017/fastproxy/http"
 )
 
 func TestParallelWriteHeader(t *testing.T) {

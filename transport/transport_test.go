@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/haxii/fastproxy/cert"
+	"github.com/balinor2017/fastproxy/cert"
 )
 
 func TestTransportForwordAndDial(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 	"io"
 	"math"
 
-	"github.com/haxii/fastproxy/bytebufferpool"
-	"github.com/haxii/fastproxy/util"
+	"github.com/balinor2017/fastproxy/bytebufferpool"
+	"github.com/balinor2017/fastproxy/util"
 )
 
 // Body http body

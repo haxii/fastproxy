@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/haxii/fastproxy/servertime"
+	"github.com/balinor2017/fastproxy/servertime"
 )
 
 const (

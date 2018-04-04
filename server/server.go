@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/haxii/fastproxy/servertime"
-	"github.com/haxii/log"
+	"github.com/balinor2017/fastproxy/servertime"
+	"github.com/balinor2017/log"
 )
 
 // Server a simple connection server

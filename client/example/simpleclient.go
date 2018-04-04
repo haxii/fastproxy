@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/haxii/fastproxy/bufiopool"
-	"github.com/haxii/fastproxy/client"
-	"github.com/haxii/fastproxy/superproxy"
+	"github.com/balinor2017/fastproxy/bufiopool"
+	"github.com/balinor2017/fastproxy/client"
+	"github.com/balinor2017/fastproxy/superproxy"
 )
 
 type simpleReq struct{}
