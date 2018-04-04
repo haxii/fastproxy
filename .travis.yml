@@ -8,7 +8,7 @@ addons:
 
 before_install:
  - go get -u -v github.com/golang/lint/golint
- - echo "deb http://mirrors.aliyun.com/ubuntu/ precise varnish-3.0"" | sudo tee -a /etc/apt/sources.list
+ - echo "deb http://mirrors.aliyun.com/ubuntu/ precise varnish-3.0" | sudo tee -a /etc/apt/sources.list
  - sudo apt-get update
  - sudo apt-get install sshpass -y
  - sudo apt-get install dnsmasq -y
