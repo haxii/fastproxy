@@ -10,11 +10,12 @@ before_install:
  - sudo apt-get install dnsmasq -y
  - sudo apt-get install sshpass -y
  - sudo apt-get --fix-missing install squid -y
+ - echo "root:ssh" | chpasswd
+ - sshpass -p 'ssh' ssh -fN -D 12000 root@127.0.0.1
+ - dnsmasq -S 114.114.114.114
 
 script:
-  - echo "root:ssh" | chpasswd
-  - sshpass -p 'ssh' ssh -fN -D 12000 root@127.0.0.1
-  - dnsmasq -S 114.114.114.114
+
   - diff -u <(echo -n) <(gofmt -s -d ./)
   - diff -u <(echo -n) <(go vet ./...)
   - diff -u <(echo -n) <(golint)
