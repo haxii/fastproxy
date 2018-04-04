@@ -50,4 +50,20 @@ func TestBufioPool(t *testing.T) {
 		}
 		newPool.ReleaseWriter(nw)
 	}
+	var a string
+	for i := 0; i < 5000; i++ {
+		a += "t"
+	}
+	largeReader := strings.NewReader(a)
+	nr := newPool.AcquireReader(largeReader)
+	if nr.Buffered() > 4096 {
+		t.Fatal("expected buffer is 4096")
+	}
+
+	largeWriter := bytebufferpool.Get()
+	largeWriter.Set([]byte(a))
+	nw := newPool.AcquireWriter(newWriter)
+	if nw.Buffered() > 4096 {
+		t.Fatal("expected buffer is 4096")
+	}
 }

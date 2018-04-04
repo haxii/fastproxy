@@ -202,7 +202,6 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		lastReadDeadlineTime  time.Time
 		lastWriteDeadlineTime time.Time
 	)
-
 	for {
 		if p.ServerReadTimeout > 0 {
 			lastReadDeadlineTime, err = p.updateReadDeadline(c, servertime.CoarseTimeNow(), lastReadDeadlineTime)
@@ -325,7 +324,6 @@ func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
 	if err := resp.WriteTo(writer); err != nil {
 		return err
 	}
-
 	// set hijacker
 	var hijacker Hijacker
 	if p.Handler.HijackerPool == nil {
@@ -343,7 +341,6 @@ func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
 		p.Usage.AddOutgoingSize(uint64(respN))
 		return err
 	}
-
 	// make the request
 	reqReadN, reqWriteN, respN, err := p.client.Do(req, resp)
 	p.Usage.AddIncomingSize(uint64(reqReadN))
@@ -352,7 +349,6 @@ func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
 		req.GetProxy().Usage.AddIncomingSize(uint64(respN))
 		req.GetProxy().Usage.AddOutgoingSize(uint64(reqWriteN))
 	}
-
 	return err
 }
 

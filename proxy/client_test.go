@@ -19,157 +19,98 @@ import (
 func TestParallelWriteHeader(t *testing.T) {
 	buffer1 := bytebufferpool.Get()
 	defer bytebufferpool.Put(buffer1)
-
-	var additionalDst string
-	n, err := parallelWriteHeader(buffer1, func(p []byte) { additionalDst = string(p) }, []byte("Host: www.google.com\r\nUser-Agent: curl/7.54.0\r\n\r\n"))
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if n != len(additionalDst) {
-		t.Fatalf("parallelWriteHeader function work error: %d != %d", n, len(additionalDst))
-	}
-	if len(buffer1.B) != len(additionalDst) {
-		t.Fatalf("parallelWriteHeader function work error: %d != %d", len(buffer1.B), len(additionalDst))
-	}
-	if !strings.Contains(string(buffer1.B), additionalDst) {
-		t.Fatal("error: additionalDst is not save buffer data")
-	}
-	buffer1.Reset()
-
-	n, err = parallelWriteHeader(buffer1, func(p []byte) { additionalDst = string(p) }, []byte("Host: www.google.com\r\nUser-Agent: curl/7.54.0\n\n"))
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if n != len(additionalDst) {
-		t.Fatalf("parallelWriteHeader function work error: %d != %d", n, len(additionalDst))
-	}
-	if len(buffer1.B) != len(additionalDst) {
-		t.Fatalf("parallelWriteHeader function work error: %d != %d", len(buffer1.B), len(additionalDst))
-	}
-	if !strings.Contains(string(buffer1.B), additionalDst) {
-		t.Fatal("error: additionalDst is not save buffer data")
-	}
-	buffer1.Reset()
-
-	n, err = parallelWriteHeader(buffer1, func(p []byte) { additionalDst = string(p) }, []byte("Host: www.google.com\r\nProxy-Connection: Keep-Alive\r\nUser-Agent: curl/7.54.0\r\n\r\n"))
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if n != (len(additionalDst) - len("Proxy-Connection: Keep-Alive\r\n")) {
-		t.Fatalf("parallelWriteHeader function work error: %d != %d", n, (len(additionalDst) - len("Proxy-Connection: Keep-Alive\r\n")))
-	}
-	if len(buffer1.B) != n {
-		t.Fatalf("parallelWriteHeader function work error: %d != %d", len(buffer1.B), n)
-	}
-	if bytes.Contains(buffer1.B, []byte("Proxy-Connection: Keep-Alive\r\n")) {
-		t.Fatalf("buffer couldn't has this message: %s", "Proxy-Connection: Keep-Alive\r\n")
-	}
-	if !strings.Contains(additionalDst, "Proxy-Connection: Keep-Alive\r\n") {
-		t.Fatalf("buffer should has this message: %s", "Proxy-Connection: Keep-Alive\r\n")
-	}
-
 	fixedsizebytebuffer := bytebufferpool.MakeFixedSizeByteBuffer(5)
-	n, err = parallelWriteHeader(fixedsizebytebuffer, func(p []byte) { additionalDst = string(p) }, []byte("Host: www.google.com\r\nProxy-Connection: Keep-Alive\r\nUser-Agent: curl/7.54.0\r\n\r\n"))
-	if err == nil {
-		t.Fatal("expected error: error short buffer")
-	}
-	if !strings.Contains(err.Error(), "error short buffer") {
-		t.Fatalf("expected error: error short buffer, but error: %s", err)
+	testParallelWriteHeader(t, buffer1, nil, []byte("Host: www.google.com\r\nUser-Agent: curl/7.54.0\r\n\r\n"), "", "")
+	buffer1.Reset()
+	testParallelWriteHeader(t, buffer1, nil, []byte("Host: www.google.com\r\nUser-Agent: curl/7.54.0\n\n"), "", "")
+	buffer1.Reset()
+	testParallelWriteHeader(t, buffer1, nil, []byte("Host: www.google.com\r\nProxy-Connection: Keep-Alive\r\nUser-Agent: curl/7.54.0\r\n\r\n"), "", "Proxy-Connection: Keep-Alive\r\n")
+	testParallelWriteHeader(t, nil, fixedsizebytebuffer, []byte("Host: www.google.com\r\nProxy-Connection: Keep-Alive\r\nUser-Agent: curl/7.54.0\r\n\r\n"), "error short buffer", "")
+}
+
+func testParallelWriteHeader(t *testing.T, buffer *bytebufferpool.ByteBuffer, fixedsizeB *bytebufferpool.FixedSizeByteBuffer, header []byte, expErr, expResult string) {
+	var additionalDst string
+	if buffer != nil {
+		n, err := parallelWriteHeader(buffer, func(p []byte) { additionalDst = string(p) }, header)
+		if err != nil {
+			if !strings.Contains(err.Error(), expErr) {
+				t.Fatalf("expected error: error short buffer, but error: %s", err)
+			}
+		}
+		if len(expResult) > 0 {
+			if bytes.Contains(buffer.B, []byte(expResult)) {
+				t.Fatalf("buffer couldn't has this message: %s", expResult)
+			}
+			if !strings.Contains(additionalDst, expResult) {
+				t.Fatalf("buffer should has this message: %s", expResult)
+			}
+
+			if n != (len(additionalDst) - len(expResult)) {
+				t.Fatalf("parallelWriteHeader function work error: %d != %d", n, (len(additionalDst) - len(expResult)))
+			}
+			if len(buffer.B) != n {
+				t.Fatalf("parallelWriteHeader function work error: %d != %d", len(buffer.B), n)
+			}
+		}
+	} else {
+		_, err := parallelWriteHeader(fixedsizeB, func(p []byte) { additionalDst = string(p) }, header)
+		if err != nil {
+			if !strings.Contains(err.Error(), expErr) {
+				t.Fatalf("expected error: error short buffer, but error: %s", err)
+			}
+		}
 	}
 }
 
 func TestHTTPRequest(t *testing.T) {
-	s := "GET / HTTP/1.1\r\n" +
-		"Host: localhost:10000\r\n" +
-		"\r\n"
+	testRequest(t, "GET / HTTP/1.1\r\n\r\n", "GET", "HTTP/1.1", 16, "", 0)
+	testRequest(t, "GET / HTTP/1.1\n\n", "GET", "HTTP/1.1", 15, "", 0)
+	testRequest(t, "GET / HTTP/1.0\r\n\r\n", "GET", "HTTP/1.0", 16, "", 0)
+	testRequest(t, "GET / HTTP/1.1\r\nHost: localhost:10000\r\n\r\n", "GET", "HTTP/1.1", 16, "", 22)
+
+	testRequest(t, "/ HTTP/1.1\r\n\r\n", "", "", 0, "fail to read start line of request", 0)
+	testRequest(t, "GET HTTP/1.1\r\n\r\n", "", "", 0, "fail to read start line of request", 0)
+	testRequest(t, "GET / \r\n\r\n", "GET", "", 8, "fail to read start line of request", 0)
+	testRequest(t, "GET / HTTP/1.1", "", "", 0, io.EOF.Error(), 0)
+}
+
+func testRequest(t *testing.T, reqString string, expMethod string, expProtocol string, expSize int, expErr string, expHeaderSize int) {
 	req := &Request{}
-	br := bufio.NewReader(strings.NewReader(s))
+	br := bufio.NewReader(strings.NewReader(reqString))
 	lineSize, err := req.parseStartLine(br)
 	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if !bytes.Equal(req.Method(), []byte("GET")) {
-		t.Fatalf("Read from bufio reader is error")
-	}
-	if lineSize != 16 {
-		t.Fatalf("Read from bufio reader size is error")
-	}
-	if !bytes.Equal(req.Protocol(), []byte("HTTP/1.1")) {
-		t.Fatalf("Protocol parse error")
-	}
-	if req.ConnectionClose() {
-		t.Fatal("Response connection close is wrong")
-	}
-	if req.IsTLS() {
-		t.Fatal("This is not TLS")
-	}
-	w := bytebufferpool.Get()
-	bw := bufio.NewWriter(w)
-	sHijacker := &hijacker{}
-	req.SetHijacker(sHijacker)
-	_, _, err = req.WriteHeaderTo(bw)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if bw.Buffered() == 0 {
-		t.Fatalf("Cant't write header to bufio writer")
+		if !strings.Contains(err.Error(), expErr) {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	} else {
+		if !bytes.Equal(req.Method(), []byte(expMethod)) {
+			t.Fatalf("Read from bufio reader is error")
+		}
+		if lineSize != expSize {
+			t.Fatalf("Read from bufio reader size is error")
+		}
+		if !bytes.Equal(req.Protocol(), []byte(expProtocol)) {
+			t.Fatalf("Protocol parse error")
+		}
+		w := bytebufferpool.Get()
+		bw := bufio.NewWriter(w)
+		sHijacker := &hijacker{}
+		req.SetHijacker(sHijacker)
+		_, _, err = req.WriteHeaderTo(bw)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+		if bw.Buffered() == expHeaderSize {
+			fmt.Println(bw.Buffered())
+			t.Fatalf("Cant't write header to bufio writer")
+		}
 	}
 }
 
-func TestHTTPRequestError(t *testing.T) {
-	errorReq := "/ HTTP/1.1\r\n" +
-		"Host: localhost:10000\r\n" +
-		"\r\n"
-	rightReq := "GET / HTTP/1.1\r\n" +
-		"Host: localhost:10000\r\n" +
-		"\r\n"
-	req := &Request{}
-	br := bufio.NewReader(strings.NewReader(errorReq))
-	_, err := req.parseStartLine(br)
-	if err == nil {
-		t.Fatal("expected error: fail to read start line of request")
-	}
-	if !strings.Contains(err.Error(), "fail to read start line of request") {
-		t.Fatalf("unexpected error: %s", err.Error())
-	}
-
-	req.Reset()
-	nbr := bufio.NewReader(strings.NewReader(rightReq))
-	req.parseStartLine(nbr)
-	_, err = req.parseStartLine(nbr)
-	if err == nil {
-		t.Fatal("expected error: request already initialized")
-	}
-	if !strings.Contains(err.Error(), "request already initialized") {
-		t.Fatalf("unexpected error: %s", err.Error())
-	}
-
-	req.Reset()
-	_, err = req.parseStartLine(nil)
-	if err == nil {
-		t.Fatal("nil reader provided")
-	}
-	if !strings.Contains(err.Error(), "nil reader provided") {
-		t.Fatalf("unexpected error: %s", err.Error())
-	}
-	w := bytebufferpool.Get()
-	bw := bufio.NewWriter(w)
-	_, _, err = req.WriteHeaderTo(bw)
-	if err == nil {
-		t.Fatal("expected error:Empty request, nothing to write")
-	}
-	if !strings.Contains(err.Error(), "Empty request, nothing to write") {
-		t.Fatalf("unexpected error: %s", err)
-	}
-}
-
-func TestHTTPResponse(t *testing.T) {
-	s := "HTTP/1.1 200 ok\r\n" +
-		"Cache-Control:no-cache\r\n" +
-		"\r\n"
+func testResponse(t *testing.T, respString string, expErr string, expSize int) {
 	resp := &Response{}
 	bPool := bufiopool.New(1, 1)
-	br := bPool.AcquireReader(strings.NewReader(s))
+	br := bPool.AcquireReader(strings.NewReader(respString))
 	byteBuffer := bytebufferpool.MakeFixedSizeByteBuffer(100)
 	bw := bufio.NewWriter(byteBuffer)
 	err := resp.WriteTo(bw)
@@ -181,63 +122,43 @@ func TestHTTPResponse(t *testing.T) {
 	resp.SetHijacker(sHijacker)
 
 	n, err := resp.ReadFrom(false, br)
-	if n != 43 {
-		t.Fatal("Response read from reader failed")
-	}
-	if resp.ConnectionClose() {
-		t.Fatal("Response connection close is wrong")
+	if err != nil {
+		if !strings.Contains(err.Error(), expErr) {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	} else {
+		if n != expSize {
+			t.Fatal("Response read from reader failed")
+		}
 	}
 	defer bw.Flush()
 }
 
-func TestHTTPResponseError(t *testing.T) {
-	errS := "HTTP/1.1 ok\r\n" +
+func TestHTTPResponse(t *testing.T) {
+	s := "HTTP/1.1 200 ok\r\n" +
 		"Cache-Control:no-cache\r\n" +
 		"\r\n"
-	resp := &Response{}
-	bPool := bufiopool.New(1, 1)
-	br := bPool.AcquireReader(strings.NewReader(errS))
-	byteBuffer := bytebufferpool.MakeFixedSizeByteBuffer(100)
-	bw := bufio.NewWriter(byteBuffer)
-	err := resp.WriteTo(bw)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-
-	sHijacker := &hijacker{}
-	resp.SetHijacker(sHijacker)
-
-	_, err = resp.ReadFrom(false, br)
-	if !strings.Contains(err.Error(), "fail to read start line of response") {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	err = resp.WriteTo(bw)
-	if err == nil {
-		t.Fatalf("expected error: %s", err)
-	}
-	if !strings.Contains(err.Error(), "response already initialized") {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	defer bw.Flush()
+	testResponse(t, s, "", len(s))
+	s = "HTTP/1.1 200 ok\n"
+	testResponse(t, s, "", len(s))
+	s = "HTTP/1.1 ok\r\nConnection:close\r\n\r\n"
+	testResponse(t, s, "fail to read start line of response", 0)
+	s = "HTTP/1.1 200\r\nConnection:close\r\n\r\n"
+	testResponse(t, s, "fail to read start line of response", 0)
+	s = "200 ok\r\nConnection:close\r\n\r\n"
+	testResponse(t, s, "fail to read start line of response", 0)
+	s = "HTTP/1.1 200 ok"
+	testResponse(t, s, io.EOF.Error(), 0)
 }
 
-func TestWithClient(t *testing.T) {
-	go func() {
-		nethttp.HandleFunc("/client", func(w nethttp.ResponseWriter, r *nethttp.Request) {
-			fmt.Fprint(w, "Hello world!")
-		})
-		log.Fatal(nethttp.ListenAndServe(":10000", nil))
-	}()
+func testWithClient(t *testing.T, reqString string) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &client.Client{
 		BufioPool: bPool,
 	}
-	getReq := "GET /client HTTP/1.1\r\n" +
-		"Host: 127.0.0.1:10000\r\n" +
-		"\r\n"
 	req := &Request{}
 	req.Reset()
-	br := bufio.NewReader(strings.NewReader(getReq))
+	br := bufio.NewReader(strings.NewReader(reqString))
 	_, err := req.parseStartLine(br)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
@@ -266,67 +187,28 @@ func TestWithClient(t *testing.T) {
 	if !bytes.Contains(bReq.Bytes(), []byte("Host")) {
 		t.Fatal("Hijack does not save request data")
 	}
-	req.Reset()
-	resp.Reset()
+}
+
+func TestWithClient(t *testing.T) {
+	go func() {
+		nethttp.HandleFunc("/client", func(w nethttp.ResponseWriter, r *nethttp.Request) {
+			fmt.Fprint(w, "Hello world!")
+		})
+		log.Fatal(nethttp.ListenAndServe(":10000", nil))
+	}()
+	getReq := "GET /client HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:10000\r\n" +
+		"\r\n"
 	headReq := "HEAD /client HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:10000\r\n" +
 		"\r\n"
-	br = bufio.NewReader(strings.NewReader(headReq))
-	_, err = req.parseStartLine(br)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	req.reqLine.HostInfo().ParseHostWithPort("127.0.0.1:10000", false)
-	req.SetHijacker(sHijack)
-	b = bytebufferpool.MakeFixedSizeByteBuffer(100)
-	bw = bufio.NewWriter(b)
-	resp = &Response{}
-	err = resp.WriteTo(bw)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	resp.SetHijacker(sHijack)
-	_, _, respSize, err = c.Do(req, resp)
-	if err != nil {
-		t.Fatalf("unexpected error : %s", err.Error())
-	}
-	if respSize == 0 {
-		t.Fatalf("No response data can get, client do with proxy http request and response error")
-	}
-	if !bytes.Contains(resp.respLine.GetResponseLine(), []byte("HTTP/1.1 200 OK")) {
-		t.Fatalf("No response data can get, client do with proxy http request and response error")
-	}
-
-	req.Reset()
-	resp.Reset()
 	postReq := "POST /client HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:10000\r\n" +
 		"\r\n"
-	br = bufio.NewReader(strings.NewReader(postReq))
-	_, err = req.parseStartLine(br)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	req.reqLine.HostInfo().ParseHostWithPort("127.0.0.1:10000", false)
-	req.SetHijacker(sHijack)
-	b = bytebufferpool.MakeFixedSizeByteBuffer(100)
-	bw = bufio.NewWriter(b)
-	resp = &Response{}
-	err = resp.WriteTo(bw)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	resp.SetHijacker(sHijack)
-	_, _, respSize, err = c.Do(req, resp)
-	if err != nil {
-		t.Fatalf("unexpected error : %s", err.Error())
-	}
-	if respSize == 0 {
-		t.Fatalf("No response data can get, client do with proxy http request and response error")
-	}
-	if !bytes.Contains(resp.respLine.GetResponseLine(), []byte("HTTP/1.1 200 OK")) {
-		t.Fatalf("No response data can get, client do with proxy http request and response error")
-	}
+
+	testWithClient(t, getReq)
+	testWithClient(t, headReq)
+	testWithClient(t, postReq)
 }
 
 type testAddr struct {
