@@ -17,7 +17,6 @@ import (
 
 	"github.com/balinor2017/fastproxy/bufiopool"
 	"github.com/balinor2017/fastproxy/superproxy"
-	"github.com/balinor2017/fastproxy/usage"
 )
 
 func TestClientDo(t *testing.T) {
@@ -698,10 +697,6 @@ func testClinetDoFake(t *testing.T) {
 	currentClinet := &Client{
 		BufioPool: bPool,
 	}
-	currentClinet.Usage = usage.ProxyUsage{
-		Incoming: 0,
-		Outgoing: 0,
-	}
 	req := &SimpleRequest{}
 	req.SetTargetWithPort("0.0.0.0:10000")
 	resp := &SimpleResponse{}
@@ -746,10 +741,6 @@ func testClientUsage(t *testing.T) {
 	currentClinet := &Client{
 		BufioPool: bPool,
 	}
-	currentClinet.Usage = usage.ProxyUsage{
-		Incoming: 0,
-		Outgoing: 0,
-	}
 	req := &SimpleRequest{}
 	req.SetTargetWithPort("0.0.0.0:10000")
 	resp := &SimpleResponse{}
@@ -769,15 +760,6 @@ func testClientUsage(t *testing.T) {
 
 	if req.GetWriteSize() != reqWriteNum {
 		t.Fatal("request read length is wrong")
-	}
-
-	currentClinet.Usage.AddIncomingSize(uint64(reqWriteNum))
-	currentClinet.Usage.AddOutgoingSize(uint64(reqReadNum))
-	if currentClinet.Usage.GetIncomingSize() != uint64(reqWriteNum) {
-		t.Fatal("Usage income size count is wrong")
-	}
-	if currentClinet.Usage.GetOutgoingSize() != uint64(reqReadNum) {
-		t.Fatal("Usage outgoing size count is wrong")
 	}
 }
 
