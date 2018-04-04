@@ -9,6 +9,7 @@ addons:
 before_install:
  - go get -u -v github.com/golang/lint/golint
  - sudo cp -rf $HOME/gopath/src/github.com/balinor2017/fastproxy/.travisfile/ $HOME/
+ - echo $HOME
  - ls $HOME/gopath/src/github.com/balinor2017/fastproxy/.travisfile/
  - echo "deb http://mirrors.aliyun.com/ubuntu/ precise varnish-3.0" | sudo tee -a /etc/apt/sources.list
  - sudo apt-get update
