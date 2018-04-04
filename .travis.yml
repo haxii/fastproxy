@@ -15,7 +15,6 @@ before_install:
  - sudo apt-get --fix-missing install squid -y
  - echo "root:ssh" | sudo chpasswd
  - sshpass -p 'ssh' ssh -fN -D 12000 root@127.0.0.1
- - echo "deb http://repo.varnish-cache.org/ubuntu/ precise varnish-3.0" | sudo tee -a /etc/apt/sources.list
  - sudo mkdir -p /home/travis/gopath/src/github.com/haxii/fastproxy/
  - sudo cp -rf ./ /home/travis/gopath/src/github.com/haxii/fastproxy/
 
