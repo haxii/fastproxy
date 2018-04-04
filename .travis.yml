@@ -17,7 +17,7 @@ before_install:
  - sshpass -p 'ssh' ssh -fN -D 12000 root@127.0.0.1
  - sudo cp -rf ./.travisfile /etc/
  - sudo apt-get --fix-missing install squid -y
- - whereis squid3
+ - squid3 -f /etc/squid.conf
 
 script:
   - diff -u <(echo -n) <(sudo gofmt -s -d ./)

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/balinor2017/fastproxy/cert"
 )
@@ -37,7 +38,7 @@ func TestTransportForwordAndDial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
-	_, err = Forward(connDst, resp.Body)
+	_, err = Forward(connDst, resp.Body, 1*time.Second)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
