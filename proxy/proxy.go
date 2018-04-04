@@ -17,7 +17,7 @@ import (
 	"github.com/balinor2017/fastproxy/superproxy"
 	"github.com/balinor2017/fastproxy/usage"
 	"github.com/balinor2017/fastproxy/util"
-	"github.com/balinor2017/log"
+	"github.com/haxii/log"
 )
 
 // DefaultServerShutdownWaitTime used when ServerShutdownWaitTime not set

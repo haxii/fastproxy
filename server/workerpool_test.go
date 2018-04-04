@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/balinor2017/log"
+	"github.com/haxii/log"
 )
 
 func TestWorkerPoolStartStop(t *testing.T) {

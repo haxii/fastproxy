@@ -12,7 +12,7 @@ import (
 	"github.com/balinor2017/fastproxy/http"
 	"github.com/balinor2017/fastproxy/proxy"
 	"github.com/balinor2017/fastproxy/superproxy"
-	"github.com/balinor2017/log"
+	"github.com/haxii/log"
 )
 
 func main() {
