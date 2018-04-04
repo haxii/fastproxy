@@ -2,16 +2,13 @@ language: go
 
 go:
  - 1.9
- - 1.8
- - 1.7
- - 1.6
 
 before_install:
  - go get -u -v github.com/golang/lint/golint
- - apt-get install sshpass
- - apt-get install dnsmasq
- - apt-get install squid
- - apt-get install sshpass
+ - sudo apt-get install sshpass -y
+ - sudo apt-get install dnsmasq -y
+ - sudo apt-get install squid -y
+ - sudo apt-get install sshpass -y
 
 script:
   - echo "root:ssh" | chpasswd
