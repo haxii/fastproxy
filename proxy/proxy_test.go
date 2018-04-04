@@ -25,12 +25,12 @@ import (
 )
 
 var (
-	simpleProxyPort                                                                 = "5050"
-	simpleServerPort                                                                = ":9990"
-	simpleHTTPSServerPort                                                           = ":444"
-	httpsProxy                                                                      = "0.0.0.0:5060"
-	httpsProxyPort                                                                  = ":5060"
-	simpleServer, keepAliveServer, simpleProxy, httpsServer, httpProxy, socks5Proxy func()
+	simpleProxyPort                                                                             = "5050"
+	simpleServerPort                                                                            = ":9990"
+	simpleHTTPSServerPort                                                                       = ":444"
+	httpsProxyAddr                                                                              = "0.0.0.0:5060"
+	httpsProxyPort                                                                              = ":5060"
+	simpleServer, keepAliveServer, simpleProxy, httpsServer, httpProxy, httpsProxy, socks5Proxy func()
 )
 
 func testInit(t *testing.T) {
@@ -151,30 +151,44 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 		}
 	}
 	/*
-		httpsProxy = func() {
-			superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 3129, superproxy.ProxyTypeHTTPS, "", "", ".server.crt")
-			proxy := Proxy{
-				ServerIdleDuration: 30 * time.Second,
-				Logger:             &log.DefaultLogger{},
-				Handler: Handler{
-					ShouldAllowConnection: func(conn net.Addr) bool {
-						return true
-					},
-					ShouldDecryptHost: func(userData *UserData, hostWithPort string) bool {
-						return false
-					},
-					URLProxy: func(userData *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
-						return superProxy
-					},
-					RewriteURL: func(userdata *UserData, hostWithPort string) string {
-						return hostWithPort
-					},
-				},
-			}
-			if err := proxy.Serve("tcp4", httpsProxy); err != nil {
-				panic(err)
-			}
-		}
+	   	httpsProxy = func() {
+	   		serverCrt := `
+	   -----BEGIN CERTIFICATE-----
+	   MIIB1jCCATigAwIBAgIBATAKBggqhkjOPQQDBDAdMRswGQYDVQQDExJHZW9UcnVz
+	   dCBHbG9iYWwgQ0EwHhcNMTcwOTAyMTUyNzE0WhcNMjIwOTAxMTUyNzE0WjAdMRsw
+	   GQYDVQQDExJHZW9UcnVzdCBHbG9iYWwgQ0EwgZswEAYHKoZIzj0CAQYFK4EEACMD
+	   gYYABAGVr9JHBx3sGRZ62wb4vjsjgf0e9AQqhNxO7m7uASsHPoiXsfdV0GD/gXKf
+	   rsNgtvm8FBQMAtuVsgTgfqJPji2jwgC7xTpZB8BFflW4t6G86ifD87fXLNzcuFgo
+	   v5N8pomYMSyraVEWvZZ6Hl2VjL32ZkH/iDQpZKacJLwaaYpYMX39UKMmMCQwDgYD
+	   VR0PAQH/BAQDAgH+MBIGA1UdEwEB/wQIMAYBAf8CAQIwCgYIKoZIzj0EAwQDgYsA
+	   MIGHAkIA1ib8nXsLetEfjXvDY71nBGF6my6Nk+aMp/vNi5MbYIaz+TPWKHUq4+zo
+	   49pxtUwEwWKKMpU2GYvJUgaz35SzD0oCQVrs1niHmySDjCnrUHJOawo+s2zL6svd
+	   FJ6RtJFfkqJ7nh/8/djL0gBbmcCzPnma0ermJxHABxWnIVYPCYuN8GJR
+	   -----END CERTIFICATE-----
+	   `
+	   		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 3129, superproxy.ProxyTypeHTTPS, "", "", serverCrt)
+	   		proxy := Proxy{
+	   			ServerIdleDuration: 30 * time.Second,
+	   			Logger:             &log.DefaultLogger{},
+	   			Handler: Handler{
+	   				ShouldAllowConnection: func(conn net.Addr) bool {
+	   					return true
+	   				},
+	   				ShouldDecryptHost: func(userData *UserData, hostWithPort string) bool {
+	   					return false
+	   				},
+	   				URLProxy: func(userData *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
+	   					return superProxy
+	   				},
+	   				RewriteURL: func(userdata *UserData, hostWithPort string) string {
+	   					return hostWithPort
+	   				},
+	   			},
+	   		}
+	   		if err := proxy.Serve("tcp4", httpsProxyPort); err != nil {
+	   			panic(err)
+	   		}
+	   	}
 	*/
 	socks5Proxy = func() {
 		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 9099, superproxy.ProxyTypeSOCKS5, "", "", "")
@@ -226,11 +240,12 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 		}
 	}
 
-	defer os.Remove(".server.key")
-	defer os.Remove(".server.crt")
 	go simpleServer()
 	go httpsServer()
 	go keepAliveServer()
+	time.Sleep(time.Second)
+	defer os.Remove(".server.key")
+	defer os.Remove(".server.crt")
 }
 
 func TestCommon(t *testing.T) {
