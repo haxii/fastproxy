@@ -13,7 +13,7 @@ var (
 	errTooLargeHexNum = errors.New("too large hex number")
 )
 
-//ReadHexInt read hex from r then return it as well as put result in buffer
+// ReadHexInt read hex from r then return it as well as put result in buffer
 func ReadHexInt(r *bufio.Reader, buffer *bytebufferpool.ByteBuffer) (int, error) {
 	n := 0
 	i := 0

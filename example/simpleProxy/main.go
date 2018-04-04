@@ -3,69 +3,47 @@ package main
 import (
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/haxii/fastproxy/bufiopool"
-	"github.com/haxii/fastproxy/client"
-	"github.com/haxii/fastproxy/hijack"
 	"github.com/haxii/fastproxy/http"
-	"github.com/haxii/fastproxy/proxy/proxy"
+	"github.com/haxii/fastproxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
-	"github.com/haxii/fastproxy/usage"
 	"github.com/haxii/log"
 )
 
 func main() {
-	ln, err := net.Listen("tcp4", "0.0.0.0:8080")
-	if err != nil {
-		return
-	}
-	superProxy, _ := superproxy.NewSuperProxy("0.0.0.0", 8081, superproxy.ProxyTypeHTTP, "", "", true, "")
+	superProxy, _ := superproxy.NewSuperProxy("a.b", 1080, superproxy.ProxyTypeHTTP, "", "", "")
 	superProxy.SetMaxConcurrency(20)
 
 	proxy := proxy.Proxy{
-		BufioPool:   &bufiopool.Pool{},
-		Client:      client.Client{},
-		ProxyLogger: &log.DefaultLogger{},
+		Logger: &log.DefaultLogger{},
 		Handler: proxy.Handler{
 			ShouldAllowConnection: func(conn net.Addr) bool {
 				fmt.Printf("allowed connection from %s\n", conn.String())
 				return true
 			},
-			ShouldDecryptHost: func(hostWithPort string) bool {
-				return true
+			ShouldDecryptHost: func(userdata *proxy.UserData, hostWithPort string) bool {
+				return false
 			},
-			URLProxy: func(hostWithPort string, uri []byte) *superproxy.SuperProxy {
-				if strings.Contains(hostWithPort, "lumtest") {
-					return nil
-				}
-				if len(uri) == 0 {
-					//this is a connections should not decrypt
-					fmt.Println(hostWithPort)
-				}
+			RewriteURL: func(userdata *proxy.UserData, hostWithPort string) string {
+				return hostWithPort
+			},
+			URLProxy: func(userdata *proxy.UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 				return superProxy
 			},
 			HijackerPool: &SimpleHijackerPool{},
-			LookupIP: func(domain string) net.IP {
-				ips, err := net.LookupIP(domain)
-				if err != nil || len(ips) == 0 {
-					return nil
-				}
-				randInt := rand.Intn(len(ips))
-				return ips[randInt]
+			LookupIP: func(userdata *proxy.UserData, domain string) net.IP {
+				return nil
 			},
 		},
-		Usage: usage.NewProxyUsage(),
+		ServerIdleDuration: time.Second * 30,
 	}
 
-	if err := proxy.Serve(ln, 30*time.Second); err != nil {
-		panic(err)
-	}
+	panic(proxy.Serve("tcp", "0.0.0.0:8081"))
 }
 
 //SimpleHijackerPool implements the HijackerPool based on simpleHijacker & sync.Pool
@@ -75,7 +53,7 @@ type SimpleHijackerPool struct {
 
 //Get get a simple hijacker from pool
 func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
-	targetHost string, method, path []byte) hijack.Hijacker {
+	targetHost string, method, path []byte, userdata *proxy.UserData) proxy.Hijacker {
 	v := p.pool.Get()
 	var h *simpleHijacker
 	if v == nil {
@@ -83,26 +61,28 @@ func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
 	} else {
 		h = v.(*simpleHijacker)
 	}
-	h.Set(clientAddr, targetHost, method, path)
+	h.Set(clientAddr, targetHost, method, path, userdata)
 	return h
 }
 
 //Put puts a simple hijacker back to pool
-func (p *SimpleHijackerPool) Put(s hijack.Hijacker) {
+func (p *SimpleHijackerPool) Put(s proxy.Hijacker) {
 	p.pool.Put(s)
 }
 
 type simpleHijacker struct {
 	clientAddr, targetHost string
 	method, path           []byte
+	userdata               *proxy.UserData
 }
 
 func (s *simpleHijacker) Set(clientAddr net.Addr,
-	host string, method, path []byte) {
+	host string, method, path []byte, userdata *proxy.UserData) {
 	s.clientAddr = clientAddr.String()
 	s.targetHost = host
 	s.method = method
 	s.path = path
+	s.userdata = userdata
 }
 
 func (s *simpleHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {

@@ -44,13 +44,13 @@ func (p *SuperProxy) initHTTPCertAndAuth(isSSL bool, host string,
 	}
 }
 
-//writeProxyReq write proxy `CONNECT` header to proxy connection,
-//as shown blow:
+// writeProxyReq write proxy `CONNECT` header to proxy connection,
+// as shown blow:
 // CONNECT targetHost:Port HTTP/1.1\r\n
 // Host: targetHost:Port\r\n
 // * proxy auth if needed *
 // \r\n
-func (p *SuperProxy) writeHTTPProxyReq(c net.Conn, targetHostWithPort []byte) error {
+func (p *SuperProxy) writeHTTPProxyReq(c net.Conn, targetHostWithPort []byte) (int, error) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 	buf.B = make([]byte, len(superProxyReqMethod)+len(superProxyReqSP)+
@@ -79,8 +79,8 @@ func (p *SuperProxy) writeHTTPProxyReq(c net.Conn, targetHostWithPort []byte) er
 	return util.WriteWithValidation(c, buf.B)
 }
 
-//readProxyReq reads proxy connection request result (i.e. response)
-//only 200 OK is accepted.
+// readProxyReq reads proxy connection request result (i.e. response)
+// only 200 OK is accepted.
 func (p *SuperProxy) readHTTPProxyResp(c net.Conn, pool *bufiopool.Pool) error {
 	r := pool.AcquireReader(c)
 	defer pool.ReleaseReader(r)
@@ -93,15 +93,15 @@ func (p *SuperProxy) readHTTPProxyResp(c net.Conn, pool *bufiopool.Pool) error {
 		} else if len(b) == 0 {
 			return io.EOF
 		}
-		//must read buffed bytes
+		// must read buffed bytes
 		b := util.PeekBuffered(r)
-		//read and discard every header line
+		// read and discard every header line
 		m := 0
 		for !headerParsed {
 			b := b[m:]
 			lineLen := bytes.IndexByte(b, '\n')
 			if lineLen < 0 {
-				//need more
+				// need more
 				break
 			}
 			lineLen++
@@ -109,11 +109,11 @@ func (p *SuperProxy) readHTTPProxyResp(c net.Conn, pool *bufiopool.Pool) error {
 			if isStartLine {
 				isStartLine = false
 				if !bytes.Contains(b[:lineLen], []byte(" 200 ")) {
-					return fmt.Errorf("connected to proxy failed with startline %s", b[:lineLen])
+					return fmt.Errorf("connected to proxy failed with start line %s", b[:lineLen])
 				}
 			} else {
 				if (lineLen == 2 && b[0] == '\r') || lineLen == 1 {
-					//single \n or \r\n means end of the header
+					// single \n or \r\n means end of the header
 					headerParsed = true
 				}
 			}
@@ -122,10 +122,10 @@ func (p *SuperProxy) readHTTPProxyResp(c net.Conn, pool *bufiopool.Pool) error {
 			}
 		}
 		if headerParsed {
-			//TODO: discard http body also? Does the proxy connect response contains body?
+			// TODO: discard http body also? Does the proxy connect response contains body?
 			return nil
 		}
-		//require one more byte
+		// require one more byte
 		n = r.Buffered() + 1
 	}
 }

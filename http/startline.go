@@ -11,7 +11,7 @@ import (
 	"github.com/haxii/fastproxy/util"
 )
 
-//ResponseLine start line of a http response
+// ResponseLine start line of a http response
 type ResponseLine struct {
 	fullLine   []byte
 	protocol   []byte
@@ -19,27 +19,27 @@ type ResponseLine struct {
 	statusMsg  []byte
 }
 
-//GetResponseLine get full response line
+// GetResponseLine get full response line
 func (l *ResponseLine) GetResponseLine() []byte {
 	return l.fullLine
 }
 
-//GetProtocol get response protocol i.e. http version
+// GetProtocol get response protocol i.e. http version
 func (l *ResponseLine) GetProtocol() []byte {
 	return l.protocol
 }
 
-//GetStatusCode get response status code
+// GetStatusCode get response status code
 func (l *ResponseLine) GetStatusCode() int {
 	return l.statusCode
 }
 
-//GetStatusMessage get response status message
+// GetStatusMessage get response status message
 func (l *ResponseLine) GetStatusMessage() []byte {
 	return l.statusMsg
 }
 
-//Reset reset response line
+// Reset reset response line
 func (l *ResponseLine) Reset() {
 	l.fullLine = l.fullLine[:0]
 	l.protocol = l.protocol[:0]
@@ -70,19 +70,19 @@ func (l *ResponseLine) Parse(reader *bufio.Reader) error {
 
 	var respLine []byte
 	if respLineWithCRLF[len(respLineWithCRLF)-2] == '\r' {
-		respLine = respLineWithCRLF[:len(respLineWithCRLF)-2] //CRLF included
+		respLine = respLineWithCRLF[:len(respLineWithCRLF)-2] // CRLF included
 	} else {
-		respLine = respLineWithCRLF[:len(respLineWithCRLF)-1] //only LF included
+		respLine = respLineWithCRLF[:len(respLineWithCRLF)-1] // only LF included
 	}
 
-	//http version token
+	// http version token
 	protocolEndIndex := bytes.IndexByte(respLine, ' ')
 	if protocolEndIndex <= 0 {
 		return errRespLineNOProtocol
 	}
 	l.protocol = respLine[:protocolEndIndex]
 
-	//3-digit status code
+	// 3-digit status code
 	statusCodeStartIndex := protocolEndIndex + 1
 	statusCodeEndIndex := statusCodeStartIndex + bytes.IndexByte(respLine[statusCodeStartIndex:], ' ')
 	if statusCodeEndIndex <= statusCodeStartIndex {
@@ -99,7 +99,7 @@ func (l *ResponseLine) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-//RequestLine start line of a http request
+// RequestLine start line of a http request
 type RequestLine struct {
 	fullLine []byte
 	method   []byte
@@ -130,12 +130,12 @@ func (l *RequestLine) Parse(reader *bufio.Reader) error {
 
 	var reqLine []byte
 	if reqLineWithCRLF[len(reqLineWithCRLF)-2] == '\r' {
-		reqLine = reqLineWithCRLF[:len(reqLineWithCRLF)-2] //CRLF included
+		reqLine = reqLineWithCRLF[:len(reqLineWithCRLF)-2] // CRLF included
 	} else {
-		reqLine = reqLineWithCRLF[:len(reqLineWithCRLF)-1] //only LF included
+		reqLine = reqLineWithCRLF[:len(reqLineWithCRLF)-1] // only LF included
 	}
 
-	//method token
+	// method token
 	methodEndIndex := bytes.IndexByte(reqLine, ' ')
 	if methodEndIndex <= 0 {
 		return errors.New("no method provided")
@@ -143,7 +143,7 @@ func (l *RequestLine) Parse(reader *bufio.Reader) error {
 	method := reqLine[:methodEndIndex]
 	changeToUpperCase(method)
 
-	//request target
+	// request target
 	reqURIStartIndex := methodEndIndex + 1
 	reqURIEndIndex := reqURIStartIndex + bytes.IndexByte(reqLine[reqURIStartIndex:], ' ')
 	if reqURIEndIndex <= reqURIStartIndex {
@@ -153,7 +153,7 @@ func (l *RequestLine) Parse(reader *bufio.Reader) error {
 	isConnect := IsMethodConnect(method)
 	l.uri.Parse(isConnect, reqURI)
 
-	//protocol
+	// protocol
 	protocolStartIndex := reqURIEndIndex + 1
 	protocol := reqLine[protocolStartIndex:]
 
@@ -164,12 +164,12 @@ func (l *RequestLine) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-//GetRequestLine get full request line
+// GetRequestLine get full request line
 func (l *RequestLine) GetRequestLine() []byte {
 	return l.fullLine
 }
 
-//Reset reset request line to nil
+// Reset reset request line to nil
 func (l *RequestLine) Reset() {
 	l.fullLine = l.fullLine[:0]
 	l.method = l.method[:0]
@@ -177,24 +177,24 @@ func (l *RequestLine) Reset() {
 	l.protocol = l.protocol[:0]
 }
 
-//Method request method
+// Method request method
 func (l *RequestLine) Method() []byte {
 	return l.method
 }
 
-//PathWithQueryFragment request relative path
+// PathWithQueryFragment request relative path
 func (l *RequestLine) PathWithQueryFragment() []byte {
 	return l.uri.PathWithQueryFragment()
 }
 
-//Protocol HTTP/1.0, HTTP/1.1 etc.
+// Protocol HTTP/1.0, HTTP/1.1 etc.
 func (l *RequestLine) Protocol() []byte {
 	return l.protocol
 }
 
-//HostWithPort the host with port
-func (l *RequestLine) HostWithPort() string {
-	return l.uri.HostWithPort()
+// HostInfo the host info from request line
+func (l *RequestLine) HostInfo() *uri.HostInfo {
+	return l.uri.HostInfo()
 }
 
 func parseStartline(reader *bufio.Reader) ([]byte, error) {
