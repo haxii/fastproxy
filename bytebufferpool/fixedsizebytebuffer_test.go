@@ -12,56 +12,36 @@ func Test_fixedSizeByteBuffer(t *testing.T) {
 	var dataBuffer = MakeFixedSizeByteBuffer(5)
 	correctData := []byte("1234")
 
-	writingSize, err := dataBuffer.Write(correctData)
-	if writingSize != 4 {
-		t.Fatal("write wrong number of data in dataBuffer")
-	}
-	dataBufferResult := dataBuffer.Bytes()
-
-	if !bytes.Equal(dataBufferResult, correctData) {
-		t.Fatal("write wrong data in dataBuffer")
-	}
-	if dataBuffer.Len() != 4 {
-		t.Fatal("write data error")
-	}
-	writingSize, err = dataBuffer.Write(wrongData)
-	if err != io.ErrShortBuffer {
-		t.Fatal("Write data error: data should not write in dataBuffer")
-	}
-	if dataBuffer.Len() != 5 {
-		t.Fatal("Write data error: some data didn't write in dataBuffer")
-	}
+	testFixedSizeByteBuffer(t, correctData, dataBuffer, 4, nil)
 
 	dataBuffer.Reset()
-	if dataBuffer.Len() != 0 {
-		t.Fatal("Reset data error: data buffer do not reset")
-	}
-	if !bytes.Equal(dataBuffer.Bytes(), []byte("")) {
-		t.Fatal("Reset data error: data buffer bytes do not reset")
-	}
+	testFixedSizeByteBuffer(t, wrongData, dataBuffer, 5, io.ErrShortBuffer)
 
 	dataBuffer.Reset()
-	writingSize, err = dataBuffer.Write(wrongData)
-	if err != io.ErrShortBuffer || writingSize != 5 {
-		t.Fatal("Write data error: write too much data in dataBuffer")
-	}
-
-	if !bytes.Equal(dataBuffer.Bytes(), []byte("12345")) {
-		t.Fatal("Write data error: write data error")
-	}
+	testFixedSizeByteBuffer(t, []byte(""), dataBuffer, 0, nil)
 
 	dataBuffer.Reset()
+	testFixedSizeByteBuffer(t, correctData, dataBuffer, 4, nil)
+	testFixedSizeByteBuffer(t, correctData, dataBuffer, 5, io.ErrShortBuffer)
+}
 
-	writingSize, err = dataBuffer.Write(correctData)
-	writingSize, err = dataBuffer.Write(correctData)
-	if err != io.ErrShortBuffer || writingSize != 1 {
-		t.Fatal("Write data error: write too much data in dataBuffer")
-	}
-	if !bytes.Equal(dataBuffer.Bytes(), []byte("12341")) {
-		t.Fatal("Write data error: write unexpect data in dataBuffer")
-	}
-	if dataBuffer.Len() != 5 {
-		t.Fatal("Write data error: some data didn't write in dataBuffer")
-	}
+func testFixedSizeByteBuffer(t *testing.T, data []byte, dataBuffer *FixedSizeByteBuffer, expSize int, expErr error) {
+	writingSize, err := dataBuffer.Write(data)
+	if err != nil {
+		if err != expErr {
+			t.Fatalf("Expected error:%s, but get unexpected error: %s", expErr.Error(), err.Error())
+		}
+	} else {
+		if writingSize != expSize {
+			t.Fatal("write wrong number of data in dataBuffer")
+		}
+		dataBufferResult := dataBuffer.Bytes()
 
+		if !bytes.Equal(dataBufferResult, data) {
+			t.Fatal("write wrong data in dataBuffer")
+		}
+		if dataBuffer.Len() != expSize {
+			t.Fatal("write data error")
+		}
+	}
 }

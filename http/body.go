@@ -10,27 +10,27 @@ import (
 	"github.com/haxii/fastproxy/util"
 )
 
-//Body http body
+// Body http body
 type Body struct{}
 
-//BodyType how http body is formed
+// BodyType how http body is formed
 type BodyType int
 
 const (
-	//BodyTypeFixedSize body size is specified in `content-length` header
+	// BodyTypeFixedSize body size is specified in `content-length` header
 	BodyTypeFixedSize BodyType = iota
-	//BodyTypeChunked body is chunked with `Transfer-Encoding: chunked` in header
+	// BodyTypeChunked body is chunked with `Transfer-Encoding: chunked` in header
 	BodyTypeChunked
-	//BodyTypeIdentity body is identity with `Transfer-Encoding: identity` in header
+	// BodyTypeIdentity body is identity with `Transfer-Encoding: identity` in header
 	BodyTypeIdentity
 )
 
-//BodyWrapper body reader helper
-type BodyWrapper func(isChunkHeader bool, data []byte) error
+// BodyWrapper body reader helper
+type BodyWrapper func(isChunkHeader bool, data []byte) (int, error)
 
-//Parse parse body from reader and wraps data in BodyWrapper
+// Parse parse body from reader and wraps data in BodyWrapper
 func (b *Body) Parse(reader *bufio.Reader, bodyType BodyType,
-	contentLength int64, w BodyWrapper) error {
+	contentLength int64, w BodyWrapper) (int, error) {
 	switch bodyType {
 	case BodyTypeFixedSize:
 		if contentLength > 0 {
@@ -41,21 +41,22 @@ func (b *Body) Parse(reader *bufio.Reader, bodyType BodyType,
 	case BodyTypeIdentity:
 		return parseBodyIdentity(reader, w)
 	}
-	return nil
+	return 0, nil
 }
 
-func parseBodyFixedSize(src *bufio.Reader, w BodyWrapper, contentLength int64) error {
+func parseBodyFixedSize(src *bufio.Reader, w BodyWrapper, contentLength int64) (int, error) {
 	byteStillNeeded := contentLength
+	var wn int
 	for {
-		//read one more bytes
+		// read one more bytes
 		if b, _ := src.Peek(1); len(b) == 0 {
-			return io.EOF
+			return wn, io.EOF
 		}
 
-		//must read buffed bytes
+		// must read buffed bytes
 		b := util.PeekBuffered(src)
 
-		//write read bytes into dst
+		// write read bytes into dst
 		_bytesShouldRead := int64(len(b))
 		if byteStillNeeded <= _bytesShouldRead {
 			_bytesShouldRead = byteStillNeeded
@@ -63,57 +64,63 @@ func parseBodyFixedSize(src *bufio.Reader, w BodyWrapper, contentLength int64) e
 		byteStillNeeded -= _bytesShouldRead
 		bytesShouldRead := int(_bytesShouldRead)
 
-		if err := w(false, b[:bytesShouldRead]); err != nil {
-			return err
+		n, err := w(false, b[:bytesShouldRead])
+		if err != nil {
+			return wn, err
 		}
+		wn += n
 
-		//discard wrote bytes
+		// discard wrote bytes
 		if _, err := src.Discard(bytesShouldRead); err != nil {
-			return util.ErrWrapper(err, "fail to write request body")
+			return wn, util.ErrWrapper(err, "fail to write request body")
 		}
 
-		//test if still read more bytes
+		// test if still read more bytes
 		if byteStillNeeded == 0 {
-			return nil
+			return wn, nil
 		}
 	}
 }
 
-func parseBodyChunked(src *bufio.Reader, w BodyWrapper) error {
+func parseBodyChunked(src *bufio.Reader, w BodyWrapper) (int, error) {
 	buffer := bytebufferpool.Get()
 	defer bytebufferpool.Put(buffer)
-
+	var wn, n int
 	for {
-		//read and calculate chunk size
+		// read and calculate chunk size
 		buffer.Reset()
 		chunkSize, err := parseChunkSize(src, buffer)
 		if err != nil {
-			return err
+			return wn, err
 		}
-		if err := w(true, buffer.B); err != nil {
-			return err
+		if n, err = w(true, buffer.B); err != nil {
+			return wn, err
 		}
-		//copy the chunk
-		if err := parseBodyFixedSize(src, w,
-			//2 means the length of `\r\n` i.e. CRLF
+		wn += n
+		// copy the chunk
+		if n, err = parseBodyFixedSize(src, w,
+			// 2 means the length of `\r\n` i.e. CRLF
 			int64(chunkSize+2)); err != nil {
-			return err
+			return wn, err
 		}
+		wn += n
 		if chunkSize == 0 {
-			return nil
+			return wn, nil
 		}
 	}
 }
 
-func parseBodyIdentity(src *bufio.Reader, w BodyWrapper) error {
-	if err := parseBodyFixedSize(src, w, math.MaxInt64); err != nil {
-		//TODO: make sure the io.EOF is reachable
+func parseBodyIdentity(src *bufio.Reader, w BodyWrapper) (int, error) {
+	var n int
+	var err error
+	if n, err = parseBodyFixedSize(src, w, math.MaxInt64); err != nil {
+		// TODO: make sure the io.EOF is reachable
 		if err == io.EOF {
-			return nil
+			return n, nil
 		}
-		return err
+		return n, err
 	}
-	return nil
+	return n, nil
 }
 
 func parseChunkSize(r *bufio.Reader, buffer *bytebufferpool.ByteBuffer) (int, error) {
