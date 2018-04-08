@@ -48,10 +48,10 @@ func testNewSuperProxyWithHTTPType(t *testing.T) {
 	if superProxy.GetProxyType() != ProxyTypeHTTP {
 		t.Fatalf("unexpected proxy type")
 	}
-	if superProxy.HostWithPort() != "localhost:8081" {
+	if superProxy.HostWithPort() != "localhost:3128" {
 		t.Fatalf("unexpected host with port")
 	}
-	if !bytes.Equal(superProxy.HostWithPortBytes(), []byte("localhost:8081")) {
+	if !bytes.Equal(superProxy.HostWithPortBytes(), []byte("localhost:3128")) {
 		t.Fatalf("unexpected host with port bytes")
 	}
 	pool := bufiopool.New(1, 1)
@@ -217,7 +217,7 @@ func TestSuperProxyConcurrency(t *testing.T) {
 		time.Sleep(1 * time.Second)
 	}
 
-	superProxy, err := NewSuperProxy("localhost", uint16(8081), ProxyTypeHTTP, "", "", "")
+	superProxy, err := NewSuperProxy("localhost", uint16(3128), ProxyTypeHTTP, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}

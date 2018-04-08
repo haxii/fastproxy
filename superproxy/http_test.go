@@ -12,12 +12,12 @@ import (
 	"github.com/balinor2017/fastproxy/bufiopool"
 )
 
-func testInitHTTPCertAndAuth(t *testing.T) {
-
+func testInitHTTPCertAndAuth(t *testing.T, superProxy *SuperProxy, isSSL bool, host, user, pass, cert, expErrString string) {
+	superProxy.initHTTPCertAndAuth(isSSL, host, user, pass, cert)
 }
 
 func TestInitHTTPCertAndAuth(t *testing.T) {
-	superProxy, err := NewSuperProxy("localhost", uint16(8081), ProxyTypeHTTP, "", "", "")
+	superProxy, err := NewSuperProxy("localhost", uint16(3128), ProxyTypeHTTP, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
@@ -102,8 +102,8 @@ func TestWriteHTTPProxyReqAndReadHTTPProxyResp(t *testing.T) {
 		http.ListenAndServe(":8999", nil)
 	}()
 	time.Sleep(1 * time.Second)
-	superProxy, _ := NewSuperProxy("localhost", uint16(8081), ProxyTypeHTTP, "", "", "")
-	conn, err := net.Dial("tcp", "localhost:8081")
+	superProxy, _ := NewSuperProxy("localhost", uint16(3128), ProxyTypeHTTP, "", "", "")
+	conn, err := net.Dial("tcp", "localhost:3128")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -116,7 +116,7 @@ func TestWriteHTTPProxyReqAndReadHTTPProxyResp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
-	if !bytes.Contains(b, []byte("200 OK")) {
+	if !bytes.Contains(b, []byte("200 Connection established")) {
 		t.Fatalf("unexpected status line: %s, expected: HTTP/1.1 200 OK", string(b))
 	}
 	err = conn.Close()
@@ -124,7 +124,7 @@ func TestWriteHTTPProxyReqAndReadHTTPProxyResp(t *testing.T) {
 		t.Fatalf("connection close error: %s", err)
 	}
 
-	conn, err = net.Dial("tcp", "localhost:8081")
+	conn, err = net.Dial("tcp", "localhost:3128")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -141,7 +141,7 @@ func TestWriteHTTPProxyReqAndReadHTTPProxyResp(t *testing.T) {
 		t.Fatalf("connection close error: %s", err)
 	}
 
-	conn, err = net.Dial("tcp", "localhost:8081")
+	conn, err = net.Dial("tcp", "localhost:3128")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
