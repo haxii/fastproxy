@@ -17,6 +17,7 @@ before_install:
  - sshpass -p 'ssh' ssh -fN -D 9099 root@127.0.0.1
  - sudo apt-get --fix-missing install squid -y
  - sudo squid3 -f /home/travis/gopath/src/github.com/balinor2017/fastproxy/.travisfile/squid.conf
+ - curl -v -k https://127.0.0.1:3129
 
 script:
   - diff -u <(echo -n) <(sudo gofmt -s -d ./)
