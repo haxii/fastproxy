@@ -543,6 +543,7 @@ func testClientDoWithSameConnectionPostMethod(t *testing.T) {
 		})
 		nethttp.Serve(ln, nil)
 	}()
+	time.Sleep(time.Second)
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool: bPool,
@@ -657,6 +658,7 @@ func testClientDoWithSameConnectionGetMethod(t *testing.T) {
 		})
 		nethttp.Serve(ln, nil)
 	}()
+	time.Sleep(time.Second)
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool: bPool,
