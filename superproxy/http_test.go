@@ -12,6 +12,10 @@ import (
 	"github.com/balinor2017/fastproxy/bufiopool"
 )
 
+func testInitHTTPCertAndAuth(t *testing.T) {
+
+}
+
 func TestInitHTTPCertAndAuth(t *testing.T) {
 	superProxy, err := NewSuperProxy("localhost", uint16(8081), ProxyTypeHTTP, "", "", "")
 	if err != nil {

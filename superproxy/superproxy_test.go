@@ -41,7 +41,7 @@ func TestNewSuperProxy(t *testing.T) {
 
 // test new super proxy with http type
 func testNewSuperProxyWithHTTPType(t *testing.T) {
-	superProxy, err := NewSuperProxy("localhost", uint16(8081), ProxyTypeHTTP, "", "", "")
+	superProxy, err := NewSuperProxy("localhost", uint16(3128), ProxyTypeHTTP, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}
