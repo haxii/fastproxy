@@ -12,8 +12,23 @@ import (
 	"github.com/balinor2017/fastproxy/bufiopool"
 )
 
-func testInitHTTPCertAndAuth(t *testing.T, superProxy *SuperProxy, isSSL bool, host, user, pass, cert, expErrString string) {
+func testInitHTTPCertAndAuth(t *testing.T, superProxy *SuperProxy, isSSL bool, host, user, pass, cert, expServerName string, expServerInsecureSkipVerify bool) {
 	superProxy.initHTTPCertAndAuth(isSSL, host, user, pass, cert)
+	if superProxy.tlsConfig.ServerName != expServerName {
+		t.Fatalf("Expected server name is %s, but get an unexpected server name: %s", expServerName, superProxy.tlsConfig.ServerName)
+	}
+	if len(user) > 0 && len(pass) > 0 {
+		if len(superProxy.authHeaderWithCRLF) == 0 {
+			t.Fatal("Expected authHeaderWithCRLF is not empty, but is empty")
+		}
+	} else {
+		if len(superProxy.authHeaderWithCRLF) > 0 {
+			t.Fatalf("Expected authHeaderWithCRLF is empty, but get %s", superProxy.authHeaderWithCRLF)
+		}
+	}
+	if isSSL && superProxy.tlsConfig.InsecureSkipVerify != expServerInsecureSkipVerify {
+		t.Fatalf("Expected server insecureSkipVerify error")
+	}
 }
 
 func TestInitHTTPCertAndAuth(t *testing.T) {
@@ -47,51 +62,13 @@ L/ib
 	f.Close()
 
 	defer os.Remove(".test_server.crt")
-	superProxy.initHTTPCertAndAuth(true, "server", "", "", "")
-	if superProxy.tlsConfig.ServerName != "server" {
-		t.Fatalf("unexpected server name: %s, expected server name: localhost", superProxy.tlsConfig.ServerName)
-	}
-	if superProxy.tlsConfig.InsecureSkipVerify {
-		t.Fatal("Expected InsecureSkipVerify property is false, but is true")
-	}
-	if superProxy.authHeaderWithCRLF != nil {
-		t.Fatalf("expected auth header with CRLF: nil, but unexpected: %s", string(superProxy.authHeaderWithCRLF))
-	}
-	superProxy.initHTTPCertAndAuth(true, "", "", "", "")
-	if !superProxy.tlsConfig.InsecureSkipVerify {
-		t.Fatal("Expected InsecureSkipVerify property is true, but is false")
-	}
-	if len(superProxy.tlsConfig.Certificates) != 0 {
-		t.Fatal("Expected Certificates property is empty")
-	}
-	superProxy.initHTTPCertAndAuth(true, "", "", "", ".test_server.crt")
-	if !superProxy.tlsConfig.InsecureSkipVerify {
-		t.Fatal("Expected InsecureSkipVerify property is true, but is false")
-	}
-	if len(superProxy.tlsConfig.Certificates) == 0 {
-		t.Fatal("Expected Certificates property is not empty")
-	}
-	if superProxy.authHeaderWithCRLF != nil {
-		t.Fatalf("expected auth header with CRLF: nil, but unexpected: %s", string(superProxy.authHeaderWithCRLF))
-	}
-	superProxy.initHTTPCertAndAuth(false, "localhost", "", "", "")
-	if len(superProxy.tlsConfig.ServerName) != 0 {
-		t.Fatalf("Expected tlsConfig should be nil, but unexpected: %s", superProxy.tlsConfig.ServerName)
-	}
-	if superProxy.authHeaderWithCRLF != nil {
-		t.Fatalf("Write empty user and password, expected authHeaderWithCRLF is nil, but unexpected: %s", superProxy.authHeaderWithCRLF)
-	}
-	superProxy.initHTTPCertAndAuth(false, "localhost", "user", "pwd", "")
-	if len(superProxy.authHeaderWithCRLF) == 0 {
-		t.Fatal("Expected authHeaderWithCRLF is not empty, but is empty")
-	}
-	if !strings.Contains(string(superProxy.authHeaderWithCRLF), "Proxy-Authorization:") {
-		t.Fatalf("Expected authHeaderWithCRLF contains Proxy-Authorization:, but unexpected: %s", string(superProxy.authHeaderWithCRLF))
-	}
-	superProxy.initHTTPCertAndAuth(false, "", "user", "", "")
-	if len(superProxy.authHeaderWithCRLF) != 0 {
-		t.Fatalf("Expected authHeaderWithCRLF is empty, but is not empty, unexpected: %s", string(superProxy.authHeaderWithCRLF))
-	}
+	testInitHTTPCertAndAuth(t, superProxy, true, "server", "", "", "", "server", false)
+	testInitHTTPCertAndAuth(t, superProxy, true, "", "", "", "", "", true)
+	testInitHTTPCertAndAuth(t, superProxy, true, "", "", "", serverCrt, "", true)
+	testInitHTTPCertAndAuth(t, superProxy, false, "localhost", "", "", "", "", false)
+	testInitHTTPCertAndAuth(t, superProxy, false, "localhost", "user", "pwd", "", "", false)
+	testInitHTTPCertAndAuth(t, superProxy, false, "", "user", "", "", "", false)
+	testInitHTTPCertAndAuth(t, superProxy, true, "server", "", "", serverCrt, "server", false)
 }
 
 func TestWriteHTTPProxyReqAndReadHTTPProxyResp(t *testing.T) {
