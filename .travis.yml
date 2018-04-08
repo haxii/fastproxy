@@ -14,7 +14,7 @@ before_install:
  - sudo apt-get install dnsmasq -y
  - sudo apt-get install sshpass -y
  - echo "root:ssh" | sudo chpasswd
- - sshpass -p 'ssh' ssh -fN -D 12000 root@127.0.0.1
+ - sshpass -p 'ssh' ssh -fN -D 9099 root@127.0.0.1
  - sudo apt-get --fix-missing install squid -y
  - squid3 -f /home/travis/gopath/src/github.com/balinor2017/fastproxy/.travisfile/squid.conf
 
