@@ -1,13 +1,13 @@
 package transport
 
 import (
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
-
-	"github.com/balinor2017/fastproxy/cert"
+	"time"
 )
 
-/*
 func TestTransportForwordAndDial(t *testing.T) {
 	go func() {
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +50,8 @@ func TestTransportForwordAndDial(t *testing.T) {
 	}
 	defer connDst.Close()
 }
-*/
+
+/*
 func TestTransportDialTLS(t *testing.T) {
 	cfg := cert.MakeClientTLSConfig("", "")
 	conn, err := DialTLS("127.0.0.1:3129", cfg)
@@ -70,3 +71,4 @@ func TestTransportDialTLS(t *testing.T) {
 		t.Fatalf("expected result is %s, but get unexpected result: %s", "HTTP/1.1 400", string(result))
 	}
 }
+*/
