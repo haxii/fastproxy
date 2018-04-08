@@ -378,7 +378,7 @@ func testHostClientPendingRequests(t *testing.T) {
 		})
 		log.Fatal(nethttp.ListenAndServe(":9321", nil))
 	}()
-
+	time.Sleep(time.Second)
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &HostClient{
 		BufioPool: bPool,

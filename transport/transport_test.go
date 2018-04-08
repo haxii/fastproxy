@@ -1,6 +1,13 @@
 package transport
 
-/*
+import (
+	"fmt"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+)
+
 func TestTransportForwordAndDial(t *testing.T) {
 	go func() {
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -16,6 +23,7 @@ func TestTransportForwordAndDial(t *testing.T) {
 		})
 		http.ListenAndServe(":9997", nil)
 	}()
+	time.Sleep(time.Second)
 	connDst, err := Dial("127.0.0.1:9997")
 	if err != nil {
 		t.Fatal("dial dst error")

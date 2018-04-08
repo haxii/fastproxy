@@ -34,9 +34,11 @@ func TestNewSuperProxy(t *testing.T) {
 		})
 		http.ListenAndServe(":9999", nil)
 	}()
+	time.Sleep(time.Second)
 	testNewSuperProxyWithHTTPSProxy(t)
 	testNewSuperProxyWithHTTPType(t)
 	testNewSuperProxyWithSocks5Type(t)
+	testSuperProxyConcurrency(t)
 }
 
 // test new super proxy with http type
@@ -185,7 +187,7 @@ func TestErrorParameters(t *testing.T) {
 }
 
 // test if super proxy can limit concurrency
-func TestSuperProxyConcurrency(t *testing.T) {
+func testSuperProxyConcurrency(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		go func() {
 			conn, err := net.Dial("tcp4", "localhost:9999")
