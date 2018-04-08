@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"testing"
 
-	"github.com/balinor2017/fastproxy/superproxy"
+	"github.com/haxii/fastproxy/superproxy"
 )
 
 // test parse request type

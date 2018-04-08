@@ -5,8 +5,8 @@ import (
 	"io"
 	"testing"
 
-	"github.com/balinor2017/fastproxy/bufiopool"
-	"github.com/balinor2017/fastproxy/bytebufferpool"
+	"github.com/haxii/fastproxy/bufiopool"
+	"github.com/haxii/fastproxy/bytebufferpool"
 )
 
 // test write request line

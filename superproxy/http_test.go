@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/balinor2017/fastproxy/bufiopool"
+	"github.com/haxii/fastproxy/bufiopool"
 )
 
 func testInitHTTPCertAndAuth(t *testing.T, superProxy *SuperProxy, isSSL bool, host, user, pass, cert, expServerName string, expServerInsecureSkipVerify bool) {

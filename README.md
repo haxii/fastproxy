@@ -1,1 +1,1 @@
-# FastProxy [![Build Status](https://travis-ci.org/balinor2017/fastproxy.svg?branch=master)](https://travis-ci.org/balinor2017/fastproxy)
+# FastProxy [![Build Status](https://travis-ci.org/haxii/fastproxy.svg?branch=master)](https://travis-ci.org/haxii/fastproxy)

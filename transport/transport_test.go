@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/fastfork/fastproxy/cert"
 )
 
 func TestTransportForwordAndDial(t *testing.T) {
@@ -52,7 +54,6 @@ func TestTransportForwordAndDial(t *testing.T) {
 	defer connDst.Close()
 }
 
-/*
 func TestTransportDialTLS(t *testing.T) {
 	cfg := cert.MakeClientTLSConfig("", "")
 	conn, err := DialTLS("127.0.0.1:3129", cfg)
@@ -72,4 +73,3 @@ func TestTransportDialTLS(t *testing.T) {
 		t.Fatalf("expected result is %s, but get unexpected result: %s", "HTTP/1.1 400", string(result))
 	}
 }
-*/
