@@ -9,6 +9,7 @@ import (
 	nethttp "net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/balinor2017/fastproxy/bufiopool"
 	"github.com/balinor2017/fastproxy/bytebufferpool"
@@ -196,6 +197,7 @@ func TestWithClient(t *testing.T) {
 		})
 		log.Fatal(nethttp.ListenAndServe(":9678", nil))
 	}()
+	time.Sleep(time.Second)
 	getReq := "GET /client HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:9678\r\n" +
 		"\r\n"

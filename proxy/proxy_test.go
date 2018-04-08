@@ -346,6 +346,7 @@ func testHTTPSuperProxy(t *testing.T, proxyAddr string, httpReq, httpsReq *netht
 		Transport: transport,
 		Timeout:   10 * time.Second,
 	}
+
 	resp, err := c.Do(httpReq)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
@@ -366,8 +367,8 @@ func testHTTPSuperProxy(t *testing.T, proxyAddr string, httpReq, httpsReq *netht
 		Transport: transport,
 		Timeout:   10 * time.Second,
 	}
-
 	resp, err = c.Do(httpsReq)
+
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
