@@ -62,10 +62,12 @@ func TestHijackTLSConnection(t *testing.T) {
 		conn, err := realTLSServerListener.Accept()
 		if err != nil {
 			*failErr = err
+			fmt.Println("1:", err)
 			return
 		}
 		defer conn.Close()
 		if _, err := conn.Write([]byte(realServerMessage)); err != nil {
+			fmt.Println("2:", err)
 			*failErr = err
 			return
 		}
