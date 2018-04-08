@@ -26,7 +26,7 @@ import (
 var (
 	simpleProxyPort                                                                             = "5050"
 	simpleServerPort                                                                            = ":9990"
-	simpleHTTPSServerPort                                                                       = ":444"
+	simpleHTTPSServerPort                                                                       = ":3130"
 	httpsProxyAddr                                                                              = "0.0.0.0:5060"
 	httpsProxyPort                                                                              = ":5060"
 	simpleServer, keepAliveServer, simpleProxy, httpsServer, httpProxy, httpsProxy, socks5Proxy func()
@@ -250,7 +250,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 func TestCommon(t *testing.T) {
 	testInit(t)
 	httpReq, _ := nethttp.NewRequest("GET", "http://127.0.0.1:9990", nil)
-	httpsReq, _ := nethttp.NewRequest("GET", "https://127.0.0.1:444", nil)
+	httpsReq, _ := nethttp.NewRequest("GET", "https://127.0.0.1:3130", nil)
 	Cache := ""
 	for i := 0; i < 10000; i++ {
 		Cache += "t"

@@ -22,4 +22,4 @@ script:
   - diff -u <(echo -n) <(sudo gofmt -s -d ./)
   - diff -u <(echo -n) <(sudo go vet ./...)
   - diff -u <(echo -n) <(sudo golint)
-  - diff -u <(echo -n) <(sudo go test -v ./...)
+  - go test -v ./...
