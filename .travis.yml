@@ -7,7 +7,7 @@ addons:
   - 127.0.0.1
 
 before_install:
- - go get -u -v github.com/golang/lint/golin
+ - go get -u -v github.com/golang/lint/golint
  - echo "deb http://mirrors.aliyun.com/ubuntu/ precise varnish-3.0" | sudo tee -a /etc/apt/sources.list
  - sudo apt-get update
  - sudo apt-get upgrade
