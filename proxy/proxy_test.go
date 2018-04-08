@@ -25,7 +25,7 @@ import (
 
 var (
 	simpleProxyPort                                                                             = "5050"
-	simpleServerPort                                                                            = ":9990"
+	simpleServerPort                                                                            = ":9991"
 	simpleHTTPSServerPort                                                                       = ":3130"
 	httpsProxyAddr                                                                              = "0.0.0.0:5060"
 	httpsProxyPort                                                                              = ":5060"
@@ -249,7 +249,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 
 func TestCommon(t *testing.T) {
 	testInit(t)
-	httpReq, _ := nethttp.NewRequest("GET", "http://127.0.0.1:9990", nil)
+	httpReq, _ := nethttp.NewRequest("GET", "http://127.0.0.1:9991", nil)
 	httpsReq, _ := nethttp.NewRequest("GET", "https://127.0.0.1:3130", nil)
 	Cache := ""
 	for i := 0; i < 10000; i++ {
@@ -346,7 +346,6 @@ func testHTTPSuperProxy(t *testing.T, proxyAddr string, httpReq, httpsReq *netht
 		Transport: transport,
 		Timeout:   10 * time.Second,
 	}
-
 	resp, err := c.Do(httpReq)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
@@ -367,8 +366,8 @@ func testHTTPSuperProxy(t *testing.T, proxyAddr string, httpReq, httpsReq *netht
 		Transport: transport,
 		Timeout:   10 * time.Second,
 	}
-	resp, err = c.Do(httpsReq)
 
+	resp, err = c.Do(httpsReq)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -678,7 +677,7 @@ func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 		t.Fatal("Proxy send request using super proxy, expected should not use super proxy")
 	}
 
-	req, err = nethttp.NewRequest("GET", "http://127.0.0.1:9990", nil)
+	req, err = nethttp.NewRequest("GET", "http://127.0.0.1:9991", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -707,7 +706,7 @@ func testHostsRewrite(t *testing.T) {
 				return nil
 			},
 			RewriteURL: func(userdata *UserData, hostWithPort string) string {
-				if hostWithPort == "127.0.0.1:9990" {
+				if hostWithPort == "127.0.0.1:9991" {
 					return "127.0.0.1:5050"
 				}
 				return hostWithPort
@@ -748,7 +747,7 @@ func testHostsRewrite(t *testing.T) {
 		t.Fatal("An error occurred: proxy can't send request")
 	}
 
-	req, err = nethttp.NewRequest("GET", "http://127.0.0.1:9990/", nil)
+	req, err = nethttp.NewRequest("GET", "http://127.0.0.1:9991", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
