@@ -66,7 +66,7 @@ func TestHTTPRequest(t *testing.T) {
 	testRequest(t, "GET / HTTP/1.1\r\n\r\n", "GET", "HTTP/1.1", 16, "", 0)
 	testRequest(t, "GET / HTTP/1.1\n\n", "GET", "HTTP/1.1", 15, "", 0)
 	testRequest(t, "GET / HTTP/1.0\r\n\r\n", "GET", "HTTP/1.0", 16, "", 0)
-	testRequest(t, "GET / HTTP/1.1\r\nHost: localhost:10000\r\n\r\n", "GET", "HTTP/1.1", 16, "", 22)
+	testRequest(t, "GET / HTTP/1.1\r\nHost: localhost:9678\r\n\r\n", "GET", "HTTP/1.1", 16, "", 22)
 
 	testRequest(t, "/ HTTP/1.1\r\n\r\n", "", "", 0, "fail to read start line of request", 0)
 	testRequest(t, "GET HTTP/1.1\r\n\r\n", "", "", 0, "fail to read start line of request", 0)
@@ -163,7 +163,7 @@ func testWithClient(t *testing.T, reqString string) {
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
-	req.reqLine.HostInfo().ParseHostWithPort("127.0.0.1:10000", false)
+	req.reqLine.HostInfo().ParseHostWithPort("127.0.0.1:9678", false)
 	sHijack := &simpleHijacker{}
 	req.SetHijacker(sHijack)
 	b := bytebufferpool.MakeFixedSizeByteBuffer(100)
@@ -194,16 +194,16 @@ func TestWithClient(t *testing.T) {
 		nethttp.HandleFunc("/client", func(w nethttp.ResponseWriter, r *nethttp.Request) {
 			fmt.Fprint(w, "Hello world!")
 		})
-		log.Fatal(nethttp.ListenAndServe(":10000", nil))
+		log.Fatal(nethttp.ListenAndServe(":9678", nil))
 	}()
 	getReq := "GET /client HTTP/1.1\r\n" +
-		"Host: 127.0.0.1:10000\r\n" +
+		"Host: 127.0.0.1:9678\r\n" +
 		"\r\n"
 	headReq := "HEAD /client HTTP/1.1\r\n" +
-		"Host: 127.0.0.1:10000\r\n" +
+		"Host: 127.0.0.1:9678\r\n" +
 		"\r\n"
 	postReq := "POST /client HTTP/1.1\r\n" +
-		"Host: 127.0.0.1:10000\r\n" +
+		"Host: 127.0.0.1:9678\r\n" +
 		"\r\n"
 
 	testWithClient(t, getReq)
@@ -262,7 +262,7 @@ func (s *hijacker) OnResponse(respLine http.ResponseLine,
 func TestCopyHeader(t *testing.T) {
 	h := &http.Header{}
 	rightReq := "GET / HTTP/1.1\r\n" +
-		"Host: localhost:10000\r\n" +
+		"Host: localhost:9678\r\n" +
 		"\r\n"
 	br := bufio.NewReader(strings.NewReader(rightReq))
 	byteBuffer := bytebufferpool.MakeFixedSizeByteBuffer(100)

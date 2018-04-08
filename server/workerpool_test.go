@@ -57,7 +57,7 @@ func testWorkerPoolMaxWorkersCount(t *testing.T) {
 	}
 	wp.Start()
 
-	ln, err := net.Listen("tcp", "0.0.0.0:5050")
+	ln, err := net.Listen("tcp", "0.0.0.0:5055")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -65,7 +65,7 @@ func testWorkerPoolMaxWorkersCount(t *testing.T) {
 	clientCh := make(chan struct{}, wp.MaxWorkersCount)
 	for i := 0; i < wp.MaxWorkersCount; i++ {
 		go func() {
-			conn, err := net.Dial("tcp", "127.0.0.1:5050")
+			conn, err := net.Dial("tcp", "127.0.0.1:5055")
 			if err != nil {
 				t.Fatalf("unexpected error: %s", err)
 			}
@@ -97,7 +97,7 @@ func testWorkerPoolMaxWorkersCount(t *testing.T) {
 	}
 
 	go func() {
-		if _, err := net.Dial("tcp", "127.0.0.1:5050"); err != nil {
+		if _, err := net.Dial("tcp", "127.0.0.1:5055"); err != nil {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	}()

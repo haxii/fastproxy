@@ -9,7 +9,7 @@ import (
 )
 
 func TestServerShutDownByRightParameters(t *testing.T) {
-	ln, err := net.Listen("tcp", "0.0.0.0:7777")
+	ln, err := net.Listen("tcp", "0.0.0.0:7778")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -18,10 +18,10 @@ func TestServerShutDownByRightParameters(t *testing.T) {
 	if addr.Network() != "tcp" {
 		t.Fatalf("Addr network is not tcp4, current addr network is %s", addr.Network())
 	}
-	if addr.String() != "[::]:7777" {
-		t.Fatalf("Addr network is not 0.0.0.0:7777, current addr string is %s", addr.String())
+	if addr.String() != "[::]:7778" {
+		t.Fatalf("Addr network is not 0.0.0.0:7778, current addr string is %s", addr.String())
 	}
-	conn, err := net.Dial("tcp4", "0.0.0.0:7777")
+	conn, err := net.Dial("tcp4", "0.0.0.0:7778")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}

@@ -375,7 +375,7 @@ func testHostClientPendingRequests(t *testing.T) {
 			readyCh <- struct{}{}
 			<-doneCh
 		})
-		log.Fatal(nethttp.ListenAndServe(":9999", nil))
+		log.Fatal(nethttp.ListenAndServe(":9321", nil))
 	}()
 
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
@@ -390,7 +390,7 @@ func testHostClientPendingRequests(t *testing.T) {
 	for i := 0; i < concurrency; i++ {
 		go func() {
 			req := &SimpleRequest{}
-			req.SetTargetWithPort("127.0.0.1:9999")
+			req.SetTargetWithPort("127.0.0.1:9321")
 			resp := &SimpleResponse{}
 			if _, _, _, err := c.Do(req, resp); err != nil {
 				resultCh <- fmt.Errorf("unexpected error: %s", err)
