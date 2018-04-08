@@ -274,6 +274,7 @@ func TestCommon(t *testing.T) {
 
 func testProxyServe(t *testing.T, simpleFunc func(), reqString, expResult string) {
 	go simpleFunc()
+	time.Sleep(time.Second)
 	simpleServerAddr := "0.0.0.0:" + simpleProxyPort
 	conn, err := net.Dial("tcp4", simpleServerAddr)
 	if err != nil {

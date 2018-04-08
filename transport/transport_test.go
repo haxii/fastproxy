@@ -1,13 +1,6 @@
 package transport
 
-import (
-	"fmt"
-	"net/http"
-	"strings"
-	"testing"
-	"time"
-)
-
+/*
 func TestTransportForwordAndDial(t *testing.T) {
 	go func() {
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

@@ -216,7 +216,7 @@ func TestSuperProxyConcurrency(t *testing.T) {
 		}()
 		time.Sleep(1 * time.Second)
 	}
-
+	time.Sleep(time.Second)
 	superProxy, err := NewSuperProxy("localhost", uint16(3128), ProxyTypeHTTP, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())

@@ -325,6 +325,7 @@ func testClientDoIsIdempotent(t *testing.T) {
 		})
 		nethttp.Serve(ln, nil)
 	}()
+	time.Sleep(1 * time.Second)
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool: bPool,
