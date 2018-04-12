@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/balinor2017/fastproxy/servertime"
+	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/log"
 )
 

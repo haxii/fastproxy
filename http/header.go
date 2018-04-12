@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/balinor2017/fastproxy/util"
+	"github.com/haxii/fastproxy/util"
 )
 
 // Header header part of http request & response

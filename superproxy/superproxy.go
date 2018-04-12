@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/balinor2017/fastproxy/bufiopool"
-	"github.com/balinor2017/fastproxy/transport"
-	"github.com/balinor2017/fastproxy/usage"
+	"github.com/haxii/fastproxy/bufiopool"
+	"github.com/haxii/fastproxy/transport"
+	"github.com/haxii/fastproxy/usage"
 )
 
 // ProxyType type of super proxy
