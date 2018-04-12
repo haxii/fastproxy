@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/haxii/fastproxy/http"
-	"github.com/haxii/fastproxy/superproxy"
+	"github.com/balinor2017/fastproxy/http"
+	"github.com/balinor2017/fastproxy/superproxy"
 	"github.com/haxii/log"
 )
 

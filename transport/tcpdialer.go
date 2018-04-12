@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/haxii/fastproxy/servertime"
+	"github.com/balinor2017/fastproxy/servertime"
 )
 
 // DialFunc must establish connection to addr.

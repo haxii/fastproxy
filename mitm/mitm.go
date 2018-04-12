@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/haxii/fastproxy/util"
+	"github.com/balinor2017/fastproxy/util"
 )
 
 var (

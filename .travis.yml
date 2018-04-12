@@ -17,7 +17,7 @@ before_install:
  - sshpass -p 'ssh' ssh -fN -D 9099 root@127.0.0.1
  - sudo apt-get --fix-missing install squid -y
  - sudo dnsmasq -p 5300 -S 114.114.114.114
- - sudo squid3 -f /home/travis/gopath/src/github.com/haxii/fastproxy/.travisfile/squid.conf
+ - sudo squid3 -f /home/travis/gopath/src/github.com/balinor2017/fastproxy/.travisfile/squid.conf
  - curl -v -x http://127.0.0.1:3128 icanhazip.com
 
 script:

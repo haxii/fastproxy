@@ -4,7 +4,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/haxii/fastproxy/bytebufferpool"
+	"github.com/balinor2017/fastproxy/bytebufferpool"
 )
 
 func TestWriteWithValidation(t *testing.T) {

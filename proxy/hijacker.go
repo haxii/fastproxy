@@ -4,7 +4,7 @@ import (
 	"io"
 	"net"
 
-	"github.com/haxii/fastproxy/http"
+	"github.com/balinor2017/fastproxy/http"
 )
 
 // Hijacker hijacker of each http connection and decrypted https connection

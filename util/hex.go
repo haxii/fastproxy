@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/haxii/fastproxy/bytebufferpool"
+	"github.com/balinor2017/fastproxy/bytebufferpool"
 )
 
 var (
