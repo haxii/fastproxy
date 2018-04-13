@@ -7,10 +7,10 @@ import (
 	"io"
 	"net"
 
-	"github.com/balinor2017/fastproxy/bufiopool"
-	"github.com/balinor2017/fastproxy/bytebufferpool"
-	"github.com/balinor2017/fastproxy/cert"
-	"github.com/balinor2017/fastproxy/util"
+	"github.com/haxii/fastproxy/bufiopool"
+	"github.com/haxii/fastproxy/bytebufferpool"
+	"github.com/haxii/fastproxy/cert"
+	"github.com/haxii/fastproxy/util"
 )
 
 var (

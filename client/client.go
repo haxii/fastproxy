@@ -10,12 +10,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/balinor2017/fastproxy/bufiopool"
-	"github.com/balinor2017/fastproxy/bytebufferpool"
-	"github.com/balinor2017/fastproxy/servertime"
-	"github.com/balinor2017/fastproxy/superproxy"
-	"github.com/balinor2017/fastproxy/transport"
-	"github.com/balinor2017/fastproxy/util"
+	"github.com/haxii/fastproxy/bufiopool"
+	"github.com/haxii/fastproxy/bytebufferpool"
+	"github.com/haxii/fastproxy/servertime"
+	"github.com/haxii/fastproxy/superproxy"
+	"github.com/haxii/fastproxy/transport"
+	"github.com/haxii/fastproxy/util"
 )
 
 // ErrConnectionClosed may be returned from client methods if the server

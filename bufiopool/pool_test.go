@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/balinor2017/fastproxy/bytebufferpool"
+	"github.com/haxii/fastproxy/bytebufferpool"
 )
 
 func TestBufioPool(t *testing.T) {

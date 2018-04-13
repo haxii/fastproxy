@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/balinor2017/fastproxy/cert"
+	"github.com/haxii/fastproxy/cert"
 )
 
 func TestTransportForwordAndDial(t *testing.T) {

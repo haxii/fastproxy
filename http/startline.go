@@ -7,8 +7,8 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/balinor2017/fastproxy/uri"
-	"github.com/balinor2017/fastproxy/util"
+	"github.com/haxii/fastproxy/uri"
+	"github.com/haxii/fastproxy/util"
 )
 
 // ResponseLine start line of a http response
