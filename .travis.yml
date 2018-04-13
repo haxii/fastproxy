@@ -14,7 +14,7 @@ before_install:
  - sudo apt-get install dnsmasq -y
  - sudo apt-get install sshpass -y
  - echo "root:ssh" | sudo chpasswd
- - sshpass -p 'ssh' ssh -fN -D 9099 root@127.0.0.1
+ - sshpass -p 'ssh' ssh -D 9099 root@127.0.0.1
  - sudo apt-get install openssl -y
  - wget http://www.squid-cache.org/Versions/v3/3.5/squid-3.5.27.tar.gz
  - tar -xzf squid-3.5.27.tar.gz

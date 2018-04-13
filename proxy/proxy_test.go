@@ -424,6 +424,7 @@ func testHTTPSSuperProxy(t *testing.T, proxyAddr string, httpReq, httpsReq *neth
 // test send http request with socks5 superproxy
 func testSocks5SuperProxy(t *testing.T, proxyAddr string, httpReq, httpsReq *nethttp.Request, expResult string, proxy func()) {
 	go proxy()
+	time.Sleep(time.Second)
 	proxyWithSocks5SuperProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(proxyAddr)
 		if err != nil {
