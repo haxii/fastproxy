@@ -28,7 +28,6 @@ before_install:
  - sudo chmod 777 /usr/local/squid/var/logs/access.log /usr/local/squid/var/logs/cache.log
  - sudo /usr/local/squid/sbin/squid -f /home/travis/gopath/src/github.com/haxii/fastproxy/.travisfile/squid.conf
  - sudo dnsmasq -p 5300 -S 114.114.114.114
- - curl -v -x http://127.0.0.1:3128 icanhazip.com
 
 script:
   - diff -u <(echo -n) <(sudo gofmt -s -d ./)
