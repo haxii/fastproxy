@@ -25,7 +25,7 @@ before_install:
  - sudo make install
  - sudo touch /usr/local/squid/var/logs/access.log /usr/local/squid/var/logs/cache.log
  - sudo chmod 777 /usr/local/squid/var/logs/access.log /usr/local/squid/var/logs/cache.log
- - sudo ./squid -f /home/ubuntu/squid.conf
+ - sudo /usr/local/squid/sbin/squid -f /home/travis/gopath/src/github.com/balinor2017/fastproxy/.travisfile/squid.conf
  - sudo dnsmasq -p 5300 -S 114.114.114.114
  - curl -v -x http://127.0.0.1:3128 icanhazip.com
 
