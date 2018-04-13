@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/haxii/fastproxy/bytebufferpool"
+	"github.com/balinor2017/fastproxy/bytebufferpool"
 )
 
 func testHex(t *testing.T, testString string, expErr error, expInt int) {

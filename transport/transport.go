@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/haxii/fastproxy/bytebufferpool"
+	"github.com/balinor2017/fastproxy/bytebufferpool"
 )
 
 //DialTLS dial tls without pool

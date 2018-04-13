@@ -6,7 +6,7 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/haxii/fastproxy/bytebufferpool"
+	"github.com/balinor2017/fastproxy/bytebufferpool"
 )
 
 const socks5Version = 5

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net"
 
-	"github.com/haxii/fastproxy/cert"
-	"github.com/haxii/fastproxy/superproxy"
-	"github.com/haxii/fastproxy/transport"
+	"github.com/balinor2017/fastproxy/cert"
+	"github.com/balinor2017/fastproxy/superproxy"
+	"github.com/balinor2017/fastproxy/transport"
 )
 
 type requestType int
