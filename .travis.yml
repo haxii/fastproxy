@@ -23,6 +23,7 @@ before_install:
  - sudo apt-get install make -y
  - sudo make
  - sudo make install
+ - cd ..
  - sudo touch /usr/local/squid/var/logs/access.log /usr/local/squid/var/logs/cache.log
  - sudo chmod 777 /usr/local/squid/var/logs/access.log /usr/local/squid/var/logs/cache.log
  - sudo /usr/local/squid/sbin/squid -f /home/travis/gopath/src/github.com/balinor2017/fastproxy/.travisfile/squid.conf
