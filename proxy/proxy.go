@@ -403,6 +403,7 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	hijackedConnreader := p.bufioPool.AcquireReader(hijackedConn)
 	defer p.bufioPool.ReleaseReader(hijackedConnreader)
 
+	req.reader = nil
 	req.reqLine.Reset()
 	reqReadNum, err := req.parseStartLine(hijackedConnreader)
 	p.Usage.AddIncomingSize(uint64(reqReadNum))
@@ -412,7 +413,7 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	req.SetTLS(serverName)
 	req.reqLine.HostInfo().ParseHostWithPort(hostWithPort, true)
 	req.reqLine.HostInfo().SetIP(ip)
-	return p.proxyHTTP(c, req)
+	return p.proxyHTTP(hijackedConn, req)
 }
 
 func (p *Proxy) updateReadDeadline(c net.Conn, currentTime time.Time, lastDeadlineTime time.Time) (time.Time, error) {
