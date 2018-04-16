@@ -118,7 +118,7 @@ func (s *simpleHijacker) OnResponse(respLine http.ResponseLine,
 	}
 
 	urlpath := string(s.path)
-	if len(urlpath) == 0 || len(urlpath) == 1 {
+	if len(urlpath) <= 1 {
 		return nil
 	}
 
@@ -159,9 +159,8 @@ func (s *simpleHijacker) OnResponse(respLine http.ResponseLine,
 }
 
 type config struct {
-	Port        string
-	SpecialHost string
-	ForwardList []string
+	SpecialHost string   // save resource for special host
+	ForwardList []string // no-decrypt host list
 }
 
 func loadConfig() {

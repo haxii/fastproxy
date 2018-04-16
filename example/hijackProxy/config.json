@@ -1,5 +1,4 @@
 {
-    "Port": "7890",
     "SpecialHost": "",
     "ForwardList": [""]
 }
