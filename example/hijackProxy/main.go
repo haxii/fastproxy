@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"path"
@@ -18,6 +20,7 @@ import (
 
 var (
 	defaultLogger = &log.DefaultLogger{}
+	defaultConfig *config
 	fileDir       = "files"
 )
 
@@ -29,8 +32,8 @@ func main() {
 				fmt.Printf("allowed connection from %s\n", conn.String())
 				return true
 			},
-			ShouldDecryptHost: func(userdata *proxy.UserData, hostWithPort string) bool {
-				return true
+			ShouldDecryptHost: func(userdata *proxy.UserData, host string) bool {
+				return !isInForwardList(host)
 			},
 			RewriteURL: func(userdata *proxy.UserData, hostWithPort string) string {
 				return hostWithPort
@@ -110,6 +113,10 @@ func (s *simpleHijacker) OnResponse(respLine http.ResponseLine,
 		host = s.targetHost
 	}
 
+	if len(defaultConfig.SpecialHost) > 0 && defaultConfig.SpecialHost != host {
+		return nil
+	}
+
 	urlpath := string(s.path)
 	if len(urlpath) == 0 || len(urlpath) == 1 {
 		return nil
@@ -149,4 +156,31 @@ func (s *simpleHijacker) OnResponse(respLine http.ResponseLine,
 	}
 	s.file = file
 	return s.file
+}
+
+type config struct {
+	Port        string
+	SpecialHost string
+	ForwardList []string
+}
+
+func loadConfig() {
+	buf, err := ioutil.ReadFile("./config.json")
+	if err != nil {
+		panic(err)
+	}
+
+	err = json.Unmarshal(buf, &defaultConfig)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func isInForwardList(curHost string) bool {
+	for _, host := range defaultConfig.ForwardList {
+		if curHost == host {
+			return true
+		}
+	}
+	return false
 }
