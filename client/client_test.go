@@ -26,7 +26,7 @@ func TestClientDo(t *testing.T) {
 		})
 		log.Fatal(nethttp.ListenAndServe(":10000", nil))
 	}()
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 
 	testClientDoByDefaultParameters(t)
 
@@ -56,9 +56,7 @@ func TestClientDo(t *testing.T) {
 
 	testClientDoWithSameConnectionPostMethod(t)
 
-	testClientUsage(t)
-
-	testClinetDoFake(t)
+	testClientDoFake(t)
 }
 
 // Test Client do with big header or big body
@@ -74,7 +72,7 @@ func TestClientDoWithBigHeaderOrBody(t *testing.T) {
 		})
 		log.Fatal(nethttp.ListenAndServe(":8888", nil))
 	}()
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 	testClientDoWithBigHeader(t)
 	testClientDoWithBigBodyResponse(t)
 }
@@ -325,7 +323,7 @@ func testClientDoIsIdempotent(t *testing.T) {
 		})
 		nethttp.Serve(ln, nil)
 	}()
-	time.Sleep(1 * time.Second)
+	time.Sleep(time.Millisecond * 10)
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool: bPool,
@@ -378,7 +376,7 @@ func testHostClientPendingRequests(t *testing.T) {
 		})
 		log.Fatal(nethttp.ListenAndServe(":9321", nil))
 	}()
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &HostClient{
 		BufioPool: bPool,
@@ -497,7 +495,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 			log.Fatal("ListenAndServe: ", err)
 		}
 	}()
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
@@ -543,7 +541,7 @@ func testClientDoWithSameConnectionPostMethod(t *testing.T) {
 		})
 		nethttp.Serve(ln, nil)
 	}()
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool: bPool,
@@ -608,7 +606,7 @@ func testClientDoWithPostRequest(t *testing.T) {
 		})
 		nethttp.Serve(ln, nil)
 	}()
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
@@ -658,7 +656,7 @@ func testClientDoWithSameConnectionGetMethod(t *testing.T) {
 		})
 		nethttp.Serve(ln, nil)
 	}()
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool: bPool,
@@ -695,9 +693,9 @@ func testClientDoWithSameConnectionGetMethod(t *testing.T) {
 	}
 }
 
-func testClinetDoFake(t *testing.T) {
+func testClientDoFake(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
-	currentClinet := &Client{
+	currentClient := &Client{
 		BufioPool: bPool,
 	}
 	req := &SimpleRequest{}
@@ -705,14 +703,14 @@ func testClinetDoFake(t *testing.T) {
 	resp := &SimpleResponse{}
 	s := "hello faker!"
 	nr := strings.NewReader(s)
-	_, _, _, err := currentClinet.DoFake(req, resp, nr)
+	_, _, _, err := currentClient.DoFake(req, resp, nr)
 	if err != nil {
 		t.Fatalf("unexpected error:%s", err)
 	}
 	if !bytes.Contains(resp.GetBody(), []byte("hello faker!")) {
 		t.Fatalf("do fake error, expected data %s, but get unexpected data %s", s, string(resp.GetBody()))
 	}
-	_, _, _, err = currentClinet.DoFake(nil, resp, nr)
+	_, _, _, err = currentClient.DoFake(nil, resp, nr)
 	if err == nil {
 		t.Fatalf("expected error: %s", errNilReq)
 	}
@@ -720,7 +718,7 @@ func testClinetDoFake(t *testing.T) {
 		t.Fatalf("expected error: %s, but get unexpected error: %s", errNilReq, err)
 	}
 
-	_, _, _, err = currentClinet.DoFake(req, nil, nr)
+	_, _, _, err = currentClient.DoFake(req, nil, nr)
 	if err == nil {
 		t.Fatalf("expected error: %s", errNilResp)
 	}
@@ -728,41 +726,12 @@ func testClinetDoFake(t *testing.T) {
 		t.Fatalf("expected error: %s, but get unexpected error: %s", errNilResp, err)
 	}
 
-	_, _, _, err = currentClinet.DoFake(req, resp, nil)
+	_, _, _, err = currentClient.DoFake(req, resp, nil)
 	if err == nil {
 		t.Fatalf("expected error: %s", errNilFakeResp)
 	}
 	if err != errNilFakeResp {
 		t.Fatalf("expected error: %s, but get unexpected error: %s", errNilFakeResp, err)
-	}
-
-}
-
-func testClientUsage(t *testing.T) {
-	var err error
-	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
-	currentClinet := &Client{
-		BufioPool: bPool,
-	}
-	req := &SimpleRequest{}
-	req.SetTargetWithPort("0.0.0.0:10000")
-	resp := &SimpleResponse{}
-	reqReadNum, reqWriteNum, respNum, err := currentClinet.Do(req, resp)
-	if err != nil {
-		t.Fatalf("unexpected error : %s", err.Error())
-	}
-	if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
-		t.Fatal("Response body is wrong")
-	}
-	if len(resp.GetBody()) != respNum {
-		t.Fatal("Response body length is wrong")
-	}
-	if req.GetReadSize() != reqReadNum {
-		t.Fatal("request read length is wrong")
-	}
-
-	if req.GetWriteSize() != reqWriteNum {
-		t.Fatal("request read length is wrong")
 	}
 }
 
