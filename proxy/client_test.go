@@ -15,24 +15,25 @@ import (
 	"github.com/haxii/fastproxy/bytebufferpool"
 	"github.com/haxii/fastproxy/client"
 	"github.com/haxii/fastproxy/http"
+	"github.com/haxii/fastproxy/superproxy"
 )
 
 func TestParallelWriteHeader(t *testing.T) {
-	buffer1 := bytebufferpool.Get()
-	defer bytebufferpool.Put(buffer1)
+	buffer := bytebufferpool.Get()
+	defer bytebufferpool.Put(buffer)
 	fixedsizebytebuffer := bytebufferpool.MakeFixedSizeByteBuffer(5)
-	testParallelWriteHeader(t, buffer1, nil, []byte("Host: www.google.com\r\nUser-Agent: curl/7.54.0\r\n\r\n"), "", "")
-	buffer1.Reset()
-	testParallelWriteHeader(t, buffer1, nil, []byte("Host: www.google.com\r\nUser-Agent: curl/7.54.0\n\n"), "", "")
-	buffer1.Reset()
-	testParallelWriteHeader(t, buffer1, nil, []byte("Host: www.google.com\r\nProxy-Connection: Keep-Alive\r\nUser-Agent: curl/7.54.0\r\n\r\n"), "", "Proxy-Connection: Keep-Alive\r\n")
+	testParallelWriteHeader(t, buffer, nil, []byte("Host: www.google.com\r\nUser-Agent: curl/7.54.0\r\n\r\n"), "", "")
+	buffer.Reset()
+	testParallelWriteHeader(t, buffer, nil, []byte("Host: www.google.com\r\nUser-Agent: curl/7.54.0\n\n"), "", "")
+	buffer.Reset()
+	testParallelWriteHeader(t, buffer, nil, []byte("Host: www.google.com\r\nProxy-Connection: Keep-Alive\r\nUser-Agent: curl/7.54.0\r\n\r\n"), "", "Proxy-Connection: Keep-Alive\r\n")
 	testParallelWriteHeader(t, nil, fixedsizebytebuffer, []byte("Host: www.google.com\r\nProxy-Connection: Keep-Alive\r\nUser-Agent: curl/7.54.0\r\n\r\n"), "error short buffer", "")
 }
 
 func testParallelWriteHeader(t *testing.T, buffer *bytebufferpool.ByteBuffer, fixedsizeB *bytebufferpool.FixedSizeByteBuffer, header []byte, expErr, expResult string) {
 	var additionalDst string
 	if buffer != nil {
-		n, err := parallelWriteHeader(buffer, func(p []byte) { additionalDst = string(p) }, header)
+		n, err := parallelWriteHeader(buffer, func(p []byte) { additionalDst += string(p) }, header)
 		if err != nil {
 			if !strings.Contains(err.Error(), expErr) {
 				t.Fatalf("expected error: error short buffer, but error: %s", err)
@@ -54,7 +55,7 @@ func testParallelWriteHeader(t *testing.T, buffer *bytebufferpool.ByteBuffer, fi
 			}
 		}
 	} else {
-		_, err := parallelWriteHeader(fixedsizeB, func(p []byte) { additionalDst = string(p) }, header)
+		_, err := parallelWriteHeader(fixedsizeB, func(p []byte) { additionalDst += string(p) }, header)
 		if err != nil {
 			if !strings.Contains(err.Error(), expErr) {
 				t.Fatalf("expected error: error short buffer, but error: %s", err)
@@ -102,7 +103,6 @@ func testRequest(t *testing.T, reqString string, expMethod string, expProtocol s
 			t.Fatalf("unexpected error: %s", err)
 		}
 		if bw.Buffered() == expHeaderSize {
-			fmt.Println(bw.Buffered())
 			t.Fatalf("Cant't write header to bufio writer")
 		}
 	}
@@ -164,7 +164,7 @@ func testWithClient(t *testing.T, reqString string) {
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
-	req.reqLine.HostInfo().ParseHostWithPort("127.0.0.1:9678", false)
+
 	sHijack := &simpleHijacker{}
 	req.SetHijacker(sHijack)
 	b := bytebufferpool.MakeFixedSizeByteBuffer(100)
@@ -197,14 +197,15 @@ func TestWithClient(t *testing.T) {
 		})
 		log.Fatal(nethttp.ListenAndServe(":9678", nil))
 	}()
-	time.Sleep(time.Second)
-	getReq := "GET /client HTTP/1.1\r\n" +
+	time.Sleep(time.Millisecond * 10)
+
+	getReq := "GET http://127.0.0.1:9678/client HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:9678\r\n" +
 		"\r\n"
-	headReq := "HEAD /client HTTP/1.1\r\n" +
+	headReq := "HEAD http://127.0.0.1:9678/client HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:9678\r\n" +
 		"\r\n"
-	postReq := "POST /client HTTP/1.1\r\n" +
+	postReq := "POST http://127.0.0.1:9678/client HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:9678\r\n" +
 		"\r\n"
 
@@ -298,46 +299,118 @@ func TestCopyHeader(t *testing.T) {
 }
 
 func TestRequestPool(t *testing.T) {
-	for i := 0; i < 10; i++ {
-		reqPool := &RequestPool{}
-		request := reqPool.Acquire()
-		/*if request. != 0 {
-			t.Fatal("request pool can't acquire an empty request")
-		}
-		request.AddWriteSize(10)
-		if request.GetWriteSize() != 10 {
-			t.Fatal("request pool can't acquire an normal request")
-		}*/
-		reqPool.Release(request)
+	reqPool := &RequestPool{}
+	request := reqPool.Acquire()
+	if request == nil {
+		t.Fatal("request pool can't acquire an empty request")
 	}
+	request.header = http.Header{}
+	request.header.ParseHeaderFields(bufio.NewReader(strings.NewReader("Connection: close\r\n\r\n")))
+	request.SetHijacker(&simpleHijacker{})
+	request.reader = bufio.NewReader(strings.NewReader("reader"))
+	reqline, _ := http.ParseRequestLine(bufio.NewReader(strings.NewReader("GET / HTTP1.1\r\n")))
+	request.reqLine = *reqline
+	request.proxy = &superproxy.SuperProxy{}
+	request.isTLS = true
+	request.tlsServerName = "localhost"
+	request.userdata = &UserData{}
+	request.userdata.Set("key", "value")
+
+	if request.header.IsConnectionClose() != true {
+		t.Fatalf("request header error")
+	}
+	if request.hijacker == nil {
+		t.Fatalf("request hijacker error")
+	}
+	if len(request.reqLine.GetRequestLine()) == 0 {
+		t.Fatalf("request reqLine error")
+	}
+	if request.proxy == nil {
+		t.Fatalf("request proxy error")
+	}
+	if request.isTLS == false {
+		t.Fatalf("request isTLS error")
+	}
+	if len(request.tlsServerName) == 0 {
+		t.Fatalf("request tlsServerName error")
+	}
+	if request.userdata.Get("key") == nil {
+		t.Fatalf("request userdata data error")
+	}
+
+	reqPool.Release(request)
+	request = reqPool.Acquire()
+	if request.header.IsConnectionClose() != false {
+		t.Fatalf("request reset header error")
+	}
+	if request.hijacker != nil {
+		t.Fatalf("request reset hijacker error")
+	}
+	if len(request.reqLine.GetRequestLine()) != 0 {
+		t.Fatalf("request reset reqLine error")
+	}
+	if request.proxy != nil {
+		t.Fatalf("request reset proxy error")
+	}
+	if request.isTLS != false {
+		t.Fatalf("request reset isTLS error")
+	}
+	if len(request.tlsServerName) != 0 {
+		t.Fatalf("request reset tlsServerName error")
+	}
+	if request.userdata == nil {
+		t.Fatalf("request reset userdata error")
+	}
+	if request.userdata.Get("key") != nil {
+		t.Fatalf("request reset userdata data error")
+	}
+	reqPool.Release(request)
 }
 
 func TestResponsePool(t *testing.T) {
-	//s := "HTTP/1.1 200 ok\r\n\r\n"
-	for i := 0; i < 10; i++ {
-		respPool := &ResponsePool{}
-		resp := respPool.Acquire()
-		/*if resp.GetSize() != 0 {
-			t.Fatal("request pool can't acquire an empty response")
-		}
-		br := bufio.NewReader(strings.NewReader(s))
-		byteBuffer := bytebufferpool.MakeFixedSizeByteBuffer(100)
-		bw := bufio.NewWriter(byteBuffer)
-		sHijacker := &simpleHijacker{}
-		resp.SetHijacker(sHijacker)
-		err := resp.WriteTo(bw)
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err.Error())
-		}
-		err = resp.ReadFrom(false, br)
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err.Error())
-		}
-		if resp.GetSize() != 19 {
-			t.Fatal("request pool can't acquire an normal response")
-		}*/
-		respPool.Release(resp)
+	s := "HTTP/1.1 200 ok\r\nConnection: close\r\n\r\n"
+	respPool := &ResponsePool{}
+	resp := respPool.Acquire()
+	if resp == nil {
+		t.Fatal("request pool can't acquire an empty response")
 	}
+	br := bufio.NewReader(strings.NewReader(s))
+	byteBuffer := bytebufferpool.MakeFixedSizeByteBuffer(100)
+	bw := bufio.NewWriter(byteBuffer)
+	sHijacker := &simpleHijacker{}
+	resp.SetHijacker(sHijacker)
+	err := resp.WriteTo(bw)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	_, err = resp.ReadFrom(true, br)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	if resp.header.IsConnectionClose() != true {
+		t.Fatalf("response header error")
+	}
+	if resp.hijacker == nil {
+		t.Fatalf("response hijacker error")
+	}
+	if resp.writer == nil {
+		t.Fatalf("response writer error")
+	}
+
+	respPool.Release(resp)
+	resp = respPool.Acquire()
+
+	if resp.header.IsConnectionClose() == true {
+		t.Fatalf("response reset header error")
+	}
+	if resp.writer != nil {
+		t.Fatalf("response reset writer error")
+	}
+	if len(resp.respLine.GetResponseLine()) != 0 {
+		t.Fatalf("response reset reqLine error")
+	}
+
+	respPool.Release(resp)
 }
 
 type simpleHijacker struct{}
