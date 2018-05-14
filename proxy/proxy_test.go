@@ -24,11 +24,10 @@ import (
 )
 
 var (
-	simpleProxyPort                                                                             = "5050"
-	simpleServerPort                                                                            = ":9991"
-	simpleHTTPSServerPort                                                                       = ":3130"
-	httpsProxyAddr                                                                              = "0.0.0.0:5060"
-	httpsProxyPort                                                                              = ":5060"
+	simpleProxyPort                                                                             = 5050
+	simpleServerPort                                                                            = 9991
+	simpleHTTPSServerPort                                                                       = 3130
+	httpsProxyPort                                                                              = 5060
 	simpleServer, keepAliveServer, simpleProxy, httpsServer, httpProxy, httpsProxy, socks5Proxy func()
 )
 
@@ -38,7 +37,7 @@ func testInit(t *testing.T) {
 			w.Header().Set("Connection", "keep-alive")
 			fmt.Fprintf(w, "Hello world%s!", r.URL.Path[1:])
 		})
-		nethttp.ListenAndServe(simpleServerPort, nil)
+		nethttp.ListenAndServe(fmt.Sprintf(":%d", simpleServerPort), nil)
 	}
 
 	keepAliveServer = func() {
@@ -86,7 +85,7 @@ func testInit(t *testing.T) {
 				},
 			},
 		}
-		if err := proxy.Serve("tcp4", "0.0.0.0:"+simpleProxyPort); err != nil {
+		if err := proxy.Serve("tcp4", fmt.Sprintf("0.0.0.0:%d", simpleProxyPort)); err != nil {
 			panic(err)
 		}
 	}
@@ -144,7 +143,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 		}
 		f.Write([]byte(serverKey))
 		f.Close()
-		err = nethttp.ListenAndServeTLS(simpleHTTPSServerPort, ".server.crt", ".server.key", nil)
+		err = nethttp.ListenAndServeTLS(fmt.Sprintf(":%d", simpleHTTPSServerPort), ".server.crt", ".server.key", nil)
 		if err != nil {
 			slog.Fatal("ListenAndServe: ", err)
 		}
@@ -184,7 +183,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	   				},
 	   			},
 	   		}
-	   		if err := proxy.Serve("tcp4", httpsProxyPort); err != nil {
+	   		if err := proxy.Serve("tcp4", fmt.Sprintf(":%s",httpsProxyPort)); err != nil {
 	   			panic(err)
 	   		}
 	   	}
@@ -215,7 +214,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	}
 
 	httpProxy = func() {
-		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 3128, superproxy.ProxyTypeHTTP, "", "", "")
+		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", uint16(simpleProxyPort), superproxy.ProxyTypeHTTP, "", "", "")
 		proxy := Proxy{
 			ServerIdleDuration: 30 * time.Second,
 			Logger:             &log.DefaultLogger{},
@@ -242,9 +241,9 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	go simpleServer()
 	go httpsServer()
 	go keepAliveServer()
-	time.Sleep(time.Second)
-	defer os.Remove(".server.key")
-	defer os.Remove(".server.crt")
+	time.Sleep(time.Millisecond * 10)
+	os.Remove(".server.key")
+	os.Remove(".server.crt")
 }
 
 func TestCommon(t *testing.T) {
@@ -252,7 +251,7 @@ func TestCommon(t *testing.T) {
 	httpReq, _ := nethttp.NewRequest("GET", "http://127.0.0.1:9991", nil)
 	httpsReq, _ := nethttp.NewRequest("GET", "https://127.0.0.1:3130", nil)
 	Cache := ""
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 1000; i++ {
 		Cache += "t"
 	}
 	testProxyServe(t, simpleProxy, "GET / HTTP/1.1\r\n\r\n", "HTTP/1.1 400 Bad Request\r\n")
@@ -274,8 +273,8 @@ func TestCommon(t *testing.T) {
 
 func testProxyServe(t *testing.T, simpleFunc func(), reqString, expResult string) {
 	go simpleFunc()
-	time.Sleep(time.Second)
-	simpleServerAddr := "0.0.0.0:" + simpleProxyPort
+	time.Sleep(time.Millisecond * 10)
+	simpleServerAddr := fmt.Sprintf("0.0.0.0:%d", simpleProxyPort)
 	conn, err := net.Dial("tcp4", simpleServerAddr)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
@@ -330,7 +329,7 @@ func testHTTPRequest(t *testing.T, req *nethttp.Request, proxyAddr, expString st
 // test send http request with http superproxy
 func testHTTPSuperProxy(t *testing.T, proxyAddr string, httpReq, httpsReq *nethttp.Request, expResult string, proxy func()) {
 	go proxy()
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 	proxyWithHTTPSuperProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(proxyAddr)
 		if err != nil {
@@ -424,7 +423,7 @@ func testHTTPSSuperProxy(t *testing.T, proxyAddr string, httpReq, httpsReq *neth
 // test send http request with socks5 superproxy
 func testSocks5SuperProxy(t *testing.T, proxyAddr string, httpReq, httpsReq *nethttp.Request, expResult string, proxy func()) {
 	go proxy()
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 	proxyWithSocks5SuperProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(proxyAddr)
 		if err != nil {
@@ -505,7 +504,7 @@ func testBigHeader(t *testing.T, proxyAddr string, req *nethttp.Request, bigCach
 
 	req.Header.Set("Sec-WebSocket-Key", Cache)
 	_, err := c.Do(req)
-	if !strings.Contains(err.Error(), expErr) {
+	if err != nil && !strings.Contains(err.Error(), expErr) {
 		t.Fatalf("unexpected error: %s, expected error: EOF", err.Error())
 	}
 }
@@ -573,19 +572,19 @@ func testGracefulShutDown(t *testing.T) {
 	go func() {
 		proxy.Serve("tcp4", "0.0.0.0:7078")
 	}()
-	time.Sleep(1 * time.Second)
+	time.Sleep(time.Millisecond * 10)
 	conn, err := net.Dial("tcp4", "0.0.0.0:7078")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
-	time.Sleep(1 * time.Second)
+	time.Sleep(time.Millisecond * 10)
 	go func() {
 		err = proxy.ShutDown()
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	}()
-	time.Sleep(1 * time.Second)
+	time.Sleep(time.Millisecond * 10)
 	fmt.Fprintf(conn, "GET / HTTP/1.1\r\n\r\n")
 	status, err := bufio.NewReader(conn).ReadString('\n')
 	if err != nil {
@@ -610,7 +609,7 @@ func testGracefulShutDown(t *testing.T) {
 
 // test using proxy hijack and url send to different proxy
 func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
-	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 3128, superproxy.ProxyTypeHTTP, "", "", "")
+	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", uint16(simpleProxyPort), superproxy.ProxyTypeHTTP, "", "", "")
 	dataForSigning := ""
 	proxy := Proxy{
 		Logger: &log.DefaultLogger{},
