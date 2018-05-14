@@ -25,7 +25,7 @@ func TestTransportForwordAndDial(t *testing.T) {
 		})
 		http.ListenAndServe(":9997", nil)
 	}()
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 	connDst, err := Dial("127.0.0.1:9997")
 	if err != nil {
 		t.Fatal("dial dst error")
