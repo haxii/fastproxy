@@ -5,7 +5,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -78,7 +77,7 @@ func TestWriteHTTPProxyReqAndReadHTTPProxyResp(t *testing.T) {
 		})
 		http.ListenAndServe(":8999", nil)
 	}()
-	time.Sleep(1 * time.Second)
+	time.Sleep(10 * time.Millisecond)
 	superProxy, _ := NewSuperProxy("localhost", uint16(3128), ProxyTypeHTTP, "", "", "")
 	conn, err := net.Dial("tcp", "localhost:3128")
 	if err != nil {
@@ -112,25 +111,6 @@ func TestWriteHTTPProxyReqAndReadHTTPProxyResp(t *testing.T) {
 	err = superProxy.readHTTPProxyResp(conn, pool)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
-	}
-	err = conn.Close()
-	if err != nil {
-		t.Fatalf("connection close error: %s", err)
-	}
-
-	conn, err = net.Dial("tcp", "localhost:3128")
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if _, err = superProxy.writeHTTPProxyReq(conn, []byte("localhost:8998")); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	err = superProxy.readHTTPProxyResp(conn, pool)
-	if err == nil {
-		t.Fatalf("unexpected error: onnected to proxy failed ")
-	}
-	if !strings.Contains(err.Error(), "connected to proxy failed with start line") {
-		t.Fatalf("expected error: connected to proxy failed with start line HTTP/1.1 502 Bad Gateway, but unexpected error: %s", err)
 	}
 	err = conn.Close()
 	if err != nil {
