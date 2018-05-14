@@ -51,7 +51,7 @@ func init() {
 func TestHijackTLSConnection(t *testing.T) {
 
 	//TODO:
-	t.Fatal("should test more cases")
+	//t.Fatal("should test more cases")
 
 	var failErr1, failErr2, failErr3, failErr4 error
 	// start real server
@@ -62,10 +62,12 @@ func TestHijackTLSConnection(t *testing.T) {
 		conn, err := realTLSServerListener.Accept()
 		if err != nil {
 			*failErr = err
+			fmt.Println("1:", err)
 			return
 		}
 		defer conn.Close()
 		if _, err := conn.Write([]byte(realServerMessage)); err != nil {
+			fmt.Println("2:", err)
 			*failErr = err
 			return
 		}
@@ -150,15 +152,18 @@ func TestHijackTLSConnection(t *testing.T) {
 		}
 	}(&failErr4)
 	wg.Wait()
+
 	if failErr1 != nil {
 		t.Fatal(failErr1)
 	}
 	if failErr2 != nil {
 		t.Fatal(failErr2)
 	}
+
 	if failErr3 != nil {
 		t.Fatal(failErr3)
 	}
+
 	if failErr4 != nil {
 		t.Fatal(failErr4)
 	}
@@ -168,38 +173,52 @@ func TestHijackTLSConnection(t *testing.T) {
 var (
 	realServerCertPEM = []byte(`
 -----BEGIN CERTIFICATE-----
-MIICnzCCAggCCQDbF8N9hzgLKTANBgkqhkiG9w0BAQUFADCBkzELMAkGA1UEBhMC
-c2gxGjAYBgNVBAgMEXNoYW5naGFpIGluIENoaW5hMREwDwYDVQQHDAhzaGFuZ2hh
-aTEOMAwGA1UECgwFaGF4aWkxEDAOBgNVBAsMB3NlY3Rpb24xEjAQBgNVBAMMCWxv
-Y2FsaG9zdDEfMB0GCSqGSIb3DQEJARYQNDkzODg1NTk3QHFxLmNvbTAeFw0xODAz
-MDEwMzU4NDRaFw0xODAzMzEwMzU4NDRaMIGTMQswCQYDVQQGEwJzaDEaMBgGA1UE
-CAwRc2hhbmdoYWkgaW4gY2hpbmExETAPBgNVBAcMCHNoYW5naGFpMQ4wDAYDVQQK
-DAVoYXhpaTEQMA4GA1UECwwHc2VjdGlvbjESMBAGA1UEAwwJbG9jYWxob3N0MR8w
-HQYJKoZIhvcNAQkBFhA0OTM4ODU1OTdAcXEuY29tMIGfMA0GCSqGSIb3DQEBAQUA
-A4GNADCBiQKBgQCpavxAydg6qDcSHhzwcebD5v/o2yItY1a6cA8t4cd+8661TAQr
-//YRISpIwUZ7TOLVdmnMuyUzxGABZQ5iwiKDqbl5GLxB/f3NRWv5Cr8vT4izFNP0
-toIky5oEkDq/xBZvVnshBO6fpx1vulnow+3Y3WeriwVXvuQAQw5N8qod/QIDAQAB
-MA0GCSqGSIb3DQEBBQUAA4GBAG45K4B2N8lEeCimTyYuS9yGRQINMfdZksL2aDyq
-OL95JiCMKM1iFulom/fth3oxi1w95VRFaM4tO8qIBtKuFyWs8x1MMpTJlEamHFTe
-H1Id2JuKgDgi4AmxfKPjh+j+U6iNbMgjwo6scfaWcpteGK0FA5jn4cmMmlwhkjCA
-L/ib
+MIIC+zCCAeOgAwIBAgIJAONhl6/8qFKhMA0GCSqGSIb3DQEBBQUAMBQxEjAQBgNV
+BAMMCWxvY2FsaG9zdDAeFw0xODA0MjcxMDI3MTRaFw0yODA0MjQxMDI3MTRaMBQx
+EjAQBgNVBAMMCWxvY2FsaG9zdDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoC
+ggEBAN1q/YQxBQuMZAaq1bYtELHYOJKhQ5bYCVXQZEdrhYQ8c2rd88vKMLJmmWUG
+O1mXroFvATibBLcNe9/+R905M/jSdYcGg1iHUSBjm0Exejqg6NWq3SYn1sZoejer
+fZalWXJKVe7RnAeacVJ4S5HXzTfzXyHrc4C8v5VUyrIh1+tsRT+pidghX4cbZFM3
+MofxSSCMHCHWUq54kwOa63fJmh8QXiy4OQavloWJgfllnhReRa5JOc6/1paPY2iM
+GwCKoyc93PK4Lx2m4fmoQBK0DvAoClPyS5ZU/MaizRO/aV0Yzn7pO4y8afpQQGe0
+YRJz+pDmiGMwBHOHTXiOHtmE738CAwEAAaNQME4wHQYDVR0OBBYEFB1Z+4R6eWHb
+w1/U4RzO+V7gdqr9MB8GA1UdIwQYMBaAFB1Z+4R6eWHbw1/U4RzO+V7gdqr9MAwG
+A1UdEwQFMAMBAf8wDQYJKoZIhvcNAQEFBQADggEBAFI5BOSxxUwNWEgWpoDRYgm4
+heLpzLwLzjXk61/Ny33W6nLRz+etIFaQjAVVwwAmMLHZmHweBZ492YGajfbEeQMo
+5y9JjyJk45YzSISeadj9KAoQJPO0Xvovwgmzjt8bHGBTkqQ/+V4xDtG4H7/hqPJN
+AwG0RF+fu/HHAYIB+7t7yZq2iLZYSYPSdsHJt/v6vvOD95u819Z10Eunfu+iGvyL
+1wYjM9njIQwcUCxcfFHKz+b0PCWkj3X9Sfgid3p5q2KheMSaGBc1uVDqJ13hn2wn
+QuJQcJriSPQ+9nQZR+aOMIoXkRDHzdi15F01Nax6ox0pZkpK+goU5sgEzlgX6zk=
 -----END CERTIFICATE-----
 `)
+
 	realServerKeyPEM = []byte(`
 -----BEGIN RSA PRIVATE KEY-----
-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
+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
 -----END RSA PRIVATE KEY-----
 `)
 )

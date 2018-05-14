@@ -239,7 +239,6 @@ func (b *ByteBufferWithSleeping) Read(p []byte) (int, error) {
 	time.Sleep(b.readIdleTime)
 	n := copy(p, b.B[b.i:])
 	b.i += n
-	fmt.Println(n)
 	return n, nil
 }
 

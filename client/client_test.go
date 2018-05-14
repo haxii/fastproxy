@@ -17,7 +17,6 @@ import (
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/superproxy"
-	"github.com/haxii/fastproxy/usage"
 )
 
 func TestClientDo(t *testing.T) {
@@ -27,7 +26,7 @@ func TestClientDo(t *testing.T) {
 		})
 		log.Fatal(nethttp.ListenAndServe(":10000", nil))
 	}()
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 
 	testClientDoByDefaultParameters(t)
 
@@ -57,8 +56,7 @@ func TestClientDo(t *testing.T) {
 
 	testClientDoWithSameConnectionPostMethod(t)
 
-	testClientUsage(t)
-
+	testClientDoFake(t)
 }
 
 // Test Client do with big header or big body
@@ -74,7 +72,7 @@ func TestClientDoWithBigHeaderOrBody(t *testing.T) {
 		})
 		log.Fatal(nethttp.ListenAndServe(":8888", nil))
 	}()
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 	testClientDoWithBigHeader(t)
 	testClientDoWithBigBodyResponse(t)
 }
@@ -325,6 +323,7 @@ func testClientDoIsIdempotent(t *testing.T) {
 		})
 		nethttp.Serve(ln, nil)
 	}()
+	time.Sleep(time.Millisecond * 10)
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool: bPool,
@@ -375,9 +374,9 @@ func testHostClientPendingRequests(t *testing.T) {
 			readyCh <- struct{}{}
 			<-doneCh
 		})
-		log.Fatal(nethttp.ListenAndServe(":9999", nil))
+		log.Fatal(nethttp.ListenAndServe(":9321", nil))
 	}()
-
+	time.Sleep(time.Millisecond * 10)
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &HostClient{
 		BufioPool: bPool,
@@ -390,7 +389,7 @@ func testHostClientPendingRequests(t *testing.T) {
 	for i := 0; i < concurrency; i++ {
 		go func() {
 			req := &SimpleRequest{}
-			req.SetTargetWithPort("127.0.0.1:9999")
+			req.SetTargetWithPort("127.0.0.1:9321")
 			resp := &SimpleResponse{}
 			if _, _, _, err := c.Do(req, resp); err != nil {
 				resultCh <- fmt.Errorf("unexpected error: %s", err)
@@ -491,12 +490,12 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 		f.Write([]byte(serverKey))
 		f.Close()
 
-		err = nethttp.ListenAndServeTLS(":443", ".server.crt", ".server.key", nil)
+		err = nethttp.ListenAndServeTLS(":4433", ".server.crt", ".server.key", nil)
 		if err != nil {
 			log.Fatal("ListenAndServe: ", err)
 		}
 	}()
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
@@ -542,6 +541,7 @@ func testClientDoWithSameConnectionPostMethod(t *testing.T) {
 		})
 		nethttp.Serve(ln, nil)
 	}()
+	time.Sleep(time.Millisecond * 10)
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool: bPool,
@@ -606,7 +606,7 @@ func testClientDoWithPostRequest(t *testing.T) {
 		})
 		nethttp.Serve(ln, nil)
 	}()
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 	var err error
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
@@ -656,6 +656,7 @@ func testClientDoWithSameConnectionGetMethod(t *testing.T) {
 		})
 		nethttp.Serve(ln, nil)
 	}()
+	time.Sleep(time.Millisecond * 10)
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	c := &Client{
 		BufioPool: bPool,
@@ -692,44 +693,45 @@ func testClientDoWithSameConnectionGetMethod(t *testing.T) {
 	}
 }
 
-func testClientUsage(t *testing.T) {
-	var err error
+func testClientDoFake(t *testing.T) {
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
-	currentClinet := &Client{
+	currentClient := &Client{
 		BufioPool: bPool,
-	}
-	currentClinet.Usage = usage.ProxyUsage{
-		Incoming: 0,
-		Outgoing: 0,
 	}
 	req := &SimpleRequest{}
 	req.SetTargetWithPort("0.0.0.0:10000")
 	resp := &SimpleResponse{}
-	reqReadNum, reqWriteNum, respNum, err := currentClinet.Do(req, resp)
+	s := "hello faker!"
+	nr := strings.NewReader(s)
+	_, _, _, err := currentClient.DoFake(req, resp, nr)
 	if err != nil {
-		t.Fatalf("unexpected error : %s", err.Error())
+		t.Fatalf("unexpected error:%s", err)
 	}
-	if !bytes.Contains(resp.GetBody(), []byte("Hello world!")) {
-		t.Fatal("Response body is wrong")
+	if !bytes.Contains(resp.GetBody(), []byte("hello faker!")) {
+		t.Fatalf("do fake error, expected data %s, but get unexpected data %s", s, string(resp.GetBody()))
 	}
-	if len(resp.GetBody()) != respNum {
-		t.Fatal("Response body length is wrong")
+	_, _, _, err = currentClient.DoFake(nil, resp, nr)
+	if err == nil {
+		t.Fatalf("expected error: %s", errNilReq)
 	}
-	if req.GetReadSize() != reqReadNum {
-		t.Fatal("request read length is wrong")
-	}
-
-	if req.GetWriteSize() != reqWriteNum {
-		t.Fatal("request read length is wrong")
+	if err != errNilReq {
+		t.Fatalf("expected error: %s, but get unexpected error: %s", errNilReq, err)
 	}
 
-	currentClinet.Usage.AddIncomingSize(uint64(reqWriteNum))
-	currentClinet.Usage.AddOutgoingSize(uint64(reqReadNum))
-	if currentClinet.Usage.GetIncomingSize() != uint64(reqWriteNum) {
-		t.Fatal("Usage income size count is wrong")
+	_, _, _, err = currentClient.DoFake(req, nil, nr)
+	if err == nil {
+		t.Fatalf("expected error: %s", errNilResp)
 	}
-	if currentClinet.Usage.GetOutgoingSize() != uint64(reqReadNum) {
-		t.Fatal("Usage outgoing size count is wrong")
+	if err != errNilResp {
+		t.Fatalf("expected error: %s, but get unexpected error: %s", errNilResp, err)
+	}
+
+	_, _, _, err = currentClient.DoFake(req, resp, nil)
+	if err == nil {
+		t.Fatalf("expected error: %s", errNilFakeResp)
+	}
+	if err != errNilFakeResp {
+		t.Fatalf("expected error: %s, but get unexpected error: %s", errNilFakeResp, err)
 	}
 }
 
@@ -1065,7 +1067,7 @@ func (r *HTTPSRequest) Method() []byte {
 }
 
 func (r *HTTPSRequest) TargetWithPort() string {
-	return "127.0.0.1:443"
+	return "127.0.0.1:4433"
 }
 func (r *HTTPSRequest) SetTargetWithPort(s string) {}
 

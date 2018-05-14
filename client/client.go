@@ -116,7 +116,6 @@ var (
 )
 
 // DoFake make a client request by giving a faked response
-// TODO: @xiangyu test this
 func (c *Client) DoFake(req Request, resp Response, fakeRespReader io.Reader) (reqReadNum,
 	reqWriteNum, responseNum int, err error) {
 	writeReqToDevNull := func(req Request) (readNum, writeNum int, err error) {

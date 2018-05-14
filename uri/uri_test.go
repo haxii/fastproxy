@@ -1,10 +1,13 @@
 package uri
 
-import "testing"
-import "bytes"
+import (
+	"bytes"
+	"net"
+	"testing"
+)
 
 func TestParse(t *testing.T) {
-	t.Fatal("test host info parseHostWithPort using all kinds of possibilities")
+	//t.Fatal("test host info parseHostWithPort using all kinds of possibilities")
 	u := &URI{}
 	//uri1: connect www.example.com:443 http/1.1
 	testURIParse(t, u, true, "www.example.com:443",
@@ -37,10 +40,6 @@ func TestParse(t *testing.T) {
 	testURIParse(t, u, false, "/path/to/resource?##?!",
 		"", "", "",
 		"/path/to/resource?##?!", "/path/to/resource", "?", "##?!")
-	//TODO: is this a bug?
-	testURIParse(t, u, false, "path/to/resource",
-		"", "path", "path:80",
-		"/to/resource", "/to/resource", "", "")
 	testURIParse(t, u, false, "path",
 		"", "path", "path:80",
 		"/", "/", "", "")
@@ -92,4 +91,57 @@ func testURIParse(t *testing.T, u *URI, isConnect bool, uri,
 	if !bytes.Equal(u.Fragments(), []byte(expectedFragment)) {
 		t.Fatalf("Unexpected Fragments %q, Expected %q", u.Fragments(), []byte(expectedFragment))
 	}
+}
+
+func TestHostInfo(t *testing.T) {
+	hostInfo := &HostInfo{}
+	testHostInfo(t, "127.0.0.1:80", false, "127.0.0.1", "80", "127.0.0.1:80", "127.0.0.1:80", "127.0.0.1", "", hostInfo)
+	testHostInfo(t, "127.0.0.1", true, "127.0.0.1", "443", "127.0.0.1:443", "127.0.0.1:443", "127.0.0.1", "", hostInfo)
+
+	testHostInfo(t, "127.0.0.1:8080", false, "127.0.0.1", "8080", "127.0.0.1:8080", "127.0.0.1:8080", "127.0.0.1", "", hostInfo)
+	testHostInfo(t, "127.0.0.1:444", true, "127.0.0.1", "444", "127.0.0.1:444", "127.0.0.1:444", "127.0.0.1", "", hostInfo)
+
+	testHostInfo(t, "127.0.0.1", false, "127.0.0.1", "80", "127.0.0.1:80", "114.114.114.114:80", "114.114.114.114", "114.114.114.114", hostInfo)
+	testHostInfo(t, "127.0.0.1", true, "127.0.0.1", "443", "127.0.0.1:443", "114.114.114.114:443", "114.114.114.114", "114.114.114.114", hostInfo)
+
+	testHostInfo(t, "localhost", true, "localhost", "443", "localhost:443", "localhost:443", "localhost", "", hostInfo)
+	testHostInfo(t, "localhost", false, "localhost", "80", "localhost:80", "localhost:80", "localhost", "", hostInfo)
+
+	testHostInfo(t, "localhost:8080", false, "localhost", "8080", "localhost:8080", "localhost:8080", "localhost", "", hostInfo)
+	testHostInfo(t, "localhost:445", true, "localhost", "445", "localhost:445", "localhost:445", "localhost", "", hostInfo)
+
+	testHostInfo(t, ":::::", true, "", "", "", "", "", "", hostInfo)
+	testHostInfo(t, ":::::", false, "", "", "", "", "", "", hostInfo)
+
+}
+
+func testHostInfo(t *testing.T, host string, isTLS bool, domain, port, hostWithPort, targetWithPort, expIP string, ipSetting string, h *HostInfo) {
+
+	h.ParseHostWithPort(host, isTLS)
+	if len(ipSetting) != 0 {
+		ip := net.ParseIP(ipSetting)
+		h.SetIP(ip)
+	}
+	if h.Domain() != domain {
+		t.Fatal("Domain is wrong")
+	}
+	if h.HostWithPort() != hostWithPort {
+		t.Fatal("Host with port is wrong")
+	}
+
+	if !bytes.Equal(h.IP(), []byte(expIP)) {
+		if expIP != "localhost" && expIP != h.IP().String() {
+			t.Fatal("Setting IP is wrong")
+		}
+	}
+
+	if h.Port() != port {
+		t.Fatal("Parsing port is wrong")
+	}
+
+	if h.TargetWithPort() != targetWithPort {
+		t.Fatal("Parsing target with port error")
+	}
+	h.reset()
+
 }
