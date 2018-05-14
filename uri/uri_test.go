@@ -40,10 +40,6 @@ func TestParse(t *testing.T) {
 	testURIParse(t, u, false, "/path/to/resource?##?!",
 		"", "", "",
 		"/path/to/resource?##?!", "/path/to/resource", "?", "##?!")
-	//TODO: is this a bug?
-	testURIParse(t, u, false, "path/to/resource",
-		"", "path", "path:80",
-		"/to/resource", "/to/resource", "", "")
 	testURIParse(t, u, false, "path",
 		"", "path", "path:80",
 		"/", "/", "", "")
