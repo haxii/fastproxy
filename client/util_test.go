@@ -11,50 +11,33 @@ import (
 
 // test write request line
 func TestWriteRequestLine(t *testing.T) {
-	w := bytebufferpool.MakeFixedSizeByteBuffer(100)
+	w := bytebufferpool.MakeFixedSizeByteBuffer(14)
 	bPool := bufiopool.New(bufiopool.MinReadBufferSize, bufiopool.MinWriteBufferSize)
 	bw := bPool.AcquireWriter(w)
-	method := ""
-	for i := 0; i < 10000; i++ {
-		method += "G"
-	}
-	hostwithport := ""
-	for i := 0; i < 10000; i++ {
-		hostwithport += "G"
-	}
-	hostwithport += ".0.0.0:8080"
+	method := "GET"
+	hostwithport := "127.0.0.1:8080"
+	path := "/"
+	protocol := "HTTP/1.1"
 
-	path := ""
-	for i := 0; i < 10000; i++ {
-		path += "/"
-	}
-
-	protocol := ""
-	for i := 0; i < 10000; i++ {
-		protocol += "HTTP/1.1"
-	}
-
-	testWriteRequestLine(t, bw, false, nil, "GET", "127.0.0.1:8080", "/", "HTTP/1.1")
+	testWriteRequestLine(t, bw, false, nil, method, hostwithport, path, protocol)
 
 	bw.Reset(w)
-
-	testWriteRequestLine(t, bw, true, nil, "GET", "127.0.0.1:8080", "/", "HTTP/1.1")
+	testWriteRequestLine(t, bw, true, nil, method, hostwithport, path, protocol)
 
 	bw.Reset(w)
+	testWriteRequestLine(t, nil, true, errNilBufioWriter, method, hostwithport, path, protocol)
 
-	testWriteRequestLine(t, nil, true, errNilBufioWriter, "GET", "127.0.0.1:8080", "/", "HTTP/1.1")
 	bw.Reset(w)
+	testWriteRequestLine(t, bw, true, io.ErrShortBuffer, method+"ABCDEFGHIJKLMN", hostwithport, path, protocol)
 
-	testWriteRequestLine(t, bw, true, io.ErrShortBuffer, method, "127.0.0.1:8080", "/", "HTTP/1.1")
 	bw.Reset(w)
+	testWriteRequestLine(t, bw, true, io.ErrShortBuffer, method, hostwithport+"ABCDEFGHIJKLMN", path, protocol)
 
-	testWriteRequestLine(t, bw, true, io.ErrShortBuffer, "GET", hostwithport, "/", "HTTP/1.1")
 	bw.Reset(w)
+	testWriteRequestLine(t, bw, true, io.ErrShortBuffer, method, hostwithport, path+"ABCDEFGHIJKLMN", protocol)
 
-	testWriteRequestLine(t, bw, true, io.ErrShortBuffer, "GET", "127.0.0.1:8080", path, "HTTP/1.1")
 	bw.Reset(w)
-
-	testWriteRequestLine(t, bw, true, io.ErrShortBuffer, "GET", "127.0.0.1:8080", path, protocol)
+	testWriteRequestLine(t, bw, true, io.ErrShortBuffer, method, hostwithport, path, protocol+"ABCDEFGHIJKLMN")
 	defer bPool.ReleaseWriter(bw)
 }
 
@@ -62,7 +45,7 @@ func testWriteRequestLine(t *testing.T, bw *bufio.Writer, fullURL bool, expErr e
 	n, err := writeRequestLine(bw, fullURL, []byte(method), hostwithport, []byte(uri), []byte(protocol))
 	if err != nil {
 		if err != expErr {
-			t.Fatalf("Expected error is %s, but get unexpected errror: %s", expErr, err.Error())
+			t.Fatalf("Expected error is %s, but get unexpected error: %s", expErr, err.Error())
 		}
 	} else {
 		if err != nil {
