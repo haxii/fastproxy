@@ -8,18 +8,19 @@ addons:
 
 before_install:
  - go get -u -v github.com/golang/lint/golint
- - echo "deb http://mirrors.aliyun.com/ubuntu/ precise varnish-3.0" | sudo tee -a /etc/apt/sources.list
+ - echo "nameserver 8.8.8.8" | sudo tee /etc/resolvconf/resolv.conf.d/base > /dev/null
+ - wget http://www.squid-cache.org/Versions/v3/3.5/squid-3.5.27.tar.gz
  - sudo apt-get update
- - sudo apt-get install dnsmasq -y
  - sudo apt-get install sshpass -y
  - sudo apt-get install openssl -y
+ - sudo apt-get install dnsmasq -y
+ - sudo apt-get install make -y
  - echo "root:ssh" | sudo chpasswd
  - sshpass -p 'ssh' ssh -fN -D 9099 root@127.0.0.1
  - wget http://www.squid-cache.org/Versions/v3/3.5/squid-3.5.27.tar.gz
  - tar -xzf squid-3.5.27.tar.gz
  - cd squid-3.5.27
  - sudo ./configure '--enable-ssl' '--with-openssl' '--enable-ssl-crtd'
- - sudo apt-get install make -y
  - sudo make
  - sudo make install
  - cd ..
