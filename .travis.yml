@@ -8,15 +8,11 @@ addons:
 
 before_install:
  - go get -u -v github.com/golang/lint/golint
- - echo "deb http://mirrors.aliyun.com/ubuntu/ precise varnish-3.0" | sudo tee -a /etc/apt/sources.list
+ - echo "nameserver 8.8.8.8" | sudo tee /etc/resolvconf/resolv.conf.d/base > /dev/null
+ - wget http://www.squid-cache.org/Versions/v3/3.5/squid-3.5.27.tar.gz
  - sudo apt-get update
- - sudo apt-get install dnsmasq -y
- - sudo apt-get install sshpass -y
  - sudo apt-get install openssl -y
  - sudo apt-get install make -y
- - wget http://www.squid-cache.org/Versions/v3/3.5/squid-3.5.27.tar.gz
- - echo "root:ssh" | sudo chpasswd
- - sshpass -p 'ssh' ssh -fN -D 9099 root@127.0.0.1
  - tar -xzf squid-3.5.27.tar.gz
  - cd squid-3.5.27
  - sudo ./configure '--enable-ssl' '--with-openssl' '--enable-ssl-crtd'
@@ -26,10 +22,12 @@ before_install:
  - sudo touch /usr/local/squid/var/logs/access.log /usr/local/squid/var/logs/cache.log
  - sudo chmod 777 /usr/local/squid/var/logs/access.log /usr/local/squid/var/logs/cache.log
  - sudo /usr/local/squid/sbin/squid -f /home/travis/gopath/src/github.com/haxii/fastproxy/.travisfile/squid.conf
- - sudo dnsmasq -p 5300 -S 114.114.114.114
 
 script:
   - diff -u <(echo -n) <(sudo gofmt -s -d ./)
   - diff -u <(echo -n) <(sudo go vet ./...)
   - diff -u <(echo -n) <(sudo golint)
+  - go get github.com/haxii/socks5
+  - go get github.com/haxii/log
+  - go get github.com/fangdingjun/socks-go
   - go test -v ./...

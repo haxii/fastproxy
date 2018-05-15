@@ -21,6 +21,7 @@ import (
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/log"
+	"github.com/haxii/socks5"
 )
 
 var (
@@ -188,6 +189,22 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	   		}
 	   	}
 	*/
+	socksServer := func() {
+		conf := &socks5.Config{
+			BindIP:   net.IPv4(127, 0, 0, 1),
+			BindPort: 9099,
+		}
+		server, err := socks5.New(conf)
+		if err != nil {
+			panic(err)
+		}
+
+		// Create SOCKS5 proxy on localhost port 9099
+		if err := server.ListenAndServe("tcp", "127.0.0.1:9099"); err != nil {
+			panic(err)
+		}
+	}
+
 	socks5Proxy = func() {
 		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 9099, superproxy.ProxyTypeSOCKS5, "", "", "")
 		proxy := Proxy{
@@ -241,6 +258,7 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	go simpleServer()
 	go httpsServer()
 	go keepAliveServer()
+	go socksServer()
 	time.Sleep(time.Millisecond * 10)
 	os.Remove(".server.key")
 	os.Remove(".server.crt")
@@ -719,6 +737,7 @@ func testHostsRewrite(t *testing.T) {
 		}
 	}()
 
+	time.Sleep(time.Millisecond * 10)
 	newProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 7666))
 		if err != nil {
