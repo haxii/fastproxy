@@ -737,6 +737,7 @@ func testHostsRewrite(t *testing.T) {
 		}
 	}()
 
+	time.Sleep(time.Millisecond * 10)
 	newProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%d", "127.0.0.1", 7666))
 		if err != nil {
