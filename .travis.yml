@@ -25,8 +25,6 @@ before_install:
  - cd ..
  - sudo touch /usr/local/squid/var/logs/access.log /usr/local/squid/var/logs/cache.log
  - sudo chmod 777 /usr/local/squid/var/logs/access.log /usr/local/squid/var/logs/cache.log
-
-install:
  - sudo /usr/local/squid/sbin/squid -f /home/travis/gopath/src/github.com/haxii/fastproxy/.travisfile/squid.conf
  - sudo dnsmasq -p 5300 -S 114.114.114.114
 
@@ -34,4 +32,7 @@ script:
   - diff -u <(echo -n) <(sudo gofmt -s -d ./)
   - diff -u <(echo -n) <(sudo go vet ./...)
   - diff -u <(echo -n) <(sudo golint)
+  - go get github.com/haxii/socks5
+  - go get github.com/haxii/log
+  - go get github.com/fangdingjun/socks-go
   - go test -v ./...
