@@ -25,7 +25,9 @@ before_install:
  - cd ..
  - sudo touch /usr/local/squid/var/logs/access.log /usr/local/squid/var/logs/cache.log
  - sudo chmod 777 /usr/local/squid/var/logs/access.log /usr/local/squid/var/logs/cache.log
- - sudo /usr/local/squid/sbin/squid -f .travisfile/squid.conf
+
+install:
+ - sudo /usr/local/squid/sbin/squid -f /home/travis/gopath/src/github.com/daizong/fastproxy/.travisfile/squid.conf
  - sudo dnsmasq -p 5300 -S 114.114.114.114
 
 script:
