@@ -11,6 +11,9 @@ import (
 	"github.com/haxii/log"
 )
 
+// ConnHandler connection handler
+type ConnHandler func(c net.Conn) error
+
 // WorkerPool serves incoming connections via a pool of workers
 // in FILO order, i.e. the most recently stopped worker will serve the next
 // incoming connection.
@@ -19,7 +22,7 @@ import (
 type WorkerPool struct {
 	// Function for serving server connections.
 	// It must leave c unclosed.
-	WorkerFunc func(c net.Conn) error
+	WorkerFunc ConnHandler
 
 	MaxWorkersCount int
 

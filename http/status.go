@@ -71,6 +71,7 @@ const (
 	StatusLoopDetected                  = 508 // RFC 5842, 7.2
 	StatusNotExtended                   = 510 // RFC 2774, 7
 	StatusNetworkAuthenticationRequired = 511 // RFC 6585, 6
+	StatusSessionUnavailable            = 512 // user-defined, session unavailable
 )
 
 var (
@@ -140,13 +141,14 @@ var (
 		StatusLoopDetected:                  "Loop Detected",
 		StatusNotExtended:                   "Not Extended",
 		StatusNetworkAuthenticationRequired: "Network Authentication Required",
+		StatusSessionUnavailable:            "Session Unavailable",
 	}
 )
 
 // StatusMessage returns HTTP status message for the given status code.
 func StatusMessage(statusCode int) string {
 	s := statusMessages[statusCode]
-	if s == "" {
+	if len(s) == 0 {
 		s = "Unknown Status Code"
 	}
 	return s
@@ -156,7 +158,7 @@ func init() {
 	statusLines.Store(make(map[int][]byte))
 }
 
-//StatusLine make a status line based on a given status code
+// StatusLine make a status line based on a given status code
 func StatusLine(statusCode int) []byte {
 	m := statusLines.Load().(map[int][]byte)
 	h := m[statusCode]

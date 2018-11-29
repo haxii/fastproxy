@@ -24,7 +24,7 @@ const (
 	// ProxyTypeSOCKS5 a SOCKS5 proxy
 	ProxyTypeSOCKS5
 
-	//default max concurrency
+	// DefaultMaxConcurrency a max concurrency setting for super proxy by default
 	DefaultMaxConcurrency = 2
 )
 
@@ -32,6 +32,9 @@ const (
 type SuperProxy struct {
 	hostWithPort      string
 	hostWithPortBytes []byte
+
+	username string
+	password string
 
 	// proxyType, HTTP/HTTPS/SOCKS5
 	proxyType ProxyType
@@ -50,7 +53,7 @@ type SuperProxy struct {
 	socks5Auth      []byte
 
 	//usage
-	Usage *usage.ProxyUsage
+	Usage usage.ProxyUsage
 
 	//concurrency chan
 	concurrencyChan chan struct{}
@@ -58,7 +61,7 @@ type SuperProxy struct {
 
 // NewSuperProxy new a super proxy
 func NewSuperProxy(proxyHost string, proxyPort uint16, proxyType ProxyType,
-	user string, pass string, shouldOpenUsage bool) (*SuperProxy, error) {
+	user string, pass string, selfSignedCACertificate string) (*SuperProxy, error) {
 	// check input vars
 	if len(proxyHost) == 0 {
 		return nil, errors.New("nil host provided")
@@ -80,17 +83,26 @@ func NewSuperProxy(proxyHost string, proxyPort uint16, proxyType ProxyType,
 	copy(s.hostWithPortBytes, []byte(s.hostWithPort))
 
 	if proxyType != ProxyTypeSOCKS5 {
-		s.initHTTPCertAndAuth(proxyType == ProxyTypeHTTPS, proxyHost, user, pass)
+		s.initHTTPCertAndAuth(proxyType == ProxyTypeHTTPS, proxyHost, user, pass, selfSignedCACertificate)
 	} else {
 		s.initSOCKS5GreetingsAndAuth(user, pass)
 	}
 
-	if shouldOpenUsage {
-		s.Usage = usage.NewProxyUsage()
-	}
+	s.username = user
+	s.password = pass
 
 	s.SetMaxConcurrency(DefaultMaxConcurrency)
 	return s, nil
+}
+
+//Username returns username
+func (p *SuperProxy) Username() string {
+	return p.username
+}
+
+//Password returns password
+func (p *SuperProxy) Password() string {
+	return p.password
 }
 
 //GetProxyType returns super proxy type
@@ -137,7 +149,8 @@ func (p *SuperProxy) MakeTunnel(pool *bufiopool.Pool,
 
 	if p.proxyType != ProxyTypeSOCKS5 {
 		// HTTP/HTTPS tunnel establishing
-		if err := p.writeHTTPProxyReq(c, []byte(targetHostWithPort)); err != nil {
+		_, err := p.writeHTTPProxyReq(c, []byte(targetHostWithPort))
+		if err != nil {
 			c.Close()
 			return nil, err
 		}
@@ -165,14 +178,6 @@ func (p *SuperProxy) MakeTunnel(pool *bufiopool.Pool,
 	return c, nil
 }
 
-//Release releases some resource
-func (p *SuperProxy) Release() {
-	if p.Usage != nil {
-		p.Usage.Stop()
-		p.Usage = nil
-	}
-}
-
 // SetMaxConcurrency sets max concurrency,
 // n should > 0
 func (p *SuperProxy) SetMaxConcurrency(n int) {
@@ -186,13 +191,13 @@ func (p *SuperProxy) SetMaxConcurrency(n int) {
 	}
 }
 
-// acquire a token from concurrencyChan,
+// AcquireToken acquire a token from concurrencyChan,
 // block here if concurrencyChan is empty
 func (p *SuperProxy) AcquireToken() {
 	<-p.concurrencyChan
 }
 
-// push a token back to concurrencyChan
+// PushBackToken push a token back to concurrencyChan
 func (p *SuperProxy) PushBackToken() {
 	p.concurrencyChan <- struct{}{}
 }
