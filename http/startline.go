@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"strconv"
+	"strings"
 
 	"github.com/haxii/fastproxy/uri"
 	"github.com/haxii/fastproxy/util"
@@ -200,7 +201,7 @@ func (l *RequestLine) HostInfo() *uri.HostInfo {
 func parseStartline(reader *bufio.Reader) ([]byte, error) {
 	startLineWithCRLF, err := reader.ReadBytes('\n')
 	if err != nil {
-		if err == io.EOF {
+		if err == io.EOF && !strings.Contains(err.Error(), "use of closed network connection") {
 			return nil, err
 		}
 		return nil, util.ErrWrapper(err, "fail to read start line")
