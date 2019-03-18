@@ -220,7 +220,8 @@ func (wp *WorkerPool) workerFunc(ch *workerChan) {
 			errStr := err.Error()
 			if !(strings.Contains(errStr, "broken pipe") ||
 				strings.Contains(errStr, "reset by peer") ||
-				strings.Contains(errStr, "i/o timeout")) {
+				strings.Contains(errStr, "i/o timeout") ||
+				strings.Contains(errStr, "use of closed network connection")) {
 				wp.Logger.Error(c.RemoteAddr().String(), err, "error when serving connection")
 			}
 		}
