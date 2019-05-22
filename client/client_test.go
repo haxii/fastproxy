@@ -765,6 +765,8 @@ func (r *SimpleRequest) Protocol() []byte {
 	return []byte("HTTP/1.1")
 }
 
+func (r *SimpleRequest) PrePare() error { return nil }
+
 func (r *SimpleRequest) WriteHeaderTo(w *bufio.Writer) (int, int, error) {
 	header := "Host: www.bing.com\r\nUser-Agent: test client\r\n\r\n"
 	n, err := w.WriteString(header)
@@ -860,6 +862,8 @@ func (r *BigHeaderRequest) PathWithQueryFragment() []byte {
 func (r *BigHeaderRequest) Protocol() []byte {
 	return []byte("HTTP/1.1")
 }
+
+func (r *BigHeaderRequest) PrePare() error { return nil }
 
 func (r *BigHeaderRequest) WriteHeaderTo(w *bufio.Writer) (int, int, error) {
 	result := "Cache:"
@@ -984,6 +988,8 @@ func (r *IdempotentRequest) Protocol() []byte {
 	return []byte("HTTP/1.1")
 }
 
+func (r *IdempotentRequest) PrePare() error { return nil }
+
 func (r *IdempotentRequest) WriteHeaderTo(w *bufio.Writer) (int, int, error) {
 	header := "Host: www.bing.com\r\nUser-Agent: test client\r\n\r\n"
 	r.header = header
@@ -1078,6 +1084,8 @@ func (r *HTTPSRequest) PathWithQueryFragment() []byte {
 func (r *HTTPSRequest) Protocol() []byte {
 	return []byte("HTTP/1.1")
 }
+
+func (r *HTTPSRequest) PrePare() error { return nil }
 
 func (r *HTTPSRequest) WriteHeaderTo(w *bufio.Writer) (int, int, error) {
 	header := "Host: www.bing.com\r\nUser-Agent: test client\r\n\r\n"

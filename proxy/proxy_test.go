@@ -843,6 +843,11 @@ func (s *completeHijacker) Set(clientAddr net.Addr,
 	s.method = method
 	s.path = path
 }
+
+func (s *completeHijacker) HijackRequest(header http.Header, rawHeader []byte, superProxy **superproxy.SuperProxy) []byte {
+	return nil
+}
+
 func (s *completeHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
 	bReq.Write(rawHeader)
 	return bReq

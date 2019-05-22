@@ -58,6 +58,8 @@ func (r *VariedRequest) Protocol() []byte {
 	return []byte("HTTP/1.1")
 }
 
+func (r *VariedRequest) PrePare() error { return nil }
+
 func (r *VariedRequest) WriteHeaderTo(w *bufio.Writer) (int, int, error) {
 	header := "Host: www.bing.com\r\nUser-Agent: test client\r\n" + "\r\n"
 	n, err := w.WriteString(header)

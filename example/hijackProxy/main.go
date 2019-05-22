@@ -15,6 +15,7 @@ import (
 
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/proxy"
+	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/log"
 )
 
@@ -87,6 +88,10 @@ func (s *simpleHijacker) Set(clientAddr net.Addr,
 	s.method = method
 	s.path = path
 	s.userdata = userdata
+}
+
+func (s *simpleHijacker) HijackRequest(header http.Header, rawHeader []byte, superProxy **superproxy.SuperProxy) []byte {
+	return nil
 }
 
 func (s *simpleHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {

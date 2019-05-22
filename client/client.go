@@ -39,6 +39,9 @@ type Request interface {
 	// Protocol HTTP/1.0, HTTP/1.1 etc.
 	Protocol() []byte
 
+	// PrePare request preparation, called before connection is made
+	PrePare() error
+
 	// WriteHeaderTo read header from request, then Write To buffer IO writer
 	WriteHeaderTo(*bufio.Writer) (readNum int, writeNum int, err error)
 
@@ -67,7 +70,7 @@ type Response interface {
 	// ConnectionClose if the response's "Connection" header value is
 	// set as `Close`
 	//
-	// this determines wether the client reusing the connections
+	// this determines whether the client reusing the connections
 	ConnectionClose() bool
 }
 
@@ -139,6 +142,11 @@ func (c *Client) DoFake(req Request, resp Response, fakeRespReader io.Reader) (r
 	if fakeRespReader == nil {
 		return 0, 0, 0, errNilFakeResp
 	}
+
+	if err := req.PrePare(); err != nil {
+		return 0, 0, 0, err
+	}
+
 	if reqReadNum, reqWriteNum, err = writeReqToDevNull(req); err != nil {
 		return reqReadNum, reqWriteNum, responseNum, err
 	}
@@ -183,6 +191,10 @@ func (c *Client) Do(req Request, resp Response) (reqReadNum, reqWriteNum, respNu
 	}
 	if c.BufioPool == nil {
 		return 0, 0, 0, errNilBufiopool
+	}
+
+	if err := req.PrePare(); err != nil {
+		return 0, 0, 0, err
 	}
 
 	connectHostWithPort := ""

@@ -235,6 +235,10 @@ type hijacker struct {
 	method, path           []byte
 }
 
+func (s *hijacker) HijackRequest(header http.Header, rawHeader []byte, superProxy **superproxy.SuperProxy) []byte {
+	return nil
+}
+
 func (s *hijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
 	bReq.Write(rawHeader)
 	return bReq
@@ -414,6 +418,10 @@ func TestResponsePool(t *testing.T) {
 }
 
 type simpleHijacker struct{}
+
+func (s *simpleHijacker) HijackRequest(header http.Header, rawHeader []byte, superProxy **superproxy.SuperProxy) []byte {
+	return nil
+}
 
 func (s *simpleHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
 	return nil

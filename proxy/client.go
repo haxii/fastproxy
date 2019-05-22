@@ -63,6 +63,10 @@ type Request struct {
 
 	// headers info, includes conn close and content length
 	header http.Header
+	// rawHeader the raw header in bytes to be sent to target, which can be changed by hijacker
+	rawHeader []byte
+	// headerLenBeforeHijack the header size before hijacking
+	headerLenBeforeHijack int
 
 	// body body parser
 	body http.Body
@@ -87,6 +91,8 @@ func (r *Request) Reset() {
 	r.reader = nil
 	r.reqLine.Reset()
 	r.header.Reset()
+	r.rawHeader = nil
+	r.headerLenBeforeHijack = 0
 	if r.userdata != nil {
 		r.userdata.Reset()
 	}
@@ -160,25 +166,72 @@ func (r *Request) Protocol() []byte {
 	return r.reqLine.Protocol()
 }
 
+// ErrNilRequestReader no valid request reader provided
+var ErrNilRequestReader = errors.New("empty request")
+
+// PrePare pre-process the request header, hijack the request if available
+func (r *Request) PrePare() error {
+	if r.reader == nil {
+		return ErrNilRequestReader
+	}
+
+	// parse header info from request
+	var err error
+	r.headerLenBeforeHijack, err = r.header.ParseHeaderFields(r.reader)
+	if err != nil {
+		return util.ErrWrapper(err, "fail to parse request http headers")
+	}
+	var rawHeader []byte
+	rawHeader, err = r.reader.Peek(r.headerLenBeforeHijack)
+	if err != nil {
+		// should NOT have any errors
+		return util.ErrWrapper(err, "fail to read raw headers")
+	}
+
+	// modify request header and change super proxy if needed
+	newHeader := r.hijacker.HijackRequest(r.header, rawHeader, &r.proxy)
+
+	// header not modified return it
+	if newHeader == nil {
+		r.rawHeader = rawHeader
+		return nil
+	}
+
+	// re-generate the header
+	r.header.Reset()
+	if newHeaderLen, err := r.header.Parse(newHeader); err != nil {
+		return util.ErrWrapper(err, "fail to parse hijacked request http headers")
+	} else {
+		newHeader = newHeader[:newHeaderLen]
+	}
+	r.rawHeader = newHeader
+	return nil
+}
+
 // WriteHeaderTo write raw http request header to http client
 // implemented client's request interface
 func (r *Request) WriteHeaderTo(writer *bufio.Writer) (int, int, error) {
 	if r.reader == nil {
-		return 0, 0, errors.New("Empty request, nothing to write")
+		return 0, 0, ErrNilRequestReader
 	}
-	// read & write the headers
-	return copyHeader(&r.header, r.reader, writer,
-		func(rawHeader []byte) {
-			r.hijackerBodyWriter = r.hijacker.OnRequest(r.header, rawHeader)
+
+	// the header only peeks for parsing in `PrePare`, discard it after using
+	defer r.reader.Discard(r.headerLenBeforeHijack)
+
+	copiedHeaderLen, err := parallelWriteHeader(
+		writer,
+		func(header []byte) {
+			r.hijackerBodyWriter = r.hijacker.OnRequest(r.header, header)
 		},
-	)
+		r.rawHeader)
+	return r.headerLenBeforeHijack, copiedHeaderLen, err
 }
 
 // WriteBodyTo write raw http request body to http client
 // implemented client's request interface
 func (r *Request) WriteBodyTo(writer *bufio.Writer) (int, error) {
 	if r.reader == nil {
-		return 0, errors.New("Empty request, nothing to write")
+		return 0, errors.New("empty request")
 	}
 	// write the request body (if any)
 	return copyBody(&r.header, &r.body, r.reader, writer,
@@ -311,21 +364,21 @@ type additionalDst func([]byte)
 func copyHeader(header *http.Header,
 	src *bufio.Reader, dst1 io.Writer, dst2 additionalDst) (int, int, error) {
 	// read and write header
-	var orginalHeaderLen, copiedHeaderLen int
+	var originalHeaderLen, copiedHeaderLen int
 	var err error
-	if orginalHeaderLen, err = header.ParseHeaderFields(src); err != nil {
-		return orginalHeaderLen, 0, util.ErrWrapper(err, "fail to parse http headers")
+	if originalHeaderLen, err = header.ParseHeaderFields(src); err != nil {
+		return originalHeaderLen, 0, util.ErrWrapper(err, "fail to parse http headers")
 	}
 	var rawHeader []byte
-	rawHeader, err = src.Peek(orginalHeaderLen)
+	rawHeader, err = src.Peek(originalHeaderLen)
 	if err != nil {
 		// should NOT have any errors
-		return orginalHeaderLen, 0, util.ErrWrapper(err, "fail to reader raw headers")
+		return originalHeaderLen, 0, util.ErrWrapper(err, "fail to reader raw headers")
 	}
-	defer src.Discard(orginalHeaderLen)
+	defer src.Discard(originalHeaderLen)
 
 	copiedHeaderLen, err = parallelWriteHeader(dst1, dst2, rawHeader)
-	return orginalHeaderLen, copiedHeaderLen, err
+	return originalHeaderLen, copiedHeaderLen, err
 }
 
 // parallelWriteBody write body data to dst1 dst2 concurrently

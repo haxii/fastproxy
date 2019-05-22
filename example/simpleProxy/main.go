@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -15,9 +16,12 @@ import (
 	"github.com/haxii/log"
 )
 
+var superProxy1, superProxy2 *superproxy.SuperProxy
+
 func main() {
-	superProxy, _ := superproxy.NewSuperProxy("a.b", 1080, superproxy.ProxyTypeHTTP, "", "", "")
-	superProxy.SetMaxConcurrency(20)
+	superProxy1, _ = superproxy.NewSuperProxy("a.b", 1080, superproxy.ProxyTypeHTTP, "", "", "")
+	superProxy2, _ = superproxy.NewSuperProxy("a.b", 6050, superproxy.ProxyTypeHTTP, "", "", "")
+	superProxy1.SetMaxConcurrency(20)
 
 	proxy := proxy.Proxy{
 		Logger: &log.DefaultLogger{},
@@ -33,7 +37,7 @@ func main() {
 				return hostWithPort
 			},
 			URLProxy: func(userdata *proxy.UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
-				return superProxy
+				return superProxy1
 			},
 			HijackerPool: &SimpleHijackerPool{},
 			LookupIP: func(userdata *proxy.UserData, domain string) net.IP {
@@ -83,6 +87,17 @@ func (s *simpleHijacker) Set(clientAddr net.Addr,
 	s.method = method
 	s.path = path
 	s.userdata = userdata
+}
+
+func (s *simpleHijacker) HijackRequest(header http.Header, rawHeader []byte, superProxy **superproxy.SuperProxy) []byte {
+	if bytes.Contains(rawHeader, []byte("curl")) {
+		fmt.Printf("***\n\n\n%s\n\n\n", rawHeader)
+		// all curl requests using super proxy2
+		*superProxy = superProxy2
+		// replace curl as burl in user-agent
+		return bytes.Replace(rawHeader, []byte("curl"), []byte("burl"), -1)
+	}
+	return nil
 }
 
 func (s *simpleHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {

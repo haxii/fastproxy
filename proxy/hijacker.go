@@ -5,10 +5,18 @@ import (
 	"net"
 
 	"github.com/haxii/fastproxy/http"
+	"github.com/haxii/fastproxy/superproxy"
 )
 
 // Hijacker hijacker of each http connection and decrypted https connection
 type Hijacker interface {
+	// HijackRequest is a request hijack handler.
+	// which provides the ability to change the request header and assigned super proxy without breaking the request.
+	// Return new super header to change the original header, please do NOT change payload related fields
+	// (like Content-Length, Transfer-Encoding etc.) to avoid exceptions.
+	// For advanced Hijack options, use the HijackResponse instead
+	HijackRequest(header http.Header, rawHeader []byte, superProxy **superproxy.SuperProxy) []byte
+
 	// OnRequest is a sniffer handler.
 	// Which gives the request header in parameters then
 	// write request body in the writer returned
@@ -36,6 +44,10 @@ type HijackerPool interface {
 var defaultNilHijacker = &nilHijacker{}
 
 type nilHijacker struct{}
+
+func (*nilHijacker) HijackRequest(header http.Header, rawHeader []byte, superProxy **superproxy.SuperProxy) []byte {
+	return nil
+}
 
 func (*nilHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
 	return nil

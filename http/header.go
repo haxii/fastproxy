@@ -111,7 +111,7 @@ func (header *Header) tryRead(reader *bufio.Reader, n int) (int, error) {
 	// must read buffed bytes
 	b := util.PeekBuffered(reader)
 	// try to read it into buffer
-	headersLen, errParse := header.readHeaders(b)
+	headersLen, errParse := header.Parse(b)
 	if errParse != nil {
 		if errParse == errNeedMore {
 			return headersLen, errNeedMore
@@ -121,7 +121,8 @@ func (header *Header) tryRead(reader *bufio.Reader, n int) (int, error) {
 	return headersLen, nil
 }
 
-func (header *Header) readHeaders(buf []byte) (headerLength int, err error) {
+// Parse parse the header fields using given raw header bytes
+func (header *Header) Parse(buf []byte) (headerLength int, err error) {
 	parseBuffer := func(rawHeaderLine []byte) error {
 		// Connection, Authenticate and Authorization are single hop Header:
 		// http:// www.w3.org/Protocols/rfc2616/rfc2616.txt

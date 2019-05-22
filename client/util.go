@@ -124,7 +124,7 @@ func writeRequestLine(bw *bufio.Writer, fullURL bool,
 }
 
 // defaultDevNullWriter
-// a simple implentation of /dev/null based on io.Writer
+// a simple implementation of /dev/null based on io.Writer
 var defaultDevNullWriter = &devNullWriter{}
 
 type devNullWriter struct{}
