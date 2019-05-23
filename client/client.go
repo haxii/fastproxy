@@ -143,10 +143,6 @@ func (c *Client) DoFake(req Request, resp Response, fakeRespReader io.Reader) (r
 		return 0, 0, 0, errNilFakeResp
 	}
 
-	if err := req.PrePare(); err != nil {
-		return 0, 0, 0, err
-	}
-
 	if reqReadNum, reqWriteNum, err = writeReqToDevNull(req); err != nil {
 		return reqReadNum, reqWriteNum, responseNum, err
 	}
@@ -191,10 +187,6 @@ func (c *Client) Do(req Request, resp Response) (reqReadNum, reqWriteNum, respNu
 	}
 	if c.BufioPool == nil {
 		return 0, 0, 0, errNilBufiopool
-	}
-
-	if err := req.PrePare(); err != nil {
-		return 0, 0, 0, err
 	}
 
 	connectHostWithPort := ""

@@ -335,6 +335,12 @@ func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
 	}
 	req.SetHijacker(hijacker)
 	resp.SetHijacker(hijacker)
+
+	// pre-processing of the request, hijack request if available
+	if err := req.PrePare(); err != nil {
+		return err
+	}
+
 	if hijackedRespReader := hijacker.HijackResponse(); hijackedRespReader != nil {
 		reqReadN, _, respN, err := p.client.DoFake(req, resp, hijackedRespReader)
 		p.Usage.AddIncomingSize(uint64(reqReadN))
