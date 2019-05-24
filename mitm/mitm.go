@@ -1,9 +1,8 @@
 package mitm
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -67,25 +66,51 @@ var (
 	defaultMITMCertAuthority    *tls.Certificate
 	defaultMITMCertAuthorityPEM = []byte(`
 -----BEGIN CERTIFICATE-----
-MIIB1jCCATigAwIBAgIBATAKBggqhkjOPQQDBDAdMRswGQYDVQQDExJHZW9UcnVz
-dCBHbG9iYWwgQ0EwHhcNMTcwOTAyMTUyNzE0WhcNMjIwOTAxMTUyNzE0WjAdMRsw
-GQYDVQQDExJHZW9UcnVzdCBHbG9iYWwgQ0EwgZswEAYHKoZIzj0CAQYFK4EEACMD
-gYYABAGVr9JHBx3sGRZ62wb4vjsjgf0e9AQqhNxO7m7uASsHPoiXsfdV0GD/gXKf
-rsNgtvm8FBQMAtuVsgTgfqJPji2jwgC7xTpZB8BFflW4t6G86ifD87fXLNzcuFgo
-v5N8pomYMSyraVEWvZZ6Hl2VjL32ZkH/iDQpZKacJLwaaYpYMX39UKMmMCQwDgYD
-VR0PAQH/BAQDAgH+MBIGA1UdEwEB/wQIMAYBAf8CAQIwCgYIKoZIzj0EAwQDgYsA
-MIGHAkIA1ib8nXsLetEfjXvDY71nBGF6my6Nk+aMp/vNi5MbYIaz+TPWKHUq4+zo
-49pxtUwEwWKKMpU2GYvJUgaz35SzD0oCQVrs1niHmySDjCnrUHJOawo+s2zL6svd
-FJ6RtJFfkqJ7nh/8/djL0gBbmcCzPnma0ermJxHABxWnIVYPCYuN8GJR
+MIIC2zCCAcOgAwIBAgIBATANBgkqhkiG9w0BAQ0FADAdMRswGQYDVQQDExJHZW9U
+cnVzdCBHbG9iYWwgQ0EwHhcNMTkwNTI0MTIxOTU4WhcNMjQwNTIyMTIxOTU4WjAd
+MRswGQYDVQQDExJHZW9UcnVzdCBHbG9iYWwgQ0EwggEiMA0GCSqGSIb3DQEBAQUA
+A4IBDwAwggEKAoIBAQDFtEYsV81zI+uEvcfqyn43T2hwfiWqfCs/OKRqDUWXxSO4
+0R5oZJOkxrZTCu8zDKlmqn+cLcWYR9bo19s18H93/C+Gk0cyntvcu7dqHCIr5R/a
+lJTTBhQK1mPogE9rJ+OTSQ4IlKhI3Dm/SNlDHNW3+lqpiRIsAsMWVFIQ++HQewTY
+cti+zgDtSjpxLuLhKS898mLx53lHFTeynMXajZ1EuemWkCYVOvCZcoFqT63+ZKcP
+KvU+wmbaAjdJzQp/fn6GwR/SdpBnJ65MmYApOCJ1Rs7eRkyGmKObJ6k/UNuLuLwQ
+98gpScOEiPq+FAJF6CHXgUzeZhJjj7lnxtoebl0lAgMBAAGjJjAkMA4GA1UdDwEB
+/wQEAwIB/jASBgNVHRMBAf8ECDAGAQH/AgECMA0GCSqGSIb3DQEBDQUAA4IBAQDE
+dEaNlX1p9gEk8CRAOf8qELC92VdzVQZvo8/z3n43+nGE1KpNtJA9w2f6igw3SGmA
+gAm7ICyQBNfUCIchfVYQc6XwFAXTt4jJUZ8VS2pviAF+VCHHssyQnTnHXqgAZ8iD
+P6HXMNHXE3wDXGemPDVicoZVFwVBFX4bkkQO6nq1dbLb1yqZ535R6mZ/IozpWPnb
+hiZMf6htwEQWOPb8XL1kIdFHoar/kwvSA4pxdHs5ftrMkMkvKEYTHThX1tl7L98W
+RC2VbQYlB/vS5+YjUcgLkBpbxTvVeYzZ0b72mxZrEMF6kEiEjLV+TD+MJdKuCRPp
+6trox+/FtSz+wk2QOFZy
 -----END CERTIFICATE-----
 `)
 	defaultMITMCertAuthorityKeyPEM = []byte(`
 -----BEGIN ECDSA PRIVATE KEY-----
-MIHcAgEBBEIA1FCmb8JkZ8UBiLyZ3zaLE5ibDC+Y3BarrjssCkzPK7mtEOpbctqh
-d0QGEvlOkv8bzp2J+Iw4iZBmCX81YtQyfCGgBwYFK4EEACOhgYkDgYYABAGVr9JH
-Bx3sGRZ62wb4vjsjgf0e9AQqhNxO7m7uASsHPoiXsfdV0GD/gXKfrsNgtvm8FBQM
-AtuVsgTgfqJPji2jwgC7xTpZB8BFflW4t6G86ifD87fXLNzcuFgov5N8pomYMSyr
-aVEWvZZ6Hl2VjL32ZkH/iDQpZKacJLwaaYpYMX39UA==
+MIIEpAIBAAKCAQEAxbRGLFfNcyPrhL3H6sp+N09ocH4lqnwrPzikag1Fl8UjuNEe
+aGSTpMa2UwrvMwypZqp/nC3FmEfW6NfbNfB/d/wvhpNHMp7b3Lu3ahwiK+Uf2pSU
+0wYUCtZj6IBPayfjk0kOCJSoSNw5v0jZQxzVt/paqYkSLALDFlRSEPvh0HsE2HLY
+vs4A7Uo6cS7i4SkvPfJi8ed5RxU3spzF2o2dRLnplpAmFTrwmXKBak+t/mSnDyr1
+PsJm2gI3Sc0Kf35+hsEf0naQZyeuTJmAKTgidUbO3kZMhpijmyepP1Dbi7i8EPfI
+KUnDhIj6vhQCRegh14FM3mYSY4+5Z8baHm5dJQIDAQABAoIBAQCDkpDs69YX3Xzd
+D2wfrnlHF/q6eslYZ2Bkp66LwZ9h/NnkIo+pC95SV8h5BZrhD3khkTBx4OhSiuTU
+eusxP4elc1ixqAxG/P/3K5pJ7MU1DzwevKk6sx3dhIZi8hloh9hlacYEIeLI8n8f
+9TxZ9LOqx9tUXpuQXJo2nxEqqmbC1h9hkbDrrltHJyt+oL+Xt5FqusXs+0AD+2Yi
+Rd9pjeY9CME7mnYDUpzkp4i00zwfG7Iq4KMMqma9K+XjbsszVKJpmzCUp7Ryyn8u
+JKyRNBDzhYZtX9r9pOkVnClDtjQfcvEoYAEIHP82emkaiYPTVP710bmRh0zJfD/u
+lZYrUFi1AoGBAPYdsYeQQZgELKQW/ECSxGZgo0agk7vipvaLPoFQoS1jpmEhXhTG
+QmXsbgEGNaPzdep2LaMDhNw67nz1Q/lIVSnR1OONor2sy/hNZt0wq1pYTWv5NQpe
+1kYX3XBbRuHzeCSLxPTSVpe/lBlIWtV2ebmb+bsc8JqqhRJ5WZfEp2T7AoGBAM2k
+3IB/+Be22iF5LoGlNwlhd2s0q8VtJP8AB9Euo39aCSv2pmv4fcLqjSRuSqUsMkIe
+0/QAAhqplG3NHABpBi+CkgH8ODQTxm/bpBc0xIeY/Sekcq9NZrPHwbWOACB6AxZX
+c0zQoZOax78TjrlyA0HJwxoRg6iKgfc0Q/HnQmxfAoGBAOpW0Y+zklEtQFgpLpxJ
+YsncH/sCsEgIglNjt+snG6B9LpFzVQJQ2C32FbPR9scZ7F+HkOKTWjDbx/KhEczM
+y5IbIipc1OTnH/tXr6bSTYWjaGxzh8ZNEJcC6CywLGi+Cto5XxqBIEQy/M+p7hss
+SLCrS/iWkJ2j2TsC4oS4kW57AoGAFzETiQ5ljU8a1JGVFBvs1AsA67856/7+ICAB
+wa6P08n0pNehNyYEENpg5o3lrzEHzfsqDid+FUGwsp1iHg26G9uO2dh3AjCEvZK4
+s8FItL4lNrZOFMUW4wmRKAeGriL0fC2KnEwfHMVk54CuJO3dviqh7SuyfGx6ccWc
+MAjTreMCgYAhgweVe2FwNhvs/qiw7DX+FfCclYvZzqLA8Xjy1QdXItFYxPKucTyE
+W4a7HglRepoNU0nb0GcpkY9F2GJnPgZYkeviN7A+d5QnSCpMd/qdJ4WBg3GNJTE6
+U4TeWyhF0sbj2lLet5c2ujDtB7b9OAdK1HEq4DLqUD0LY4XNZCTpew==
 -----END ECDSA PRIVATE KEY-----
 `)
 )
@@ -108,8 +133,8 @@ func init() {
 	}
 }
 
-func genECDSAKeyPair() (*ecdsa.PrivateKey, error) {
-	return ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
+func genECDSAKeyPair() (*rsa.PrivateKey, error) {
+	return rsa.GenerateKey(rand.Reader, 2048)
 }
 
 const (
@@ -139,7 +164,7 @@ func MakeMITMCertAuthority(name string, certMaxAge time.Duration) (certPEM, keyP
 		KeyUsage:              _MITMMITMCertAuthorityUsage,
 		IsCA:                  true,
 		MaxPathLen:            2,
-		SignatureAlgorithm:    x509.ECDSAWithSHA512,
+		SignatureAlgorithm:    x509.SHA512WithRSA,
 		BasicConstraintsValid: true,
 	}
 	key, err := genECDSAKeyPair()
@@ -150,10 +175,7 @@ func MakeMITMCertAuthority(name string, certMaxAge time.Duration) (certPEM, keyP
 	if err != nil {
 		return
 	}
-	keyDER, err := x509.MarshalECPrivateKey(key)
-	if err != nil {
-		return
-	}
+	keyDER := x509.MarshalPKCS1PrivateKey(key)
 	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "ECDSA PRIVATE KEY", Bytes: keyDER})
 	return
@@ -190,7 +212,7 @@ func SignLeafCertUsingCertAuthority(certAuthority *tls.Certificate,
 		KeyUsage:              leafCertUsage,
 		BasicConstraintsValid: true,
 		DNSNames:              domainNames,
-		SignatureAlgorithm:    x509.ECDSAWithSHA512,
+		SignatureAlgorithm:    x509.SHA512WithRSA,
 	}
 	key, err := genECDSAKeyPair()
 	if err != nil {

@@ -285,7 +285,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		}
 		if err != nil && err != io.EOF {
 			//TODO: should every error close the http connection? @daizong
-			return util.ErrWrapper(err, "error HTTP traffic")
+			return util.ErrWrapper(err, "proxy error with "+req.reqLine.HostInfo().TargetWithPort())
 		}
 
 		if req.ConnectionClose() {
@@ -388,6 +388,7 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 		},
 	)
 	if err != nil {
+		fmt.Println("********", err)
 		if hijackedConn != nil {
 			hijackedConn.Close()
 		}
