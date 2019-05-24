@@ -388,7 +388,6 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 		},
 	)
 	if err != nil {
-		fmt.Println("********", err)
 		if hijackedConn != nil {
 			hijackedConn.Close()
 		}
