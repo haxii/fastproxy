@@ -283,7 +283,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		if superProxy != nil {
 			superProxy.PushBackToken()
 		}
-		if err != nil {
+		if err != nil && err != io.EOF {
 			//TODO: should every error close the http connection? @daizong
 			return util.ErrWrapper(err, "error HTTP traffic")
 		}
