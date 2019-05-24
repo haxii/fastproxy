@@ -64,19 +64,19 @@ func (c *HostClient) makeDialer(superProxy *superproxy.SuperProxy,
 	case requestProxyHTTP:
 		return dialerWrapper(transport.Dial(superProxy.HostWithPort()))
 	case requestProxyHTTPS:
-		if c.tlsServerConfig == nil {
-			c.tlsServerConfig = &tls.Config{
-				ClientSessionCache: tls.NewLRUClientSessionCache(0),
-				InsecureSkipVerify: true, //TODO: cache every host config in more safe way in a concurrent map
-			}
-		}
 		fallthrough
 	case requestProxySOCKS5:
 		tunnelConn, err := superProxy.MakeTunnel(c.BufioPool, targetWithPort)
 		if err != nil {
 			return dialerWrapper(nil, err)
 		}
-		if reqType == requestProxyHTTPS {
+		if isTargetHTTPS {
+			if c.tlsServerConfig == nil {
+				c.tlsServerConfig = &tls.Config{
+					ClientSessionCache: tls.NewLRUClientSessionCache(0),
+					InsecureSkipVerify: true, //TODO: cache every host config in more safe way in a concurrent map
+				}
+			}
 			conn := tls.Client(tunnelConn, c.tlsServerConfig)
 			return dialerWrapper(conn, nil)
 		}
