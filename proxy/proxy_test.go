@@ -597,10 +597,7 @@ func testGracefulShutDown(t *testing.T) {
 	}
 	time.Sleep(time.Millisecond * 10)
 	go func() {
-		err = proxy.ShutDown()
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err)
-		}
+		proxy.Close()
 	}()
 	time.Sleep(time.Millisecond * 10)
 	fmt.Fprintf(conn, "GET / HTTP/1.1\r\n\r\n")

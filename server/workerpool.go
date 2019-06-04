@@ -14,6 +14,9 @@ import (
 // ConnHandler connection handler
 type ConnHandler func(c net.Conn) error
 
+// ConnHandler connection tracking
+type ConnTracker func(c net.Conn, add bool)
+
 // WorkerPool serves incoming connections via a pool of workers
 // in FILO order, i.e. the most recently stopped worker will serve the next
 // incoming connection.
@@ -23,6 +26,9 @@ type WorkerPool struct {
 	// Function for serving server connections.
 	// It must leave c unclosed.
 	WorkerFunc ConnHandler
+
+	// Tracking every connection
+	Tracker ConnTracker
 
 	MaxWorkersCount int
 
@@ -216,6 +222,7 @@ func (wp *WorkerPool) workerFunc(ch *workerChan) {
 			break
 		}
 
+		wp.Tracker(c, true)
 		if err = wp.WorkerFunc(c); err != nil {
 			errStr := err.Error()
 			if !(strings.Contains(errStr, "broken pipe") ||
@@ -225,6 +232,7 @@ func (wp *WorkerPool) workerFunc(ch *workerChan) {
 				wp.Logger.Error(c.RemoteAddr().String(), err, "error when serving connection")
 			}
 		}
+		wp.Tracker(c, false)
 		c.Close()
 		c = nil
 

@@ -84,7 +84,7 @@ type Proxy struct {
 	reqPool  RequestPool
 	respPool ResponsePool
 
-	// user data pool, used by handler funcitions
+	// user data pool, used by handler functions
 	userDataPool userDataPool
 
 	// Handler proxy handler
@@ -172,9 +172,9 @@ func (p *Proxy) Serve(network, addr string) error {
 	return p.server.ListenAndServe()
 }
 
-// ShutDown shut down the server gracefully
-func (p *Proxy) ShutDown() error {
-	return p.server.Listener.Close()
+// ShutDown shut down the server, graceful shutdown tobe added
+func (p *Proxy) Close() {
+	p.server.Close()
 }
 
 func (p *Proxy) serveConnOnLimitExceeded(c net.Conn) {

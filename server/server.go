@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/haxii/fastproxy/servertime"
@@ -28,6 +29,10 @@ type Server struct {
 	Logger log.Logger
 	// ServiceName, server's service name, used for logging
 	ServiceName string
+
+	// active connections
+	activeConn map[net.Conn]struct{}
+	mu         sync.Mutex
 }
 
 // DefaultConcurrency is the maximum number of concurrent connections
@@ -58,6 +63,7 @@ func (s *Server) ListenAndServe() error {
 
 	wp := &WorkerPool{
 		WorkerFunc:      s.ConnHandler,
+		Tracker:         s.trackConn,
 		MaxWorkersCount: s.Concurrency,
 		Logger:          s.Logger,
 	}
@@ -110,5 +116,29 @@ func (s *Server) acceptConn(ln net.Listener, lastPerIPErrorTime *time.Time) (net
 			panic("BUG: net.Listener returned (nil, nil)")
 		}
 		return c, nil
+	}
+}
+
+// Close close the server and close all the active connections
+func (s *Server) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Listener.Close()
+	for c := range s.activeConn {
+		c.Close()
+		delete(s.activeConn, c)
+	}
+}
+
+func (s *Server) trackConn(c net.Conn, add bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.activeConn == nil {
+		s.activeConn = make(map[net.Conn]struct{})
+	}
+	if add {
+		s.activeConn[c] = struct{}{}
+	} else {
+		delete(s.activeConn, c)
 	}
 }
