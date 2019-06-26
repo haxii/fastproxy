@@ -128,8 +128,9 @@ func (p *SuperProxy) HTTPProxyAuthHeaderWithCRLF() []byte {
 }
 
 // MakeTunnel makes a TCP tunnel by making a connect request to proxy
-func (p *SuperProxy) MakeTunnel(pool *bufiopool.Pool,
-	targetHostWithPort string) (net.Conn, error) {
+func (p *SuperProxy) MakeTunnel(dial func(addr string) (net.Conn, error),
+	dialTLS func(addr string, tlsConfig *tls.Config) (net.Conn, error),
+	pool *bufiopool.Pool, targetHostWithPort string) (net.Conn, error) {
 	var (
 		c   net.Conn
 		err error
@@ -138,9 +139,17 @@ func (p *SuperProxy) MakeTunnel(pool *bufiopool.Pool,
 	case ProxyTypeHTTP:
 		fallthrough
 	case ProxyTypeSOCKS5:
-		c, err = transport.Dial(p.hostWithPort)
+		if dial != nil {
+			c, err = dial(p.hostWithPort)
+		} else {
+			c, err = transport.Dial(p.hostWithPort)
+		}
 	case ProxyTypeHTTPS:
-		c, err = transport.DialTLS(p.hostWithPort, p.tlsConfig)
+		if dialTLS != nil {
+			c, err = dialTLS(p.hostWithPort, p.tlsConfig)
+		} else {
+			c, err = transport.DialTLS(p.hostWithPort, p.tlsConfig)
+		}
 	}
 
 	if err != nil {

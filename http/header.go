@@ -244,7 +244,7 @@ func isTransferEncodingHeader(header []byte) bool {
 var proxyHeaders = [][]byte{
 	// If no Accept-Encoding header exists, Transport will add the headers it can accept
 	// and would wrap the response body with the relevant reader.
-	[]byte("Accept-Encoding"),
+	// []byte("Accept-Encoding"),
 	// curl can add that
 	[]byte("Proxy-Connection"),
 	[]byte("Proxy-Authenticate"),

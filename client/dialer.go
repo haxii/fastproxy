@@ -52,21 +52,30 @@ func parseRequestType(superProxy *superproxy.SuperProxy, isHTTPS bool) requestTy
 func (c *HostClient) makeDialer(superProxy *superproxy.SuperProxy,
 	targetWithPort string, isTargetHTTPS bool, targetTLSServerName string) transport.Dialer {
 	reqType := parseRequestType(superProxy, isTargetHTTPS)
+	// setup dial functions
+	dialFunc := c.Dial
+	if dialFunc == nil {
+		dialFunc = transport.Dial
+	}
+	dialTLSFunc := c.DialTLS
+	if dialTLSFunc == nil {
+		dialTLSFunc = transport.DialTLS
+	}
 	//set https tls config
 	switch reqType {
 	case requestDirectHTTP:
-		return dialerWrapper(transport.Dial(targetWithPort))
+		return dialerWrapper(dialFunc(targetWithPort))
 	case requestDirectHTTPS:
 		if c.tlsServerConfig == nil {
 			c.tlsServerConfig = cert.MakeClientTLSConfig("", targetTLSServerName)
 		}
-		return dialerWrapper(transport.DialTLS(targetWithPort, c.tlsServerConfig))
+		return dialerWrapper(dialTLSFunc(targetWithPort, c.tlsServerConfig))
 	case requestProxyHTTP:
-		return dialerWrapper(transport.Dial(superProxy.HostWithPort()))
+		return dialerWrapper(dialFunc(superProxy.HostWithPort()))
 	case requestProxyHTTPS:
 		fallthrough
 	case requestProxySOCKS5:
-		tunnelConn, err := superProxy.MakeTunnel(c.BufioPool, targetWithPort)
+		tunnelConn, err := superProxy.MakeTunnel(c.Dial, c.DialTLS, c.BufioPool, targetWithPort)
 		if err != nil {
 			return dialerWrapper(nil, err)
 		}

@@ -80,6 +80,10 @@ type Response interface {
 //
 // It is safe calling Client methods from concurrently running go routines.
 type Client struct {
+	// Dialer
+	Dial    func(addr string) (net.Conn, error)
+	DialTLS func(addr string, tlsConfig *tls.Config) (net.Conn, error)
+
 	// Maximum number of connections per each host which may be established.
 	//
 	// DefaultMaxConnsPerHost is used if not set.
@@ -232,6 +236,8 @@ func (c *Client) getHostClient(connectHostWithPort string,
 	hc := hostClients[connectHostWithPort]
 	if hc == nil {
 		hc = &HostClient{
+			Dial:         c.Dial,
+			DialTLS:      c.DialTLS,
 			BufioPool:    c.BufioPool,
 			ReadTimeout:  c.ReadTimeout,
 			WriteTimeout: c.WriteTimeout,
@@ -286,6 +292,10 @@ func (c *Client) mCleaner(m map[string]*HostClient) {
 //
 // It is safe calling HostClient methods from concurrently running go routines.
 type HostClient struct {
+	// Dialer
+	Dial    func(addr string) (net.Conn, error)
+	DialTLS func(addr string, tlsConfig *tls.Config) (net.Conn, error)
+
 	// cached TLS server config
 	tlsServerConfig *tls.Config
 
@@ -329,9 +339,13 @@ func (c *HostClient) DoRaw(rw io.ReadWriter, superProxy *superproxy.SuperProxy,
 	var cc *transport.Conn
 	var netConn net.Conn
 	if superProxy == nil {
-		netConn, err = transport.Dial(targetWithPort)
+		if c.Dial != nil {
+			netConn, err = c.Dial(targetWithPort)
+		} else {
+			netConn, err = transport.Dial(targetWithPort)
+		}
 	} else {
-		netConn, err = superProxy.MakeTunnel(c.BufioPool, targetWithPort)
+		netConn, err = superProxy.MakeTunnel(c.Dial, c.DialTLS, c.BufioPool, targetWithPort)
 	}
 	if err != nil {
 		return 0, 0, onTunnelMade(err)
@@ -470,8 +484,10 @@ func (c *HostClient) PendingRequests() int {
 	return int(atomic.LoadUint64(&c.pendingRequests))
 }
 
+var errDialEOF = errors.New("dial EOF")
+
 func (c *HostClient) do(req Request, resp Response,
-	reqCacheForRetry *bytebufferpool.ByteBuffer) (retry bool, reqReadNum, reqWriteNum, respNum int, err error) {
+	reqCacheForRetry *bytebufferpool.ByteBuffer) (retry bool, reqReadNum, reqWriteNum, respNum int, e error) {
 	// set hostClient's last used time
 	atomic.StoreUint32(&c.lastUseTime, uint32(servertime.CoarseTimeNow().Unix()-startTimeUnix))
 
@@ -479,9 +495,23 @@ func (c *HostClient) do(req Request, resp Response,
 	viaProxy := (req.GetProxy() != nil)
 
 	// get the connection
-	cc, err := c.ConnManager.AcquireConn(c.makeDialer(req.GetProxy(),
+	var cc *transport.Conn
+	var err error
+
+	cc, err = c.ConnManager.AcquireConn(c.makeDialer(req.GetProxy(),
 		req.TargetWithPort(), req.IsTLS(), req.TLSServerName()))
+
+	redialCount := 0
+	for err == io.EOF && redialCount < 3 {
+		redialCount++
+		time.Sleep(time.Duration(redialCount*300) * time.Millisecond)
+		cc, err = c.ConnManager.AcquireConn(c.makeDialer(req.GetProxy(),
+			req.TargetWithPort(), req.IsTLS(), req.TLSServerName()))
+	}
 	if err != nil {
+		if err == io.EOF {
+			err = errDialEOF
+		}
 		return false, reqReadNum, reqWriteNum, respNum, err
 	}
 	conn := cc.Get()

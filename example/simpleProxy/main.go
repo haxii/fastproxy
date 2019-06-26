@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
+	"github.com/haxii/fastproxy/transport"
 	"github.com/haxii/log"
 )
 
@@ -26,6 +28,12 @@ func main() {
 	proxy := proxy.Proxy{
 		Logger: &log.DefaultLogger{},
 		Handler: proxy.Handler{
+			Dial: func(addr string) (conn net.Conn, e error) {
+				return transport.Dial(addr)
+			},
+			DialTLS: func(addr string, tlsConfig *tls.Config) (conn net.Conn, e error) {
+				return transport.DialTLS(addr, tlsConfig)
+			},
 			ShouldAllowConnection: func(conn net.Addr) bool {
 				fmt.Printf("allowed connection from %s\n", conn.String())
 				return true

@@ -96,6 +96,12 @@ type Proxy struct {
 
 // Handler proxy handlers
 type Handler struct {
+	// Dial called every TCP connection made to addr, default dialer is used when nil func passed
+	Dial func(addr string) (net.Conn, error)
+
+	// DialTLS called every TLS connection made to addr, default dialer is used when nil func passed
+	DialTLS func(addr string, tlsConfig *tls.Config) (net.Conn, error)
+
 	// ShouldAllowConnection should allow the connection to proxy, return false to drop the conn
 	ShouldAllowConnection func(connAddr net.Addr) bool
 
@@ -141,6 +147,8 @@ func (p *Proxy) Serve(network, addr string) error {
 	p.server.OnConcurrencyLimitExceeded = p.serveConnOnLimitExceeded
 
 	// setup client
+	p.client.Dial = p.Handler.Dial
+	p.client.DialTLS = p.Handler.DialTLS
 	p.client.BufioPool = p.bufioPool
 	p.client.MaxConnsPerHost = p.ForwardConcurrencyPerHost
 	p.client.MaxIdleConnDuration = p.ForwardIdleConnDuration
@@ -396,22 +404,28 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	//TODO: should reuse this decrypted connection?
 	defer hijackedConn.Close()
 
+	if len(serverName) > 0 {
+		serverNameWithHost := serverName + ":" + req.reqLine.HostInfo().Port()
+		serverNameWithHost = p.Handler.RewriteURL(req.userdata, serverNameWithHost)
+		serverName, _, _ = net.SplitHostPort(serverNameWithHost)
+	}
+
 	// reset request to a new one for hijacked request purpose
-	hostWithPort := req.reqLine.HostInfo().TargetWithPort()
+	targetWithPort := req.reqLine.HostInfo().TargetWithPort()
 	ip := req.reqLine.HostInfo().IP()
-	hijackedConnreader := p.bufioPool.AcquireReader(hijackedConn)
-	defer p.bufioPool.ReleaseReader(hijackedConnreader)
+	hijackedConnReader := p.bufioPool.AcquireReader(hijackedConn)
+	defer p.bufioPool.ReleaseReader(hijackedConnReader)
 
 	req.reader = nil
 	req.reqLine.Reset()
 	req.reader = nil
-	reqReadNum, err := req.parseStartLine(hijackedConnreader)
+	reqReadNum, err := req.parseStartLine(hijackedConnReader)
 	p.Usage.AddIncomingSize(uint64(reqReadNum))
 	if err != nil {
 		return util.ErrWrapper(err, "fail to read fake tls server request header")
 	}
 	req.SetTLS(serverName)
-	req.reqLine.HostInfo().ParseHostWithPort(hostWithPort, true)
+	req.reqLine.HostInfo().ParseHostWithPort(targetWithPort, true)
 	req.reqLine.HostInfo().SetIP(ip)
 	return p.proxyHTTP(hijackedConn, req)
 }
