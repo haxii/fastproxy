@@ -46,7 +46,7 @@ func (uri *URI) PathWithQueryFragment() []byte {
 	}
 	if len(uri.host) == 0 {
 		uri.pathWithQueryFragment = uri.full
-	} else if hostIndex := bytes.Index(uri.full, uri.host); hostIndex > 0 {
+	} else if hostIndex := bytes.Index(uri.full, uri.host); hostIndex >= 0 {
 		uri.pathWithQueryFragment = uri.full[hostIndex+len(uri.host):]
 	}
 	if len(uri.pathWithQueryFragment) == 0 {
@@ -90,13 +90,66 @@ func (uri *URI) Reset() {
 	uri.pathWithQueryFragmentParsed = false
 }
 
+// ChangeHost change the URI's host
+func (uri *URI) ChangeHost(hostWithPort string) {
+	if uri.hostInfo.hostWithPort == hostWithPort {
+		return
+	}
+	var newRawURI []byte
+	if len(uri.host) == 0 {
+		// not host in URI before, add it
+		newRawURI = []byte(hostWithPort)
+		if len(uri.full) == 0 || (len(uri.full) > 0 && uri.full[0] != '/') {
+			newRawURI = append(newRawURI, '/')
+		}
+		newRawURI = append(newRawURI, uri.full...)
+	} else if hostIndex := bytes.Index(uri.full, uri.host); hostIndex >= 0 {
+		if len(hostWithPort) == 0 {
+			newRawURI = uri.full[hostIndex+len(uri.host):]
+		} else {
+			// host already in URI, replace it
+			newRawURI = bytes.Replace(uri.full, uri.host, []byte(hostWithPort), 1)
+		}
+	}
+	if len(newRawURI) == 0 {
+		newRawURI = []byte("/")
+	}
+	uri.Parse(uri.isTLS, newRawURI)
+}
+
+// ChangePathWithFragment change URI's path with fragment
+func (uri *URI) ChangePathWithFragment(newPathWithFragment []byte) {
+	if uri.isTLS {
+		return
+	}
+	if bytes.Equal(newPathWithFragment, uri.PathWithQueryFragment()) {
+		return
+	}
+	var newRawURI []byte
+	if len(uri.host) == 0 {
+		newRawURI = newPathWithFragment
+	} else if hostIndex := bytes.Index(uri.full, uri.host); hostIndex >= 0 {
+		// host already in URI, replace it
+		hostEndIndex := hostIndex + len(uri.host)
+		newRawURI = uri.full[:hostEndIndex]
+		if len(newPathWithFragment) == 0 || (len(newPathWithFragment) > 0 && newPathWithFragment[0] != '/') {
+			newRawURI = append(newRawURI, '/')
+		}
+		newRawURI = append(newRawURI, newPathWithFragment...)
+	}
+	if len(newRawURI) == 0 {
+		newRawURI = []byte("/")
+	}
+	uri.Parse(uri.isTLS, newRawURI)
+}
+
 //Parse parse the request URI
 func (uri *URI) Parse(isTLS bool, reqURI []byte) {
-	uri.isTLS = isTLS
 	if len(reqURI) == 0 {
 		return
 	}
 	uri.Reset()
+	uri.isTLS = isTLS
 	uri.full = reqURI
 	fragmentIndex := bytes.IndexByte(reqURI, '#')
 	if fragmentIndex >= 0 {
@@ -177,9 +230,9 @@ func (uri *URI) parseWithoutSchemeQueriesFragments(reqURI []byte) {
 }
 
 //getSchemeIndex (Scheme must be [a-zA-Z0-9]*)
-func getSchemeIndex(rawurl []byte) int {
-	for i := 0; i < len(rawurl); i++ {
-		c := rawurl[i]
+func getSchemeIndex(rawURL []byte) int {
+	for i := 0; i < len(rawURL); i++ {
+		c := rawURL[i]
 		switch {
 		case 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9':
 		case c == ':':

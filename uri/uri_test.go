@@ -13,17 +13,41 @@ func TestParse(t *testing.T) {
 	testURIParse(t, u, true, "www.example.com:443",
 		"", "www.example.com:443", "www.example.com:443",
 		"", "", "", "")
+	testURIChangeHost(t, u, true, "www.example.com:443", "blog.test.com",
+		"", "blog.test.com", "blog.test.com:443",
+		"", "", "", "")
+	testURIChangeHost(t, u, true, "www.example.com:443", "blog.test.com:334",
+		"", "blog.test.com:334", "blog.test.com:334",
+		"", "", "", "")
+	testURIChangePath(t, u, true, "www.example.com:443", "/any/path/should?be=ignored#1",
+		"", "www.example.com:443", "www.example.com:443",
+		"", "", "", "")
 	testURIParse(t, u, true, "www.example.com",
 		"", "www.example.com", "www.example.com:443",
+		"", "", "", "")
+	testURIChangeHost(t, u, true, "www.example.com", "blog.test.com",
+		"", "blog.test.com", "blog.test.com:443",
+		"", "", "", "")
+	testURIChangeHost(t, u, true, "www.example.com", "blog.test.com:334",
+		"", "blog.test.com:334", "blog.test.com:334",
 		"", "", "", "")
 	//below test should not happen in real proxy connects though
 	testURIParse(t, u, true, "www.example.com/with/path",
 		"", "www.example.com", "www.example.com:443",
 		"", "", "", "")
+	testURIChangeHost(t, u, true, "www.example.com/with/path", "blog.test.com:334",
+		"", "blog.test.com:334", "blog.test.com:334",
+		"", "", "", "")
+	testURIChangeHost(t, u, true, "www.example.com/with/path", "",
+		"", "", "",
+		"", "", "", "")
 
 	//uri2: /path/to/resource
 	testURIParse(t, u, false, "/path/to/resource",
 		"", "", "",
+		"/path/to/resource", "/path/to/resource", "", "")
+	testURIChangeHost(t, u, false, "/path/to/resource", "www.example.com",
+		"", "www.example.com", "www.example.com:80",
 		"/path/to/resource", "/path/to/resource", "", "")
 	testURIParse(t, u, false, "/path/to/resource?q=xx&sss=f",
 		"", "", "",
@@ -31,6 +55,15 @@ func TestParse(t *testing.T) {
 	testURIParse(t, u, false, "/path/to/resource?q=xx&sss=f#fragments",
 		"", "", "",
 		"/path/to/resource?q=xx&sss=f#fragments", "/path/to/resource", "?q=xx&sss=f", "#fragments")
+	testURIChangePath(t, u, false, "/path/to/resource?q=xx&sss=f", "/path/to/hijack?q=yy&zz=f#1",
+		"", "", "",
+		"/path/to/hijack?q=yy&zz=f#1", "/path/to/hijack", "?q=yy&zz=f", "#1")
+	testURIChangePath(t, u, false, "/path/to/resource?q=xx&sss=f", "/",
+		"", "", "",
+		"/", "/", "", "")
+	testURIChangePath(t, u, false, "/path/to/resource?q=xx&sss=f", "",
+		"", "", "",
+		"/", "/", "", "")
 	testURIParse(t, u, false, "/path/to/resource#fragments",
 		"", "", "",
 		"/path/to/resource#fragments", "/path/to/resource", "", "#fragments")
@@ -49,9 +82,24 @@ func TestParse(t *testing.T) {
 	testURIParse(t, u, false, "http://www.example.com",
 		"http", "www.example.com", "www.example.com:80",
 		"/", "/", "", "")
+	testURIChangeHost(t, u, false, "http://www.example.com", "www.blog.com:8080",
+		"http", "www.blog.com:8080", "www.blog.com:8080",
+		"/", "/", "", "")
+	testURIChangeHost(t, u, false, "http://www.example.com", "",
+		"", "", "",
+		"/", "/", "", "")
+	testURIChangePath(t, u, false, "http://www.example.com", "/path/to/res?q=p&p=q#1",
+		"http", "www.example.com", "www.example.com:80",
+		"/path/to/res?q=p&p=q#1", "/path/to/res", "?q=p&p=q", "#1")
 	testURIParse(t, u, false, "http://www.example.com/",
 		"http", "www.example.com", "www.example.com:80",
 		"/", "/", "", "")
+	testURIChangePath(t, u, false, "http://www.example.com/", "/path/to/res?q=p&p=q#1",
+		"http", "www.example.com", "www.example.com:80",
+		"/path/to/res?q=p&p=q#1", "/path/to/res", "?q=p&p=q", "#1")
+	testURIChangePath(t, u, false, "http://www.example.com/", "path/to/res?q=p&p=q#1",
+		"http", "www.example.com", "www.example.com:80",
+		"/path/to/res?q=p&p=q#1", "/path/to/res", "?q=p&p=q", "#1")
 	testURIParse(t, u, false, "http://www.example.com?q=123",
 		"http", "www.example.com", "www.example.com:80",
 		"?q=123", "/", "?q=123", "")
@@ -66,10 +114,37 @@ func TestParse(t *testing.T) {
 		"/path/to/resource", "/path/to/resource", "", "")
 }
 
+func testURIChangeHost(t *testing.T, u *URI, isConnect bool, originalURI, newHostWithPort,
+	expectedScheme, expectedHost, expectedHostWithPort,
+	expectedPathQueryFragment, expectedPath, expectedQuery, expectedFragment string) {
+	u.Parse(isConnect, []byte(originalURI))
+	u.ChangeHost(newHostWithPort)
+	testURI(t, u, expectedScheme, expectedHost, expectedHostWithPort,
+		expectedPathQueryFragment, expectedPath, expectedQuery, expectedFragment)
+
+}
+
+func testURIChangePath(t *testing.T, u *URI, isConnect bool, originalURI, newPath,
+	expectedScheme, expectedHost, expectedHostWithPort,
+	expectedPathQueryFragment, expectedPath, expectedQuery, expectedFragment string) {
+	u.Parse(isConnect, []byte(originalURI))
+	u.ChangePathWithFragment([]byte(newPath))
+	testURI(t, u, expectedScheme, expectedHost, expectedHostWithPort,
+		expectedPathQueryFragment, expectedPath, expectedQuery, expectedFragment)
+
+}
+
 func testURIParse(t *testing.T, u *URI, isConnect bool, uri,
 	expectedScheme, expectedHost, expectedHostWithPort,
 	expectedPathQueryFragment, expectedPath, expectedQuery, expectedFragment string) {
 	u.Parse(isConnect, []byte(uri))
+	testURI(t, u, expectedScheme, expectedHost, expectedHostWithPort,
+		expectedPathQueryFragment, expectedPath, expectedQuery, expectedFragment)
+}
+
+func testURI(t *testing.T, u *URI, expectedScheme, expectedHost, expectedHostWithPort,
+	expectedPathQueryFragment, expectedPath, expectedQuery, expectedFragment string) {
+
 	if !bytes.Equal(u.Scheme(), []byte(expectedScheme)) {
 		t.Fatalf("Unexpected Scheme %q, Expected %q", u.Scheme(), []byte(expectedScheme))
 	}
