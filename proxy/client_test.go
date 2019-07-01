@@ -21,13 +21,13 @@ import (
 func TestParallelWriteHeader(t *testing.T) {
 	buffer := bytebufferpool.Get()
 	defer bytebufferpool.Put(buffer)
-	fixedsizebytebuffer := bytebufferpool.MakeFixedSizeByteBuffer(5)
+	fixedSizeByteBuffer := bytebufferpool.MakeFixedSizeByteBuffer(5)
 	testParallelWriteHeader(t, buffer, nil, []byte("Host: www.google.com\r\nUser-Agent: curl/7.54.0\r\n\r\n"), "", "")
 	buffer.Reset()
 	testParallelWriteHeader(t, buffer, nil, []byte("Host: www.google.com\r\nUser-Agent: curl/7.54.0\n\n"), "", "")
 	buffer.Reset()
 	testParallelWriteHeader(t, buffer, nil, []byte("Host: www.google.com\r\nProxy-Connection: Keep-Alive\r\nUser-Agent: curl/7.54.0\r\n\r\n"), "", "Proxy-Connection: Keep-Alive\r\n")
-	testParallelWriteHeader(t, nil, fixedsizebytebuffer, []byte("Host: www.google.com\r\nProxy-Connection: Keep-Alive\r\nUser-Agent: curl/7.54.0\r\n\r\n"), "error short buffer", "")
+	testParallelWriteHeader(t, nil, fixedSizeByteBuffer, []byte("Host: www.google.com\r\nProxy-Connection: Keep-Alive\r\nUser-Agent: curl/7.54.0\r\n\r\n"), "error short buffer", "")
 }
 
 func testParallelWriteHeader(t *testing.T, buffer *bytebufferpool.ByteBuffer, fixedsizeB *bytebufferpool.FixedSizeByteBuffer, header []byte, expErr, expResult string) {
@@ -317,8 +317,6 @@ func TestRequestPool(t *testing.T) {
 	request.proxy = &superproxy.SuperProxy{}
 	request.isTLS = true
 	request.tlsServerName = "localhost"
-	request.userdata = &UserData{}
-	request.userdata.Set("key", "value")
 
 	if request.header.IsConnectionClose() != true {
 		t.Fatalf("request header error")
@@ -337,9 +335,6 @@ func TestRequestPool(t *testing.T) {
 	}
 	if len(request.tlsServerName) == 0 {
 		t.Fatalf("request tlsServerName error")
-	}
-	if request.userdata.Get("key") == nil {
-		t.Fatalf("request userdata data error")
 	}
 
 	reqPool.Release(request)
@@ -361,12 +356,6 @@ func TestRequestPool(t *testing.T) {
 	}
 	if len(request.tlsServerName) != 0 {
 		t.Fatalf("request reset tlsServerName error")
-	}
-	if request.userdata == nil {
-		t.Fatalf("request reset userdata error")
-	}
-	if request.userdata.Get("key") != nil {
-		t.Fatalf("request reset userdata data error")
 	}
 	reqPool.Release(request)
 }

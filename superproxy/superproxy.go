@@ -25,7 +25,7 @@ const (
 	ProxyTypeSOCKS5
 
 	// DefaultMaxConcurrency a max concurrency setting for super proxy by default
-	DefaultMaxConcurrency = 2
+	DefaultMaxConcurrency = 128
 )
 
 //SuperProxy chaining proxy

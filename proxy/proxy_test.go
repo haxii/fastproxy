@@ -75,13 +75,13 @@ func testInit(t *testing.T) {
 				ShouldAllowConnection: func(conn net.Addr) bool {
 					return true
 				},
-				ShouldDecryptHost: func(userData *UserData, hostWithPort string) bool {
+				ShouldDecryptHost: func(userData *Context, hostWithPort string) bool {
 					return false
 				},
-				URLProxy: func(userData *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
+				URLProxy: func(userData *Context, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 					return nil
 				},
-				RewriteURL: func(userdata *UserData, hostWithPort string) string {
+				RewriteHost: func(userdata *Context, hostWithPort string) string {
 					return hostWithPort
 				},
 			},
@@ -173,13 +173,13 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	   				ShouldAllowConnection: func(conn net.Addr) bool {
 	   					return true
 	   				},
-	   				ShouldDecryptHost: func(userData *UserData, hostWithPort string) bool {
+	   				ShouldDecryptHost: func(userData *Context, hostWithPort string) bool {
 	   					return false
 	   				},
-	   				URLProxy: func(userData *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
+	   				URLProxy: func(userData *Context, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 	   					return superProxy
 	   				},
-	   				RewriteURL: func(userdata *UserData, hostWithPort string) string {
+	   				RewriteHost: func(userdata *Context, hostWithPort string) string {
 	   					return hostWithPort
 	   				},
 	   			},
@@ -214,13 +214,13 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 				ShouldAllowConnection: func(conn net.Addr) bool {
 					return true
 				},
-				ShouldDecryptHost: func(userData *UserData, hostWithPort string) bool {
+				ShouldDecryptHost: func(userData *Context, hostWithPort string) bool {
 					return false
 				},
-				URLProxy: func(userData *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
+				URLProxy: func(userData *Context, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 					return superProxy
 				},
-				RewriteURL: func(userdata *UserData, hostWithPort string) string {
+				RewriteHost: func(userdata *Context, hostWithPort string) string {
 					return hostWithPort
 				},
 			},
@@ -239,13 +239,13 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 				ShouldAllowConnection: func(conn net.Addr) bool {
 					return true
 				},
-				ShouldDecryptHost: func(userData *UserData, hostWithPort string) bool {
+				ShouldDecryptHost: func(userData *Context, hostWithPort string) bool {
 					return false
 				},
-				URLProxy: func(userData *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
+				URLProxy: func(userData *Context, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 					return superProxy
 				},
-				RewriteURL: func(userdata *UserData, hostWithPort string) string {
+				RewriteHost: func(userdata *Context, hostWithPort string) string {
 					return hostWithPort
 				},
 			},
@@ -576,13 +576,13 @@ func testGracefulShutDown(t *testing.T) {
 			ShouldAllowConnection: func(conn net.Addr) bool {
 				return true
 			},
-			ShouldDecryptHost: func(userData *UserData, hostWithPort string) bool {
+			ShouldDecryptHost: func(userData *Context, hostWithPort string) bool {
 				return true
 			},
-			URLProxy: func(userData *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
+			URLProxy: func(userData *Context, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 				return nil
 			},
-			RewriteURL: func(userdata *UserData, hostWithPort string) string {
+			RewriteHost: func(userdata *Context, hostWithPort string) string {
 				return hostWithPort
 			},
 		},
@@ -632,17 +632,17 @@ func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 			ShouldAllowConnection: func(conn net.Addr) bool {
 				return true
 			},
-			ShouldDecryptHost: func(userdata *UserData, hostWithPort string) bool {
+			ShouldDecryptHost: func(userdata *Context, hostWithPort string) bool {
 				return false
 			},
-			URLProxy: func(userdata *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
+			URLProxy: func(userdata *Context, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 				if strings.Contains(hostWithPort, "127.0.0.1:9333") {
 					dataForSigning = "No super proxy can use for fast proxy"
 					return nil
 				}
 				return superProxy
 			},
-			RewriteURL: func(userdata *UserData, hostWithPort string) string {
+			RewriteHost: func(userdata *Context, hostWithPort string) string {
 				return hostWithPort
 			},
 		},
@@ -714,13 +714,13 @@ func testHostsRewrite(t *testing.T) {
 			ShouldAllowConnection: func(conn net.Addr) bool {
 				return true
 			},
-			ShouldDecryptHost: func(userdata *UserData, hostWithPort string) bool {
+			ShouldDecryptHost: func(userdata *Context, hostWithPort string) bool {
 				return false
 			},
-			URLProxy: func(userdata *UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
+			URLProxy: func(userdata *Context, hostWithPort string, uri []byte) *superproxy.SuperProxy {
 				return nil
 			},
-			RewriteURL: func(userdata *UserData, hostWithPort string) string {
+			RewriteHost: func(userdata *Context, hostWithPort string) string {
 				if hostWithPort == "127.0.0.1:9991" {
 					return "127.0.0.1:5050"
 				}

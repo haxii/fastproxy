@@ -84,44 +84,23 @@ type Proxy struct {
 	reqPool  RequestPool
 	respPool ResponsePool
 
-	// user data pool, used by handler functions
-	userDataPool userDataPool
+	// SuperProxy default super proxy for connections, can be override if hijacker is not nil
+	SuperProxy *superproxy.SuperProxy
 
-	// Handler proxy handler
-	Handler Handler
-
-	// Usage usage
-	Usage usage.ProxyUsage
-}
-
-// Handler proxy handlers
-type Handler struct {
-	// Dial called every TCP connection made to addr, default dialer is used when nil func passed
+	// Dial default dial function for proxy and target host, can be override if hijacker is not nil
 	Dial func(addr string) (net.Conn, error)
 
-	// DialTLS called every TLS connection made to addr, default dialer is used when nil func passed
+	// DialTLS default TLS dial function for proxy and target host, can be override if hijacker is not nil
 	DialTLS func(addr string, tlsConfig *tls.Config) (net.Conn, error)
-
-	// ShouldAllowConnection should allow the connection to proxy, return false to drop the conn
-	ShouldAllowConnection func(connAddr net.Addr) bool
-
-	// HTTPSDecryptEnable test if host's https connection should be decrypted
-	ShouldDecryptHost func(userdata *UserData, host string) bool
-
-	// RewriteURL rewrites url
-	RewriteURL func(userdata *UserData, hostWithPort string) string
-
-	// URLProxy url specified proxy, nil path means this is a un-decrypted https traffic
-	URLProxy func(userdata *UserData, hostWithPort string, path []byte) *superproxy.SuperProxy
-
-	// LookupIP returns ip string, should not block for long time
-	LookupIP func(userdata *UserData, domain string) net.IP
 
 	// hijacker pool for making a hijacker for every incoming request
 	HijackerPool HijackerPool
 
 	// MITMCertAuthority root certificate authority used for https decryption
 	MITMCertAuthority *tls.Certificate
+
+	// Usage usage
+	Usage usage.ProxyUsage
 }
 
 // Serve serve on the provided ip address
@@ -147,35 +126,11 @@ func (p *Proxy) Serve(network, addr string) error {
 	p.server.OnConcurrencyLimitExceeded = p.serveConnOnLimitExceeded
 
 	// setup client
-	p.client.Dial = p.Handler.Dial
-	p.client.DialTLS = p.Handler.DialTLS
 	p.client.BufioPool = p.bufioPool
 	p.client.MaxConnsPerHost = p.ForwardConcurrencyPerHost
 	p.client.MaxIdleConnDuration = p.ForwardIdleConnDuration
 	p.client.ReadTimeout = p.ForwardReadTimeout
 	p.client.WriteTimeout = p.ForwardWriteTimeout
-
-	// setup handler
-	if p.Handler.ShouldAllowConnection == nil {
-		p.Handler.ShouldAllowConnection = func(net.Addr) bool {
-			return true
-		}
-	}
-	if p.Handler.ShouldDecryptHost == nil {
-		p.Handler.ShouldDecryptHost = func(*UserData, string) bool {
-			return false
-		}
-	}
-	if p.Handler.URLProxy == nil {
-		p.Handler.URLProxy = func(userdata *UserData, hostWithPort string, path []byte) *superproxy.SuperProxy {
-			return nil
-		}
-	}
-	if p.Handler.LookupIP == nil {
-		p.Handler.LookupIP = func(userdata *UserData, domain string) net.IP {
-			return nil
-		}
-	}
 
 	return p.server.ListenAndServe()
 }
@@ -191,15 +146,10 @@ func (p *Proxy) serveConnOnLimitExceeded(c net.Conn) {
 }
 
 func (p *Proxy) serveConn(c net.Conn) error {
-	if !p.Handler.ShouldAllowConnection(c.RemoteAddr()) {
-		return nil
-	}
 	// convert c into a http request
 	reader := p.bufioPool.AcquireReader(c)
 	req := p.reqPool.Acquire()
-	req.userdata = p.userDataPool.Acquire()
 	releaseReqAndReader := func() {
-		p.userDataPool.Release(req.userdata)
 		p.reqPool.Release(req)
 		p.bufioPool.ReleaseReader(reader)
 	}
@@ -251,46 +201,12 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			return nil
 		}
 
-		newHostWithPort := p.Handler.RewriteURL(req.userdata, req.reqLine.HostInfo().HostWithPort())
-		if len(newHostWithPort) == 0 {
-			if e := writeFastError(c, http.StatusSessionUnavailable,
-				"Sorry, server can't keep this session.\n"); e != nil {
-				return util.ErrWrapper(e, "fail to response session unavailable")
-			}
-			return nil
-		}
-		if newHostWithPort != req.reqLine.HostInfo().HostWithPort() {
-			req.reqLine.HostInfo().ParseHostWithPort(newHostWithPort, req.IsTLS())
-		}
-
-		// do a manual DNS look up
-		domain := req.reqLine.HostInfo().Domain()
-		if len(domain) > 0 {
-			ip := p.Handler.LookupIP(req.userdata, domain)
-			req.reqLine.HostInfo().SetIP(ip)
-		}
-
-		// set requests proxy
-		superProxy := p.Handler.URLProxy(req.userdata, req.reqLine.HostInfo().HostWithPort(), req.PathWithQueryFragment())
-		req.SetProxy(superProxy)
-		if superProxy != nil { //set up super proxy concurrency limits
-			superProxy.AcquireToken()
-		}
-
 		if p.ServerWriteTimeout > 0 {
 			lastWriteDeadlineTime, err = p.updateWriteDeadline(c, servertime.CoarseTimeNow(), lastWriteDeadlineTime)
-			if err != nil {
-				if superProxy != nil {
-					superProxy.PushBackToken()
-				}
-				return err
-			}
 		}
 
+		// TODO: super proxy thread handle
 		err = p.do(c, req)
-		if superProxy != nil {
-			superProxy.PushBackToken()
-		}
 		if err != nil && err != io.EOF {
 			//TODO: should every error close the http connection? @daizong
 			return util.ErrWrapper(err, "proxy error with "+req.reqLine.HostInfo().TargetWithPort())
@@ -307,19 +223,45 @@ func (p *Proxy) serveConn(c net.Conn) error {
 }
 
 func (p *Proxy) do(c net.Conn, req *Request) error {
+	var hijacker Hijacker
+	// setup request hijacker
+	if p.HijackerPool != nil {
+		hijacker = p.HijackerPool.Get(c.RemoteAddr(), req.isTLS,
+			req.reqLine.HostInfo().Domain(), req.reqLine.HostInfo().Port())
+		req.hijacker = hijacker
+		defer p.HijackerPool.Put(hijacker)
+	}
+
+	// rewrite the host
+	if hijacker != nil {
+		newHost, newPort := hijacker.RewriteHost()
+		if len(newHost) == 0 || len(newPort) == 0 {
+			if e := writeFastError(c, http.StatusSessionUnavailable,
+				"Sorry, server can't keep this session.\n"); e != nil {
+				return util.ErrWrapper(e, "fail to response session unavailable")
+			}
+			return nil
+		}
+		newHostWithPort := fmt.Sprintf("%s:%s", newHost, newPort)
+		if newHostWithPort != req.reqLine.HostInfo().HostWithPort() {
+			req.reqLine.ChangeHost(newHostWithPort)
+		}
+	}
+
 	// make http client requests
 	if !http.IsMethodConnect(req.Method()) {
 		return p.proxyHTTP(c, req)
 	}
 
-	// TODO: where did I jumper over the rest http headers? @zichao
-
-	// make the tunnel HTTPS requests
-	if !p.Handler.ShouldDecryptHost(req.userdata, req.reqLine.HostInfo().Domain()) {
-		return p.tunnelHTTPS(c, req)
+	// setup the SSL bump
+	sslBump := false
+	if hijacker != nil {
+		sslBump = hijacker.SSLBump()
 	}
-
-	return p.decryptHTTPS(c, req)
+	if sslBump {
+		return p.decryptHTTPS(c, req)
+	}
+	return p.tunnelHTTPS(c, req)
 }
 
 func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
@@ -333,29 +275,31 @@ func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
 		return err
 	}
 	// set hijacker
-	var hijacker Hijacker
-	if p.Handler.HijackerPool == nil {
-		hijacker = defaultNilHijacker
-	} else {
-		hijacker = p.Handler.HijackerPool.Get(c.RemoteAddr(), req.reqLine.HostInfo().HostWithPort(),
-			req.Method(), req.PathWithQueryFragment(), req.UserData())
-		defer p.Handler.HijackerPool.Put(hijacker)
-	}
-	req.SetHijacker(hijacker)
+	hijacker := req.hijacker
 	resp.SetHijacker(hijacker)
 
 	// pre-processing of the request, hijack request if available
 	if err := req.PrePare(); err != nil {
 		return err
 	}
-
-	if hijackedRespReader := hijacker.HijackResponse(); hijackedRespReader != nil {
-		reqReadN, _, respN, err := p.client.DoFake(req, resp, hijackedRespReader)
-		p.Usage.AddIncomingSize(uint64(reqReadN))
-		p.Usage.AddOutgoingSize(uint64(respN))
-		return err
+	req.makeDNSLookUpAndSetSuperProxy(p.SuperProxy)
+	if p := req.proxy; p != nil {
+		p.AcquireToken()
+		defer p.PushBackToken()
 	}
+
+	if hijacker != nil {
+		// hijack the response if needed
+		if hijackedRespReader := hijacker.HijackResponse(); hijackedRespReader != nil {
+			reqReadN, _, respN, err := p.client.DoFake(req, resp, hijackedRespReader)
+			p.Usage.AddIncomingSize(uint64(reqReadN))
+			p.Usage.AddOutgoingSize(uint64(respN))
+			return err
+		}
+	}
+
 	// make the request
+	p.setClientDialer(req)
 	reqReadN, reqWriteN, respN, err := p.client.Do(req, resp)
 	p.Usage.AddIncomingSize(uint64(reqReadN))
 	p.Usage.AddOutgoingSize(uint64(respN))
@@ -366,29 +310,10 @@ func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
 	return err
 }
 
-func (p *Proxy) tunnelHTTPS(c net.Conn, req *Request) error {
-	// TODO: add traffic calculation
-	rwReadNum, rwWriteNum, err := p.client.DoRaw(
-		c, req.GetProxy(), req.TargetWithPort(),
-		func(fail error) error { // on tunnel made, return the tunnel made or failed message
-			_, err := sendTunnelMessage(c, fail)
-			return err
-		},
-	)
-
-	p.Usage.AddIncomingSize(uint64(rwReadNum))
-	p.Usage.AddOutgoingSize(uint64(rwWriteNum))
-	if req.GetProxy() != nil {
-		req.GetProxy().Usage.AddIncomingSize(uint64(rwWriteNum))
-		req.GetProxy().Usage.AddOutgoingSize(uint64(rwReadNum))
-	}
-	return err
-}
-
 func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	// hijack this TLS connection firstly
 	hijackedConn, serverName, err := mitm.HijackTLSConnection(
-		p.Handler.MITMCertAuthority, c, req.reqLine.HostInfo().Domain(),
+		p.MITMCertAuthority, c, req.reqLine.HostInfo().Domain(),
 		func(fail error) error { // before handshaking with client, return the tunnel made or failed message
 			wn, err := sendTunnelMessage(c, fail)
 			p.Usage.AddOutgoingSize(uint64(wn))
@@ -404,10 +329,8 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	//TODO: should reuse this decrypted connection?
 	defer hijackedConn.Close()
 
-	if len(serverName) > 0 {
-		serverNameWithHost := serverName + ":" + req.reqLine.HostInfo().Port()
-		serverNameWithHost = p.Handler.RewriteURL(req.userdata, serverNameWithHost)
-		serverName, _, _ = net.SplitHostPort(serverNameWithHost)
+	if req.hijacker != nil {
+		serverName = req.hijacker.RewriteTLSServerName(serverName)
 	}
 
 	// reset request to a new one for hijacked request purpose
@@ -428,6 +351,41 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	req.reqLine.HostInfo().ParseHostWithPort(targetWithPort, true)
 	req.reqLine.HostInfo().SetIP(ip)
 	return p.proxyHTTP(hijackedConn, req)
+}
+
+func (p *Proxy) tunnelHTTPS(c net.Conn, req *Request) error {
+	req.makeDNSLookUpAndSetSuperProxy(p.SuperProxy)
+	if p := req.proxy; p != nil {
+		p.AcquireToken()
+		defer p.PushBackToken()
+	}
+
+	p.setClientDialer(req)
+	rwReadNum, rwWriteNum, err := p.client.DoRaw(
+		c, req.GetProxy(), req.TargetWithPort(),
+		func(fail error) error { // on tunnel made, return the tunnel made or failed message
+			_, err := sendTunnelMessage(c, fail)
+			return err
+		},
+	)
+
+	p.Usage.AddIncomingSize(uint64(rwReadNum))
+	p.Usage.AddOutgoingSize(uint64(rwWriteNum))
+	if req.GetProxy() != nil {
+		req.GetProxy().Usage.AddIncomingSize(uint64(rwWriteNum))
+		req.GetProxy().Usage.AddOutgoingSize(uint64(rwReadNum))
+	}
+	return err
+}
+
+func (p *Proxy) setClientDialer(req *Request) {
+	if req.hijacker == nil {
+		p.client.DialTLS = p.DialTLS
+		p.client.Dial = p.Dial
+		return
+	}
+	p.client.DialTLS = req.hijacker.DialTLS()
+	p.client.Dial = req.hijacker.Dial()
 }
 
 func (p *Proxy) updateReadDeadline(c net.Conn, currentTime time.Time, lastDeadlineTime time.Time) (time.Time, error) {

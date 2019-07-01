@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,135 +21,134 @@ import (
 var superProxy1, superProxy2 *superproxy.SuperProxy
 
 func main() {
-	superProxy1, _ = superproxy.NewSuperProxy("a.b", 1080, superproxy.ProxyTypeHTTP, "", "", "")
-	superProxy2, _ = superproxy.NewSuperProxy("a.b", 6050, superproxy.ProxyTypeHTTP, "", "", "")
-	superProxy1.SetMaxConcurrency(20)
+	superProxy1, _ = superproxy.NewSuperProxy("10.1.3.1", 1080, superproxy.ProxyTypeHTTP,
+		"", "", "")
+	superProxy2, _ = superproxy.NewSuperProxy("127.0.0.1", 1080, superproxy.ProxyTypeSOCKS5,
+		"", "", "")
 
-	proxy := proxy.Proxy{
-		Logger: &log.DefaultLogger{},
-		Handler: proxy.Handler{
-			Dial: func(addr string) (conn net.Conn, e error) {
-				return transport.Dial(addr)
-			},
-			DialTLS: func(addr string, tlsConfig *tls.Config) (conn net.Conn, e error) {
-				return transport.DialTLS(addr, tlsConfig)
-			},
-			ShouldAllowConnection: func(conn net.Addr) bool {
-				fmt.Printf("allowed connection from %s\n", conn.String())
-				return true
-			},
-			ShouldDecryptHost: func(userdata *proxy.UserData, hostWithPort string) bool {
-				return false
-			},
-			RewriteURL: func(userdata *proxy.UserData, hostWithPort string) string {
-				return hostWithPort
-			},
-			URLProxy: func(userdata *proxy.UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
-				return superProxy1
-			},
-			HijackerPool: &SimpleHijackerPool{},
-			LookupIP: func(userdata *proxy.UserData, domain string) net.IP {
-				return nil
-			},
-		},
+	p := proxy.Proxy{
+		Logger:             &log.DefaultLogger{},
 		ServerIdleDuration: time.Second * 30,
+		HijackerPool:       &SimpleHijackerPool{},
 	}
 
-	panic(proxy.Serve("tcp", "0.0.0.0:8081"))
+	panic(p.Serve("tcp", "0.0.0.0:8080"))
 }
 
-//SimpleHijackerPool implements the HijackerPool based on simpleHijacker & sync.Pool
 type SimpleHijackerPool struct {
 	pool sync.Pool
 }
 
-//Get get a simple hijacker from pool
-func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
-	targetHost string, method, path []byte, userdata *proxy.UserData) proxy.Hijacker {
+func (p *SimpleHijackerPool) Get(clientAddr net.Addr, isHTTPS bool, host, port string) proxy.Hijacker {
 	v := p.pool.Get()
-	var h *simpleHijacker
+	var h *SimpleHijacker
 	if v == nil {
-		h = &simpleHijacker{}
+		h = &SimpleHijacker{}
 	} else {
-		h = v.(*simpleHijacker)
+		h = v.(*SimpleHijacker)
 	}
-	h.Set(clientAddr, targetHost, method, path, userdata)
+	h.init(clientAddr, isHTTPS, host, port)
 	return h
 }
 
-//Put puts a simple hijacker back to pool
-func (p *SimpleHijackerPool) Put(s proxy.Hijacker) {
-	p.pool.Put(s)
+func (p *SimpleHijackerPool) Put(h proxy.Hijacker) {
+	hijacker := h.(*SimpleHijacker)
+	hijacker.OnFinish()
+	p.pool.Put(h)
 }
 
-type simpleHijacker struct {
-	clientAddr, targetHost string
-	method, path           []byte
-	userdata               *proxy.UserData
+type SimpleHijacker struct {
+	clientAddr net.Addr
+	host, port string
+	isHTTPS    bool
+	superProxy *superproxy.SuperProxy
 }
 
-func (s *simpleHijacker) Set(clientAddr net.Addr,
-	host string, method, path []byte, userdata *proxy.UserData) {
-	s.clientAddr = clientAddr.String()
-	s.targetHost = host
-	s.method = method
-	s.path = path
-	s.userdata = userdata
+func (h *SimpleHijacker) init(clientAddr net.Addr, isHTTPS bool, host, port string) {
+	fmt.Println("init called, passed", clientAddr.String(), host, port)
+	h.clientAddr = clientAddr
+	h.host = host
+	h.port = port
+	h.superProxy = superProxy1
 }
 
-func (s *simpleHijacker) HijackRequest(header http.Header, rawHeader []byte, superProxy **superproxy.SuperProxy) []byte {
-	if bytes.Contains(rawHeader, []byte("curl")) {
-		fmt.Printf("***\n\n\n%s\n\n\n", rawHeader)
-		// all curl requests using super proxy2
-		*superProxy = superProxy2
-		// replace curl as burl in user-agent
-		return bytes.Replace(rawHeader, []byte("curl"), []byte("burl"), -1)
+func (h *SimpleHijacker) RewriteHost() (newHost, newPort string) {
+	fmt.Println("RewriteHost called, returned", h.host, h.port)
+	return h.host, h.port
+}
+
+func (h *SimpleHijacker) SSLBump() bool {
+	// curl -k -x 0.0.0.0:8081 https://www.lumtest.com/echo.json
+	shouldBump := strings.Contains(h.host, "lumtest.com")
+	fmt.Println("SSLBump called, returned", shouldBump)
+	return shouldBump
+}
+
+func (h *SimpleHijacker) RewriteTLSServerName(serverName string) string {
+	fmt.Println("RewriteTLSServerName called, passed", serverName, "returned", serverName)
+	return serverName
+}
+
+func (h *SimpleHijacker) BeforeRequest(path []byte, header http.Header, rawHeader []byte) (newPath, newRawHeader []byte) {
+	newPath = path
+	newRawHeader = rawHeader
+	if bytes.Contains(rawHeader, []byte("change-proxy")) {
+		// curl -H 'X-Fast-Proxy:change-proxy' -x 0.0.0.0:8081 http://httpbin.org/get
+		h.superProxy = superProxy2
+	} else if bytes.Contains(rawHeader, []byte("no-proxy")) {
+		// curl -H 'X-Fast-Proxy:no-proxy' -x 0.0.0.0:8081 http://httpbin.org/get
+		h.superProxy = nil
 	}
+
+	fmt.Printf("BeforeRequest called   with path: %s, rawHeader: %s\n", path, strconv.Quote(string(rawHeader)))
+	fmt.Printf("BeforeRequest returned with path: %s, rawHeader: %s\n", path, strconv.Quote(string(newRawHeader)))
+	return bytes.Replace(newPath, []byte("get"), []byte("get?a=b&&cc=dd#ee"), -1),
+		bytes.Replace(rawHeader, []byte("curl"), []byte("xurl"), -1)
+}
+
+func (h *SimpleHijacker) Resolve() net.IP {
+	fmt.Println("Resolve called")
 	return nil
 }
 
-func (s *simpleHijacker) OnRequest(header http.Header, rawHeader []byte) io.Writer {
-	fmt.Printf(`
-	************************
-	addr: %s, host: %s
-	************************
-	%s %s
-	************************
-	content length: %d
-	************************
-	%s
-	************************
-	`,
-		s.clientAddr, s.targetHost, s.method, s.path,
-		header.ContentLength(), rawHeader)
-	return os.Stdout
+func (h *SimpleHijacker) SuperProxy() *superproxy.SuperProxy {
+	if h.superProxy != nil {
+		fmt.Println("SuperProxy called, using super proxy", h.superProxy.HostWithPort())
+	} else {
+		fmt.Println("SuperProxy called, no super proxy used")
+	}
+	return h.superProxy
 }
 
-func (s *simpleHijacker) HijackResponse() io.Reader {
-	if strings.Contains(s.targetHost, "douban") {
-		return strings.NewReader("HTTP/1.1 501 Response Hijacked\r\nContent-Length:0\r\n\r\n")
+func (h *SimpleHijacker) Dial() func(addr string) (net.Conn, error) {
+	return func(addr string) (conn net.Conn, e error) {
+		fmt.Println("Dial called")
+		return transport.Dial(addr)
 	}
+}
+
+func (h *SimpleHijacker) DialTLS() func(addr string, tlsConfig *tls.Config) (net.Conn, error) {
+	return func(addr string, tlsConfig *tls.Config) (conn net.Conn, e error) {
+		fmt.Println("DialTLS called")
+		return transport.DialTLS(addr, tlsConfig)
+	}
+}
+
+func (h *SimpleHijacker) OnRequest(path []byte, header http.Header, rawHeader []byte) io.Writer {
+	fmt.Printf("OnRequest called with path: %s, rawHeader: %s\n", path, strconv.Quote(string(rawHeader)))
 	return nil
 }
 
-func (s *simpleHijacker) OnResponse(respLine http.ResponseLine,
-	header http.Header, rawHeader []byte) io.Writer {
-	fmt.Printf(`
-	************************
-	addr: %s, host: %s
-	************************
-	%s %s
-	************************
-	%s %d %s
-	************************
-	content length: %d
-	content type: %s
-	************************
-	%s
-	************************
-	`,
-		s.clientAddr, s.targetHost, s.method, s.path,
-		respLine.GetProtocol(), respLine.GetStatusCode(), respLine.GetStatusMessage(),
-		header.ContentLength(), header.ContentType(), rawHeader)
-	return os.Stdout
+func (h *SimpleHijacker) OnResponse(statusLine http.ResponseLine, header http.Header, rawHeader []byte) io.Writer {
+	fmt.Println("OnResponse called")
+	return nil
+}
+
+func (h *SimpleHijacker) HijackResponse() io.Reader {
+	fmt.Println("HijackResponse called")
+	return nil
+}
+
+func (h *SimpleHijacker) OnFinish() {
+	fmt.Println("OnFinish Called")
 }

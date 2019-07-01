@@ -7,14 +7,11 @@ import (
 )
 
 func main() {
-	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 9099, superproxy.ProxyTypeSOCKS5, "", "", "")
-	proxy := proxy.Proxy{
-		Logger: &log.DefaultLogger{},
-		Handler: proxy.Handler{
-			URLProxy: func(userdata *proxy.UserData, hostWithPort string, uri []byte) *superproxy.SuperProxy {
-				return superProxy
-			},
-		},
+	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 8080,
+		superproxy.ProxyTypeHTTP, "", "", "")
+	p := proxy.Proxy{
+		Logger:     &log.DefaultLogger{},
+		SuperProxy: superProxy,
 	}
-	panic(proxy.Serve("tcp", "0.0.0.0:8080"))
+	panic(p.Serve("tcp", "0.0.0.0:8081"))
 }

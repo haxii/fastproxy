@@ -65,8 +65,8 @@ type Request struct {
 	header http.Header
 	// rawHeader the raw header in bytes to be sent to target, which can be changed by hijacker
 	rawHeader []byte
-	// headerLenBeforeHijack the header size before hijacking
-	headerLenBeforeHijack int
+	// originalHeaderLength the header size send by client, before hijacking
+	originalHeaderLength int
 
 	// body body parser
 	body http.Body
@@ -81,9 +81,6 @@ type Request struct {
 	// TLS request settings
 	isTLS         bool
 	tlsServerName string
-
-	// userdata
-	userdata *UserData
 }
 
 // Reset reset request
@@ -92,10 +89,7 @@ func (r *Request) Reset() {
 	r.reqLine.Reset()
 	r.header.Reset()
 	r.rawHeader = nil
-	r.headerLenBeforeHijack = 0
-	if r.userdata != nil {
-		r.userdata.Reset()
-	}
+	r.originalHeaderLength = 0
 	r.hijacker = nil
 	r.proxy = nil
 	r.isTLS = false
@@ -177,22 +171,31 @@ func (r *Request) PrePare() error {
 
 	// parse header info from request
 	var err error
-	r.headerLenBeforeHijack, err = r.header.ParseHeaderFields(r.reader)
+	r.originalHeaderLength, err = r.header.ParseHeaderFields(r.reader)
 	if err != nil {
 		return util.ErrWrapper(err, "fail to parse request http headers")
 	}
 	var rawHeader []byte
-	rawHeader, err = r.reader.Peek(r.headerLenBeforeHijack)
+	rawHeader, err = r.reader.Peek(r.originalHeaderLength)
 	if err != nil {
 		// should NOT have any errors
 		return util.ErrWrapper(err, "fail to read raw headers")
 	}
 
+	// hijack the request URL and header
+	if r.hijacker == nil {
+		r.rawHeader = rawHeader
+		return nil
+	}
+
 	// modify request header and change super proxy if needed
-	newHeader := r.hijacker.HijackRequest(r.header, rawHeader, &r.proxy)
+	newPath, newHeader := r.hijacker.BeforeRequest(r.reqLine.PathWithQueryFragment(), r.header, rawHeader)
+
+	// reset new path
+	r.reqLine.ChangePathWithFragment(newPath)
 
 	// header not modified return it
-	if newHeader == nil {
+	if newHeader == nil || bytes.Equal(newHeader, rawHeader) {
 		r.rawHeader = rawHeader
 		return nil
 	}
@@ -208,6 +211,26 @@ func (r *Request) PrePare() error {
 	return nil
 }
 
+func (r *Request) makeDNSLookUpAndSetSuperProxy(defaultSuperProxy *superproxy.SuperProxy) {
+	hijacker := r.hijacker
+	if hijacker == nil {
+		r.SetProxy(defaultSuperProxy)
+		return
+	}
+
+	// do a manual DNS look up
+	domain := r.reqLine.HostInfo().Domain()
+	if len(domain) > 0 {
+		ip := hijacker.Resolve()
+		r.reqLine.HostInfo().SetIP(ip)
+	}
+
+	// set requests proxy
+	superProxy := hijacker.SuperProxy()
+	r.SetProxy(superProxy)
+
+}
+
 // WriteHeaderTo write raw http request header to http client
 // implemented client's request interface
 func (r *Request) WriteHeaderTo(writer *bufio.Writer) (int, int, error) {
@@ -216,15 +239,17 @@ func (r *Request) WriteHeaderTo(writer *bufio.Writer) (int, int, error) {
 	}
 
 	// the header only peeks for parsing in `PrePare`, discard it after using
-	defer r.reader.Discard(r.headerLenBeforeHijack)
+	defer r.reader.Discard(r.originalHeaderLength)
 
 	copiedHeaderLen, err := parallelWriteHeader(
 		writer,
 		func(header []byte) {
-			r.hijackerBodyWriter = r.hijacker.OnRequest(r.header, header)
+			if r.hijacker != nil {
+				r.hijackerBodyWriter = r.hijacker.OnRequest(r.reqLine.PathWithQueryFragment(), r.header, header)
+			}
 		},
 		r.rawHeader)
-	return r.headerLenBeforeHijack, copiedHeaderLen, err
+	return r.originalHeaderLength, copiedHeaderLen, err
 }
 
 // WriteBodyTo write raw http request body to http client
@@ -258,11 +283,6 @@ func (r *Request) IsTLS() bool {
 // TLSServerName server name for handshaking
 func (r *Request) TLSServerName() string {
 	return r.tlsServerName
-}
-
-// UserData user data
-func (r *Request) UserData() *UserData {
-	return r.userdata
 }
 
 // Response http response implementation of http client
@@ -328,8 +348,10 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) (int, error)
 	var hijackerBodyWriter io.Writer
 	if _, wn, err = copyHeader(&r.header, reader, r.writer,
 		func(rawHeader []byte) {
-			hijackerBodyWriter = r.hijacker.OnResponse(
-				r.respLine, r.header, rawHeader)
+			if r.hijacker != nil {
+				hijackerBodyWriter = r.hijacker.OnResponse(
+					r.respLine, r.header, rawHeader)
+			}
 		},
 	); err != nil {
 		return num, err

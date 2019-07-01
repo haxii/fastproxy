@@ -1,3 +1,12 @@
+github.com/fangdingjun/socks-go v0.0.0-20180926100003-fc6f0a9ee1f4 h1:c3Iw/znf2xe2uut9zUTueO6XHyTTLugrbN9fAE4NAkg=
+github.com/fangdingjun/socks-go v0.0.0-20180926100003-fc6f0a9ee1f4/go.mod h1:0P4kTlyyh76uY1Li3cyw4pOIKGL9RmXXWTQYFLS1ZaM=
 github.com/haxii/log v1.0.0 h1:Zhesdrw9cG9A6nb4wX6SIuHCt1btRxmyhUYDmzrYm/k=
 github.com/haxii/log v1.0.0/go.mod h1:y9MlOm+u2ny65yQxScWfSGZFOhRVLXz2vJlkiIx2jfI=
+github.com/haxii/socks5 v0.0.0-20180506123323-b051d54cfefb h1:UmzsZyvPFEyGyKaYYqfjDCnOqNZ38VdaGZ0zcRuGXCU=
+github.com/haxii/socks5 v0.0.0-20180506123323-b051d54cfefb/go.mod h1:CipVBdHJeEDH9zTKO9EcAsMBoFCgafy3ckvBbzy0Jdo=
 github.com/rs/zerolog v1.11.0/go.mod h1:YbFCdg8HfsridGWAh22vktObvhZbQsZXe4/zB0OKkWU=
+golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
+golang.org/x/net v0.0.0-20190628185345-da137c7871d7 h1:rTIdg5QFRR7XCaK4LCjBiPbx8j4DQRpdYMnGn/bJUEU=
+golang.org/x/net v0.0.0-20190628185345-da137c7871d7/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
+golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=

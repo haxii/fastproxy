@@ -63,7 +63,7 @@ var (
 // result of the server's attempt to understand and satisfy the client's
 // corresponding request
 func (l *ResponseLine) Parse(reader *bufio.Reader) error {
-	respLineWithCRLF, err := parseStartline(reader)
+	respLineWithCRLF, err := parseStartLine(reader)
 	if err != nil {
 		return err
 	}
@@ -123,7 +123,7 @@ func ParseRequestLine(reader *bufio.Reader) (*RequestLine, error) {
 // (SP), the request-target, another single space (SP), the protocol
 // version, and ends with CRLF.
 func (l *RequestLine) Parse(reader *bufio.Reader) error {
-	reqLineWithCRLF, err := parseStartline(reader)
+	reqLineWithCRLF, err := parseStartLine(reader)
 	if err != nil {
 		return err
 	}
@@ -197,7 +197,17 @@ func (l *RequestLine) HostInfo() *uri.HostInfo {
 	return l.uri.HostInfo()
 }
 
-func parseStartline(reader *bufio.Reader) ([]byte, error) {
+// ChangeHost change host info in request line
+func (l *RequestLine) ChangeHost(hostWithPort string) {
+	l.uri.ChangeHost(hostWithPort)
+}
+
+// ChangePathWithFragment change path info in request line
+func (l *RequestLine) ChangePathWithFragment(newPathWithFragment []byte) {
+	l.uri.ChangePathWithFragment(newPathWithFragment)
+}
+
+func parseStartLine(reader *bufio.Reader) ([]byte, error) {
 	startLineWithCRLF, err := reader.ReadBytes('\n')
 	if err != nil {
 		if err == io.EOF {
