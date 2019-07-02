@@ -289,6 +289,10 @@ func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
 	}
 
 	if hijacker != nil {
+		// block the request if needed
+		if hijacker.Block() {
+			return writeFastError(c, http.StatusBadGateway, "")
+		}
 		// hijack the response if needed
 		if hijackedRespReader := hijacker.HijackResponse(); hijackedRespReader != nil {
 			reqReadN, _, respN, err := p.client.DoFake(req, resp, hijackedRespReader)
@@ -358,6 +362,12 @@ func (p *Proxy) tunnelHTTPS(c net.Conn, req *Request) error {
 	if p := req.proxy; p != nil {
 		p.AcquireToken()
 		defer p.PushBackToken()
+	}
+	if req.hijacker != nil {
+		// block the request if needed
+		if req.hijacker.Block() {
+			return writeFastError(c, http.StatusBadGateway, "")
+		}
 	}
 
 	p.setClientDialer(req)

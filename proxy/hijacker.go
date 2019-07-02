@@ -17,7 +17,7 @@ import (
 // For HTTPS Sniffer, the call chain is:
 // - RewriteHost -> SSLBump(true) -> RewriteTLSServerName -> BeforeRequest -> Resolve -> SuperProxy -> HijackResponse -> Dial/DialTLS -> OnRequest -> OnResponse
 type Hijacker interface {
-	// RewriteHost rewrites the incoming host and port
+	// RewriteHost rewrites the incoming host and port, return a nil newHost or nil newPort to end the request
 	RewriteHost() (newHost, newPort string)
 
 	// SSLBump returns if the https connection should be decrypted
@@ -38,6 +38,10 @@ type Hijacker interface {
 
 	// SuperProxy returns the super-proxy
 	SuperProxy() *superproxy.SuperProxy
+
+	// Block blocks the request and returns a error to client
+	// For advanced blocking options, use the HijackResponse instead
+	Block() bool
 
 	// HijackResponse is a hijack handler.
 	// A non-nil reader means should stop the request to the target

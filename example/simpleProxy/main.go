@@ -120,6 +120,16 @@ func (h *SimpleHijacker) SuperProxy() *superproxy.SuperProxy {
 	return h.superProxy
 }
 
+func (h *SimpleHijacker) Block() bool {
+	shouldBlock := false
+	// block evil sites
+	if strings.Contains(h.host, "baidu") {
+		shouldBlock = true
+	}
+	fmt.Println("Block called, returned", shouldBlock)
+	return shouldBlock
+}
+
 func (h *SimpleHijacker) Dial() func(addr string) (net.Conn, error) {
 	return func(addr string) (conn net.Conn, e error) {
 		fmt.Println("Dial called")
