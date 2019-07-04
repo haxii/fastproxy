@@ -189,7 +189,7 @@ func (r *Request) PrePare() error {
 	}
 
 	// modify request header and change super proxy if needed
-	newPath, newHeader := r.hijacker.BeforeRequest(r.reqLine.PathWithQueryFragment(), r.header, rawHeader)
+	newPath, newHeader := r.hijacker.BeforeRequest(r.Method(), r.reqLine.PathWithQueryFragment(), r.header, rawHeader)
 
 	// reset new path
 	r.reqLine.ChangePathWithFragment(newPath)

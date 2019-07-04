@@ -11,11 +11,11 @@ import (
 
 // Hijacker hijacker of each http connection and decrypted https connection
 // For HTTP Connections, the call chain is:
-// - RewriteHost -> BeforeRequest -> Resolve -> SuperProxy -> HijackResponse -> Dial/DialTLS -> OnRequest -> OnResponse
+// - RewriteHost -> BeforeRequest -> Resolve -> SuperProxy -> Block -> HijackResponse -> Dial/DialTLS -> OnRequest -> OnResponse
 // For HTTPS Tunnels, the call chain is:
-// - RewriteHost -> SSLBump(false) -> Resolve -> SuperProxy -> Dial/DialTLS
+// - RewriteHost -> SSLBump(false) -> Resolve -> SuperProxy -> Block -> Dial/DialTLS
 // For HTTPS Sniffer, the call chain is:
-// - RewriteHost -> SSLBump(true) -> RewriteTLSServerName -> BeforeRequest -> Resolve -> SuperProxy -> HijackResponse -> Dial/DialTLS -> OnRequest -> OnResponse
+// - RewriteHost -> SSLBump(true) -> RewriteTLSServerName -> BeforeRequest -> Resolve -> SuperProxy -> Block -> HijackResponse -> Dial/DialTLS -> OnRequest -> OnResponse
 type Hijacker interface {
 	// RewriteHost rewrites the incoming host and port, return a nil newHost or nil newPort to end the request
 	RewriteHost() (newHost, newPort string)
@@ -31,7 +31,7 @@ type Hijacker interface {
 	// Return new super header to change the original header, please do NOT change payload related fields
 	// (like Content-Length, Transfer-Encoding etc.) to avoid exceptions.
 	// For advanced Hijack options, use the HijackResponse instead
-	BeforeRequest(path []byte, header http.Header, rawHeader []byte) (newPath, newRawHeader []byte)
+	BeforeRequest(method, path []byte, header http.Header, rawHeader []byte) (newPath, newRawHeader []byte)
 
 	// Resolve performs a DNS Lookup, should not block for long time
 	Resolve() net.IP

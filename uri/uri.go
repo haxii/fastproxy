@@ -8,7 +8,7 @@ import (
 
 //URI http URI helper
 type URI struct {
-	isTLS bool
+	isConnect bool
 
 	full   []byte
 	scheme []byte
@@ -39,7 +39,7 @@ func (uri *URI) PathWithQueryFragment() []byte {
 	if uri.pathWithQueryFragmentParsed {
 		return uri.pathWithQueryFragment
 	}
-	if uri.isTLS {
+	if uri.isConnect {
 		uri.pathWithQueryFragment = nil
 		uri.pathWithQueryFragmentParsed = true
 		return nil
@@ -78,7 +78,7 @@ func (uri *URI) HostInfo() *HostInfo {
 
 //Reset reset the request URI
 func (uri *URI) Reset() {
-	uri.isTLS = false
+	uri.isConnect = false
 	uri.full = uri.full[:0]
 	uri.host = uri.host[:0]
 	uri.hostInfo.reset()
@@ -114,12 +114,12 @@ func (uri *URI) ChangeHost(hostWithPort string) {
 	if len(newRawURI) == 0 {
 		newRawURI = []byte("/")
 	}
-	uri.Parse(uri.isTLS, newRawURI)
+	uri.Parse(uri.isConnect, newRawURI)
 }
 
 // ChangePathWithFragment change URI's path with fragment
 func (uri *URI) ChangePathWithFragment(newPathWithFragment []byte) {
-	if uri.isTLS {
+	if uri.isConnect {
 		return
 	}
 	if bytes.Equal(newPathWithFragment, uri.PathWithQueryFragment()) {
@@ -140,17 +140,17 @@ func (uri *URI) ChangePathWithFragment(newPathWithFragment []byte) {
 	if len(newRawURI) == 0 {
 		newRawURI = []byte("/")
 	}
-	uri.Parse(uri.isTLS, newRawURI)
+	uri.Parse(uri.isConnect, newRawURI)
 }
 
 //Parse parse the request URI
-func (uri *URI) Parse(isTLS bool, reqURI []byte) {
+func (uri *URI) Parse(isConnect bool, reqURI []byte) {
+	uri.Reset()
+	uri.isConnect = isConnect
+	uri.full = reqURI
 	if len(reqURI) == 0 {
 		return
 	}
-	uri.Reset()
-	uri.isTLS = isTLS
-	uri.full = reqURI
 	fragmentIndex := bytes.IndexByte(reqURI, '#')
 	if fragmentIndex >= 0 {
 		uri.fragments = reqURI[fragmentIndex:]
@@ -158,16 +158,16 @@ func (uri *URI) Parse(isTLS bool, reqURI []byte) {
 	} else {
 		uri.parseWithoutFragments(reqURI)
 	}
-	if !isTLS && len(uri.path) == 0 {
+	if !isConnect && len(uri.path) == 0 {
 		uri.path = []byte("/")
 	}
-	if isTLS {
+	if isConnect {
 		uri.scheme = uri.scheme[:0]
 		uri.path = uri.path[:0]
 		uri.queries = uri.queries[:0]
 		uri.fragments = uri.fragments[:0]
 	}
-	uri.hostInfo.ParseHostWithPort(string(uri.host), isTLS)
+	uri.hostInfo.ParseHostWithPort(string(uri.host), isConnect)
 }
 
 //parse uri with out fragments
@@ -296,7 +296,7 @@ func (h *HostInfo) TargetWithPort() string {
 
 // ParseHostWithPort parse host with port, and set host, ip,
 // port, hostWithPort, targetWithPort
-func (h *HostInfo) ParseHostWithPort(host string, isTLS bool) {
+func (h *HostInfo) ParseHostWithPort(host string, isHTTPS bool) {
 	hasPortFuncByte := func(host string) bool {
 		return strings.LastIndexByte(host, ':') >
 			strings.LastIndexByte(host, ']')
@@ -308,7 +308,7 @@ func (h *HostInfo) ParseHostWithPort(host string, isTLS bool) {
 	// separate domain and port
 	if !hasPortFuncByte(host) {
 		h.domain = host
-		if isTLS {
+		if isHTTPS {
 			h.port = "443"
 		} else {
 			h.port = "80"

@@ -224,9 +224,10 @@ func (p *Proxy) serveConn(c net.Conn) error {
 
 func (p *Proxy) do(c net.Conn, req *Request) error {
 	var hijacker Hijacker
+	isHTTPS := http.IsMethodConnect(req.Method())
 	// setup request hijacker
 	if p.HijackerPool != nil {
-		hijacker = p.HijackerPool.Get(c.RemoteAddr(), req.isTLS,
+		hijacker = p.HijackerPool.Get(c.RemoteAddr(), isHTTPS,
 			req.reqLine.HostInfo().Domain(), req.reqLine.HostInfo().Port())
 		req.hijacker = hijacker
 		defer p.HijackerPool.Put(hijacker)
@@ -249,7 +250,7 @@ func (p *Proxy) do(c net.Conn, req *Request) error {
 	}
 
 	// make http client requests
-	if !http.IsMethodConnect(req.Method()) {
+	if !isHTTPS {
 		return p.proxyHTTP(c, req)
 	}
 

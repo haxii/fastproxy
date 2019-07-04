@@ -13,6 +13,12 @@ func TestParse(t *testing.T) {
 	testURIParse(t, u, true, "www.example.com:443",
 		"", "www.example.com:443", "www.example.com:443",
 		"", "", "", "")
+	testURIChangeHost(t, u, true, "", "blog.test.com",
+		"", "blog.test.com", "blog.test.com:443",
+		"", "", "", "")
+	testURIChangeHost(t, u, false, "", "blog2.test.com",
+		"", "blog2.test.com", "blog2.test.com:80",
+		"/", "/", "", "")
 	testURIChangeHost(t, u, true, "www.example.com:443", "blog.test.com",
 		"", "blog.test.com", "blog.test.com:443",
 		"", "", "", "")

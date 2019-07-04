@@ -32,7 +32,7 @@ func main() {
 		HijackerPool:       &SimpleHijackerPool{},
 	}
 
-	panic(p.Serve("tcp", "0.0.0.0:8080"))
+	panic(p.Serve("tcp", "0.0.0.0:8081"))
 }
 
 type SimpleHijackerPool struct {
@@ -65,7 +65,7 @@ type SimpleHijacker struct {
 }
 
 func (h *SimpleHijacker) init(clientAddr net.Addr, isHTTPS bool, host, port string) {
-	fmt.Println("init called, passed", clientAddr.String(), host, port)
+	fmt.Println("init called, passed", clientAddr.String(), host, port, "isHTTPS", isHTTPS)
 	h.clientAddr = clientAddr
 	h.host = host
 	h.port = port
@@ -89,7 +89,7 @@ func (h *SimpleHijacker) RewriteTLSServerName(serverName string) string {
 	return serverName
 }
 
-func (h *SimpleHijacker) BeforeRequest(path []byte, header http.Header, rawHeader []byte) (newPath, newRawHeader []byte) {
+func (h *SimpleHijacker) BeforeRequest(method, path []byte, header http.Header, rawHeader []byte) (newPath, newRawHeader []byte) {
 	newPath = path
 	newRawHeader = rawHeader
 	if bytes.Contains(rawHeader, []byte("change-proxy")) {
@@ -100,8 +100,8 @@ func (h *SimpleHijacker) BeforeRequest(path []byte, header http.Header, rawHeade
 		h.superProxy = nil
 	}
 
-	fmt.Printf("BeforeRequest called   with path: %s, rawHeader: %s\n", path, strconv.Quote(string(rawHeader)))
-	fmt.Printf("BeforeRequest returned with path: %s, rawHeader: %s\n", path, strconv.Quote(string(newRawHeader)))
+	fmt.Printf("BeforeRequest called   %s with path: %s, rawHeader: %s\n", method, path, strconv.Quote(string(rawHeader)))
+	fmt.Printf("BeforeRequest returned %s with path: %s, rawHeader: %s\n", method, path, strconv.Quote(string(newRawHeader)))
 	return bytes.Replace(newPath, []byte("get"), []byte("get?a=b&&cc=dd#ee"), -1),
 		bytes.Replace(rawHeader, []byte("curl"), []byte("xurl"), -1)
 }
