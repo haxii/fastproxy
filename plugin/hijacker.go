@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"io"
 	"net"
@@ -17,18 +18,37 @@ import (
 	"github.com/haxii/fastproxy/uri"
 )
 
+// HandleFunc for http and bumped https
+type HandleFunc func(*RequestConnInfo, *uri.URI, *RequestHeader) (*HijackedRequest, *HijackedResponse)
+
+// HandleSSLFunc for https tunnels
+type HandleSSLFunc func(*RequestConnInfo) *HijackedRequest
+
 type HijackHandler struct {
-	router               Routers
-	BlockByDefault       bool
-	RewriteHost          func(host, port string) (newHost, newPort string)
-	SSLBump              func(host string) bool
-	RewriteTLSServerName func(serverName string) string
+	// routers
+	sslRouter SSLRouters
+	router    Routers
+
+	// default handlers
+	BlockByDefault    bool
+	DefaultSuperProxy *superproxy.SuperProxy
+	DefaultDial       func(addr string) (net.Conn, error)
+	DefaultDialTLS    func(addr string, tlsConfig *tls.Config) (net.Conn, error)
+
+	// hijackers
+	RewriteHost          func(connInfo *RequestConnInfo) (newHost, newPort string)
+	SSLBump              func(connInfo *RequestConnInfo) bool
+	RewriteTLSServerName func(connInfo *RequestConnInfo) string
 }
 
-type HandleFunc func(*uri.URI, *RequestHeader) (*HijackedRequest, *HijackedResponse)
-
+// Add add a handler for http and bumped https connections
 func (h *HijackHandler) Add(method, host, path string, handle HandleFunc) {
 	h.router.Set(method, host, path, handle)
+}
+
+// AddSSL add a handler for https tunnels
+func (h *HijackHandler) AddSSL(host string, handle HandleSSLFunc) {
+	h.sslRouter.Set(host, handle)
 }
 
 type HijackerPool struct {
@@ -82,11 +102,8 @@ type HijackedResponse struct {
 
 // Hijacker is handler implementation of proxy/hijacker
 type Hijacker struct {
-	clientAddr net.Addr
-
-	isHTTPS    bool
-	host, port string
-	uri        uri.URI
+	connInfo RequestConnInfo
+	uri      uri.URI
 
 	requestHeader RequestHeader
 
@@ -98,16 +115,18 @@ type Hijacker struct {
 }
 
 func (h *Hijacker) init(clientAddr net.Addr, isHTTPS bool, host, port string, handler *HijackHandler) {
-	h.clientAddr = clientAddr
-	h.isHTTPS = isHTTPS
-	h.host = host
-	h.port = port
-	if isHTTPS {
-		h.uri.Parse(false, []byte("https://"+h.host+":"+h.port))
-	} else {
-		h.uri.Parse(false, []byte("http://"+h.host+":"+h.port))
-	}
+	h.connInfo.reset()
 	h.requestHeader.reset()
+
+	h.connInfo.clientAddr = clientAddr
+	h.connInfo.isHTTPS = isHTTPS
+	h.connInfo.host = host
+	h.connInfo.port = port
+	if isHTTPS {
+		h.uri.Parse(false, []byte("https://"+h.connInfo.host+":"+h.connInfo.port))
+	} else {
+		h.uri.Parse(false, []byte("http://"+h.connInfo.host+":"+h.connInfo.port))
+	}
 	h.superProxy = nil
 	h.handler = handler
 	h.hijackedReq = nil
@@ -117,32 +136,33 @@ func (h *Hijacker) init(clientAddr net.Addr, isHTTPS bool, host, port string, ha
 func (h *Hijacker) RewriteHost() (newHost, newPort string) {
 	if h.handler != nil {
 		if h.handler.RewriteHost != nil {
-			newHost, h.port = h.handler.RewriteHost(h.host, h.port)
-			if !strings.EqualFold(newHost, h.host) {
-				h.host = newHost
+			newHost, h.connInfo.port = h.handler.RewriteHost(&h.connInfo)
+			if !strings.EqualFold(newHost, h.connInfo.host) {
+				h.connInfo.host = newHost
 			}
-			h.uri.ChangeHost(h.host + ":" + h.port)
+			h.uri.ChangeHost(h.connInfo.host + ":" + h.connInfo.port)
 		}
 	}
-	return h.host, h.port
+	return h.connInfo.Host(), h.connInfo.Port()
 }
 
 func (h *Hijacker) SSLBump() bool {
 	if h.handler != nil {
 		if h.handler.SSLBump != nil {
-			return h.handler.SSLBump(h.host)
+			h.connInfo.sslBump = h.handler.SSLBump(&h.connInfo)
 		}
 	}
-	return false
+	return h.connInfo.SSLBump()
 }
 
 func (h *Hijacker) RewriteTLSServerName(serverName string) string {
+	h.connInfo.tlsServerName = serverName
 	if h.handler != nil {
 		if h.handler.SSLBump != nil {
-			return h.handler.RewriteTLSServerName(serverName)
+			h.connInfo.tlsServerName = h.handler.RewriteTLSServerName(&h.connInfo)
 		}
 	}
-	return serverName
+	return h.connInfo.TLSServerName()
 }
 
 func (h *Hijacker) BeforeRequest(method, path []byte, httpHeader http.Header,
@@ -150,10 +170,10 @@ func (h *Hijacker) BeforeRequest(method, path []byte, httpHeader http.Header,
 	if h.handler != nil {
 		h.uri.ChangePathWithFragment(path)
 		pathOnly := h.uri.Path()
-		handleFunc, _ := h.handler.router.GetHandleFunc(string(method), h.host, string(pathOnly))
+		handleFunc, _ := h.handler.router.GetHandleFunc(string(method), h.connInfo.host, string(pathOnly))
 		if handleFunc != nil {
 			h.requestHeader.rawHeader = rawHeader
-			h.hijackedReq, h.hijackedResp = handleFunc(&h.uri, &h.requestHeader)
+			h.hijackedReq, h.hijackedResp = handleFunc(&h.connInfo, &h.uri, &h.requestHeader)
 		}
 	}
 
@@ -169,6 +189,13 @@ func (h *Hijacker) BeforeRequest(method, path []byte, httpHeader http.Header,
 }
 
 func (h *Hijacker) Resolve() net.IP {
+	// for https tunnel connections, BeforeRequest is not called, call the handler here
+	if !h.connInfo.SSLBump() && h.handler != nil {
+		handleSSLFunc := h.handler.sslRouter.GetHandleFunc(h.connInfo.Host())
+		if handleSSLFunc != nil {
+			h.hijackedReq = handleSSLFunc(&h.connInfo)
+		}
+	}
 	if h.hijackedReq != nil {
 		return h.hijackedReq.ResolvedIP
 	}
@@ -178,6 +205,9 @@ func (h *Hijacker) Resolve() net.IP {
 func (h *Hijacker) SuperProxy() *superproxy.SuperProxy {
 	if h.hijackedReq != nil {
 		return h.hijackedReq.SuperProxy
+	}
+	if h.handler != nil {
+		return h.handler.DefaultSuperProxy
 	}
 	return nil
 }
@@ -205,12 +235,18 @@ func (h *Hijacker) Dial() func(addr string) (net.Conn, error) {
 	if h.hijackedReq != nil {
 		return h.hijackedReq.Dial
 	}
+	if h.handler != nil {
+		return h.handler.DefaultDial
+	}
 	return nil
 }
 
 func (h *Hijacker) DialTLS() func(addr string, tlsConfig *tls.Config) (net.Conn, error) {
 	if h.hijackedReq != nil {
 		return h.hijackedReq.DialTLS
+	}
+	if h.handler != nil {
+		return h.handler.DefaultDialTLS
 	}
 	return nil
 }
@@ -233,6 +269,51 @@ func (h *Hijacker) OnResponse(statusLine http.ResponseLine,
 }
 
 func (h *Hijacker) OnFinish() {
+}
+
+type RequestConnInfo struct {
+	clientAddr net.Addr
+
+	isHTTPS       bool
+	host, port    string
+	sslBump       bool
+	tlsServerName string
+
+	Context context.Context
+}
+
+func (i *RequestConnInfo) reset() {
+	i.clientAddr = nil
+	i.isHTTPS = false
+	i.host = ""
+	i.port = ""
+	i.sslBump = false
+	i.tlsServerName = ""
+	i.Context = nil
+}
+
+func (i *RequestConnInfo) ClientAddr() net.Addr {
+	return i.clientAddr
+}
+
+func (i *RequestConnInfo) IsHTTPS() bool {
+	return i.isHTTPS
+}
+
+func (i *RequestConnInfo) Host() string {
+	return i.host
+}
+
+func (i *RequestConnInfo) SSLBump() bool {
+	return i.sslBump
+}
+
+func (i *RequestConnInfo) TLSServerName() string {
+	return i.tlsServerName
+}
+
+func (i *RequestConnInfo) Port() string {
+	return i.port
 }
 
 // RequestHeader MIME Header wrapper, offers get key and raw header method

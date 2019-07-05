@@ -6,6 +6,33 @@ import (
 	"unicode/utf8"
 )
 
+type SSLRouters struct {
+	sslFuncMap map[string]HandleSSLFunc
+	globList   []string
+}
+
+func (r *SSLRouters) Set(host string, handle HandleSSLFunc) {
+	if r.sslFuncMap == nil {
+		r.sslFuncMap = make(map[string]HandleSSLFunc)
+	}
+	if r.globList == nil {
+		r.globList = make([]string, 0)
+	}
+	r.sslFuncMap[host] = handle
+	r.globList = append(r.globList, host)
+}
+
+func (r *SSLRouters) GetHandleFunc(host string) HandleSSLFunc {
+	for _, hostGlob := range r.globList {
+		if glob(hostGlob, host) {
+			if f := r.sslFuncMap[hostGlob]; f != nil {
+				return f
+			}
+		}
+	}
+	return nil
+}
+
 type Routers struct {
 	routers  map[string]*router
 	globList []string

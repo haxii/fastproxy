@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/haxii/fastproxy/superproxy"
 
 	"github.com/haxii/fastproxy/uri"
 
@@ -15,17 +19,30 @@ import (
 
 func main() {
 	hijackHandler := plugin.HijackHandler{
-		RewriteHost: func(host, port string) (newHost, newPort string) {
-			fmt.Printf("RewriteHost handler called %s:%s\n", host, port)
-			return host, port
+		BlockByDefault: false,
+		RewriteHost: func(info *plugin.RequestConnInfo) (newHost, newPort string) {
+			newHost = info.Host()
+			newPort = info.Port()
+			if strings.Contains(newHost, "postman-echo-via-proxy") {
+				newHost = strings.Replace(newHost, "-via-proxy", "", -1)
+				if info.Context == nil {
+					info.Context = context.WithValue(context.Background(), "proxy", true)
+				}
+			}
+			fmt.Printf("RewriteHost handler called %s:%s -> %s:%s \n",
+				info.Host(), info.Port(), newHost, newPort)
+			return newHost, newPort
 		},
-		SSLBump: func(host string) bool {
-			fmt.Println("SSLBump handler called: ", host)
+		SSLBump: func(info *plugin.RequestConnInfo) bool {
+			fmt.Printf("SSLBump handler called %s:%s\n", info.Host(), info.Port())
+			if strings.Contains(info.Host(), "postman-echo") {
+				return false
+			}
 			return true
 		},
-		RewriteTLSServerName: func(serverName string) string {
-			fmt.Println("RewriteTLSServerName handler called: ", serverName)
-			return serverName
+		RewriteTLSServerName: func(info *plugin.RequestConnInfo) string {
+			fmt.Println("RewriteTLSServerName handler called: ", info.TLSServerName())
+			return info.TLSServerName()
 		},
 	}
 	// matches curl -k -v -x 0.0.0.0:8082  https://httpbin.org/get
@@ -38,6 +55,14 @@ func main() {
 	// block other baidu sites
 	hijackHandler.Add("*", "*baidu*", "/*filepath", blockRequestFunc)
 
+	// hijack postman-echo http and tunneled https
+	// matches over proxy curl -k -v -x 0.0.0.0:8082 http[s]://postman-echo-via-proxy.com/get
+	// matches over proxy curl -k -v -x 0.0.0.0:8082 http[s]://postman-echo-via-proxy.com/ip
+	// matches without proxy curl -k -v -x 0.0.0.0:8082 http[s]://postman-echo.com/get
+	// matches without proxy curl -k -v -x 0.0.0.0:8082 http[s]://postman-echo.com/ip
+	hijackHandler.Add("*", "*postman-echo*", "/*filepath", hijackPostmanEchoFunc)
+	hijackHandler.AddSSL("*postman-echo*", hijackPostmanEchoSSLFunc)
+
 	p := proxy.Proxy{
 		Logger:             &log.DefaultLogger{},
 		ServerIdleDuration: time.Second * 30,
@@ -46,13 +71,15 @@ func main() {
 	panic(p.Serve("tcp", "0.0.0.0:8082"))
 }
 
-func printResponseFunc(u *uri.URI, h *plugin.RequestHeader) (*plugin.HijackedRequest, *plugin.HijackedResponse) {
+func printResponseFunc(info *plugin.RequestConnInfo, u *uri.URI,
+	h *plugin.RequestHeader) (*plugin.HijackedRequest, *plugin.HijackedResponse) {
 	fmt.Printf("printResponseFunc called, with Scheme %s Host %s, URL %s, User-Agent %s\n\n",
 		u.Scheme(), u.HostInfo().HostWithPort(), u.PathWithQueryFragment(), h.Get("User-Agent"))
 	return nil, &plugin.HijackedResponse{ResponseType: plugin.HijackedResponseTypeInspect, InspectWriter: os.Stdout}
 }
 
-func hijackEvilFunc(u *uri.URI, h *plugin.RequestHeader) (*plugin.HijackedRequest, *plugin.HijackedResponse) {
+func hijackEvilFunc(info *plugin.RequestConnInfo, u *uri.URI,
+	h *plugin.RequestHeader) (*plugin.HijackedRequest, *plugin.HijackedResponse) {
 	fmt.Printf("hijackEvilFunc called, with Scheme %s Host %s, URL %s, User-Agent %s\n\n",
 		u.Scheme(), u.HostInfo().HostWithPort(), u.PathWithQueryFragment(), h.Get("User-Agent"))
 	return nil, &plugin.HijackedResponse{
@@ -62,8 +89,43 @@ func hijackEvilFunc(u *uri.URI, h *plugin.RequestHeader) (*plugin.HijackedReques
 	}
 }
 
-func blockRequestFunc(u *uri.URI, h *plugin.RequestHeader) (*plugin.HijackedRequest, *plugin.HijackedResponse) {
+func blockRequestFunc(info *plugin.RequestConnInfo, u *uri.URI,
+	h *plugin.RequestHeader) (*plugin.HijackedRequest, *plugin.HijackedResponse) {
 	fmt.Printf("blockRequestFunc called, with Scheme %s Host %s, URL %s, User-Agent %s\n\n",
 		u.Scheme(), u.HostInfo().HostWithPort(), u.PathWithQueryFragment(), h.Get("User-Agent"))
 	return nil, &plugin.HijackedResponse{ResponseType: plugin.HijackedResponseTypeBlock}
+}
+
+func hijackPostmanEchoFunc(info *plugin.RequestConnInfo, u *uri.URI,
+	h *plugin.RequestHeader) (*plugin.HijackedRequest, *plugin.HijackedResponse) {
+	fmt.Printf("hijackPostmanEchoFunc called, with Scheme %s Host %s, URL %s, User-Agent %s\n\n",
+		u.Scheme(), u.HostInfo().HostWithPort(), u.PathWithQueryFragment(), h.Get("User-Agent"))
+	return &plugin.HijackedRequest{
+		SuperProxy:     postmanEchoProxy(info),
+		OverrideHeader: bytes.Replace(h.RawHeader(), []byte("-via-proxy"), []byte(""), -1),
+	}, nil
+}
+
+func hijackPostmanEchoSSLFunc(info *plugin.RequestConnInfo) *plugin.HijackedRequest {
+	return &plugin.HijackedRequest{
+		SuperProxy: postmanEchoProxy(info),
+	}
+}
+
+func postmanEchoProxy(info *plugin.RequestConnInfo) *superproxy.SuperProxy {
+	if info == nil {
+		return nil
+	}
+	if info.Context == nil {
+		return nil
+	}
+	v := info.Context.Value("proxy")
+	if enableProxy, ok := v.(bool); ok {
+		if enableProxy {
+			p, _ := superproxy.NewSuperProxy("127.0.0.1", 1080, superproxy.ProxyTypeSOCKS5,
+				"", "", "")
+			return p
+		}
+	}
+	return nil
 }
