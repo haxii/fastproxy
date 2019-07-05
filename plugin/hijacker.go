@@ -96,8 +96,8 @@ type HijackedRequest struct {
 
 type HijackedResponse struct {
 	ResponseType   HijackedResponseType
-	InspectWriter  io.Writer // used by HijackedResponseTypeInspect
-	OverrideReader io.Reader // used by HijackedResponseTypeOverride
+	InspectWriter  io.WriteCloser // used by HijackedResponseTypeInspect
+	OverrideReader io.ReadCloser  // used by HijackedResponseTypeOverride
 }
 
 // Hijacker is handler implementation of proxy/hijacker
@@ -222,7 +222,7 @@ func (h *Hijacker) Block() bool {
 	return false
 }
 
-func (h *Hijacker) HijackResponse() io.Reader {
+func (h *Hijacker) HijackResponse() io.ReadCloser {
 	if h.hijackedResp != nil {
 		if h.hijackedResp.ResponseType == HijackedResponseTypeOverride {
 			return h.hijackedResp.OverrideReader
@@ -251,12 +251,12 @@ func (h *Hijacker) DialTLS() func(addr string, tlsConfig *tls.Config) (net.Conn,
 	return nil
 }
 
-func (Hijacker) OnRequest(path []byte, header http.Header, rawHeader []byte) io.Writer {
+func (Hijacker) OnRequest(path []byte, header http.Header, rawHeader []byte) io.WriteCloser {
 	return nil
 }
 
 func (h *Hijacker) OnResponse(statusLine http.ResponseLine,
-	header http.Header, rawHeader []byte) io.Writer {
+	header http.Header, rawHeader []byte) io.WriteCloser {
 	if h.hijackedResp != nil {
 		if h.hijackedResp.ResponseType == HijackedResponseTypeInspect &&
 			h.hijackedResp.InspectWriter != nil {

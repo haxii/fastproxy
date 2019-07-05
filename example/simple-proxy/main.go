@@ -144,17 +144,17 @@ func (h *SimpleHijacker) DialTLS() func(addr string, tlsConfig *tls.Config) (net
 	}
 }
 
-func (h *SimpleHijacker) OnRequest(path []byte, header http.Header, rawHeader []byte) io.Writer {
+func (h *SimpleHijacker) OnRequest(path []byte, header http.Header, rawHeader []byte) io.WriteCloser {
 	fmt.Printf("OnRequest called with path: %s, rawHeader: %s\n", path, strconv.Quote(string(rawHeader)))
 	return nil
 }
 
-func (h *SimpleHijacker) OnResponse(statusLine http.ResponseLine, header http.Header, rawHeader []byte) io.Writer {
+func (h *SimpleHijacker) OnResponse(statusLine http.ResponseLine, header http.Header, rawHeader []byte) io.WriteCloser {
 	fmt.Println("OnResponse called")
 	return nil
 }
 
-func (h *SimpleHijacker) HijackResponse() io.Reader {
+func (h *SimpleHijacker) HijackResponse() io.ReadCloser {
 	fmt.Println("HijackResponse called")
 	return nil
 }

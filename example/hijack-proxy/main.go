@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -75,7 +77,9 @@ func printResponseFunc(info *plugin.RequestConnInfo, u *uri.URI,
 	h *plugin.RequestHeader) (*plugin.HijackedRequest, *plugin.HijackedResponse) {
 	fmt.Printf("printResponseFunc called, with Scheme %s Host %s, URL %s, User-Agent %s\n\n",
 		u.Scheme(), u.HostInfo().HostWithPort(), u.PathWithQueryFragment(), h.Get("User-Agent"))
-	return nil, &plugin.HijackedResponse{ResponseType: plugin.HijackedResponseTypeInspect, InspectWriter: os.Stdout}
+	return nil, &plugin.HijackedResponse{
+		ResponseType:  plugin.HijackedResponseTypeInspect,
+		InspectWriter: NopCloser(os.Stdout)}
 }
 
 func hijackEvilFunc(info *plugin.RequestConnInfo, u *uri.URI,
@@ -84,8 +88,9 @@ func hijackEvilFunc(info *plugin.RequestConnInfo, u *uri.URI,
 		u.Scheme(), u.HostInfo().HostWithPort(), u.PathWithQueryFragment(), h.Get("User-Agent"))
 	return nil, &plugin.HijackedResponse{
 		ResponseType: plugin.HijackedResponseTypeOverride,
-		OverrideReader: strings.NewReader("HTTP/1.1 200 OK\r\nContent-Length: 56\r\nConnection: close\r\n\r\n" +
-			"You're blocked from visiting evil sites via this proxy.\n"),
+		OverrideReader: ioutil.NopCloser(
+			strings.NewReader("HTTP/1.1 200 OK\r\nContent-Length: 56\r\nConnection: close\r\n\r\n" +
+				"You're blocked from visiting evil sites via this proxy.\n")),
 	}
 }
 
@@ -128,4 +133,14 @@ func postmanEchoProxy(info *plugin.RequestConnInfo) *superproxy.SuperProxy {
 		}
 	}
 	return nil
+}
+
+type nopCloser struct {
+	io.Writer
+}
+
+func (nopCloser) Close() error { return nil }
+
+func NopCloser(w io.Writer) io.WriteCloser {
+	return nopCloser{w}
 }

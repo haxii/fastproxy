@@ -73,7 +73,7 @@ type Request struct {
 
 	// hijacker, used for recording the http traffic
 	hijacker           Hijacker
-	hijackerBodyWriter io.Writer
+	hijackerBodyWriter io.WriteCloser
 
 	// proxy super proxy used for target connection
 	proxy *superproxy.SuperProxy
@@ -258,6 +258,11 @@ func (r *Request) WriteBodyTo(writer *bufio.Writer) (int, error) {
 	if r.reader == nil {
 		return 0, errors.New("empty request")
 	}
+	defer func() {
+		if r.hijackerBodyWriter != nil {
+			r.hijackerBodyWriter.Close()
+		}
+	}()
 	// write the request body (if any)
 	return copyBody(&r.header, &r.body, r.reader, writer,
 		func(rawBody []byte) {
@@ -345,7 +350,12 @@ func (r *Response) ReadFrom(discardBody bool, reader *bufio.Reader) (int, error)
 	num += wn
 
 	// read & write the headers
-	var hijackerBodyWriter io.Writer
+	var hijackerBodyWriter io.WriteCloser
+	defer func() {
+		if hijackerBodyWriter != nil {
+			hijackerBodyWriter.Close()
+		}
+	}()
 	if _, wn, err = copyHeader(&r.header, reader, r.writer,
 		func(rawHeader []byte) {
 			if r.hijacker != nil {

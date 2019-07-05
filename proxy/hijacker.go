@@ -46,7 +46,7 @@ type Hijacker interface {
 	// HijackResponse is a hijack handler.
 	// A non-nil reader means should stop the request to the target
 	// server then return the reader's response
-	HijackResponse() io.Reader
+	HijackResponse() io.ReadCloser
 
 	// Dial called every TCP connection made to addr, default dialer is used when nil func returned
 	Dial() func(addr string) (net.Conn, error)
@@ -57,12 +57,12 @@ type Hijacker interface {
 	// OnRequest is a sniffer handler.
 	// Which gives the request header in parameters then
 	// write request body in the writer returned
-	OnRequest(path []byte, header http.Header, rawHeader []byte) io.Writer
+	OnRequest(path []byte, header http.Header, rawHeader []byte) io.WriteCloser
 
 	// OnResponse is a sniffer handler
 	// Which gives the response header in parameters then
 	// write response body in the writer returned
-	OnResponse(statusLine http.ResponseLine, header http.Header, rawHeader []byte) io.Writer
+	OnResponse(statusLine http.ResponseLine, header http.Header, rawHeader []byte) io.WriteCloser
 }
 
 // HijackerPool pooling hijacker instances
