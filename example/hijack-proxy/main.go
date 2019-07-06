@@ -4,18 +4,17 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/haxii/fastproxy/superproxy"
-
-	"github.com/haxii/fastproxy/uri"
-
+	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/plugin"
 	"github.com/haxii/fastproxy/proxy"
+	"github.com/haxii/fastproxy/superproxy"
+	"github.com/haxii/fastproxy/uri"
 	"github.com/haxii/log"
 )
 
@@ -79,7 +78,8 @@ func printResponseFunc(info *plugin.RequestConnInfo, u *uri.URI,
 		u.Scheme(), u.HostInfo().HostWithPort(), u.PathWithQueryFragment(), h.Get("User-Agent"))
 	return nil, &plugin.HijackedResponse{
 		ResponseType:  plugin.HijackedResponseTypeInspect,
-		InspectWriter: NopCloser(os.Stdout)}
+		InspectWriter: &respStdoutWriter{},
+	}
 }
 
 func hijackEvilFunc(info *plugin.RequestConnInfo, u *uri.URI,
@@ -135,12 +135,16 @@ func postmanEchoProxy(info *plugin.RequestConnInfo) *superproxy.SuperProxy {
 	return nil
 }
 
-type nopCloser struct {
-	io.Writer
+type respStdoutWriter struct {
 }
 
-func (nopCloser) Close() error { return nil }
+func (w *respStdoutWriter) Close() error { return nil }
 
-func NopCloser(w io.Writer) io.WriteCloser {
-	return nopCloser{w}
+func (w *respStdoutWriter) WriteHeader(statusLine http.ResponseLine, header http.Header, rawHeader []byte) error {
+	os.Stdout.WriteString(strconv.Quote(string(statusLine.GetResponseLine())+string(rawHeader)) + "\n")
+	return nil
+}
+
+func (w *respStdoutWriter) Write(p []byte) (n int, err error) {
+	return os.Stdout.Write(p)
 }

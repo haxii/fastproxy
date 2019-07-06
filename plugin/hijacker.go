@@ -96,7 +96,7 @@ type HijackedRequest struct {
 
 type HijackedResponse struct {
 	ResponseType   HijackedResponseType
-	InspectWriter  io.WriteCloser // used by HijackedResponseTypeInspect
+	InspectWriter  ResponseWriter // used by HijackedResponseTypeInspect
 	OverrideReader io.ReadCloser  // used by HijackedResponseTypeOverride
 }
 
@@ -260,8 +260,10 @@ func (h *Hijacker) OnResponse(statusLine http.ResponseLine,
 	if h.hijackedResp != nil {
 		if h.hijackedResp.ResponseType == HijackedResponseTypeInspect &&
 			h.hijackedResp.InspectWriter != nil {
-			h.hijackedResp.InspectWriter.Write(statusLine.GetResponseLine())
-			h.hijackedResp.InspectWriter.Write(rawHeader)
+			if err := h.hijackedResp.InspectWriter.WriteHeader(statusLine, header, rawHeader); err != nil {
+				// TODO log error
+				return nil
+			}
 			return h.hijackedResp.InspectWriter
 		}
 	}
@@ -269,6 +271,11 @@ func (h *Hijacker) OnResponse(statusLine http.ResponseLine,
 }
 
 func (h *Hijacker) OnFinish() {
+}
+
+type ResponseWriter interface {
+	WriteHeader(statusLine http.ResponseLine, header http.Header, rawHeader []byte) error
+	io.WriteCloser
 }
 
 type RequestConnInfo struct {
