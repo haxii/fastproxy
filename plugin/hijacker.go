@@ -261,6 +261,8 @@ func (h *Hijacker) OnResponse(statusLine http.ResponseLine,
 		if h.hijackedResp.ResponseType == HijackedResponseTypeInspect &&
 			h.hijackedResp.InspectWriter != nil {
 			if err := h.hijackedResp.InspectWriter.WriteHeader(statusLine, header, rawHeader); err != nil {
+				// write header encountered an error, close it
+				h.hijackedResp.InspectWriter.Close()
 				// TODO log error
 				return nil
 			}
