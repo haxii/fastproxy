@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/haxii/fastproxy/util"
@@ -34,7 +35,7 @@ func HijackTLSConnection(certAuthority *tls.Certificate, c net.Conn, domainName 
 	}
 	// make a cert for the provided domain
 	var fakeTargetServerCert *tls.Certificate
-	fakeTargetServerCert, err = SignLeafCertUsingCertAuthority(certAuthority, []string{domainName})
+	fakeTargetServerCert, err = SignLeafCertUsingCertAuthority(certAuthority, domainName)
 	if err != nil {
 		err = onHandshake(err)
 		return
@@ -45,7 +46,7 @@ func HijackTLSConnection(certAuthority *tls.Certificate, c net.Conn, domainName 
 			if len(hello.ServerName) > 0 {
 				targetServerName = hello.ServerName
 			}
-			return SignLeafCertUsingCertAuthority(certAuthority, []string{targetServerName})
+			return SignLeafCertUsingCertAuthority(certAuthority, targetServerName)
 		},
 	}
 	// perform the fake handshake with the connection given
@@ -120,7 +121,11 @@ func DefaultMITMCertAuthorityPEM() []byte {
 	return defaultMITMCertAuthorityPEM
 }
 
+// mitmCertPool signed mitm certificate pool
+var mitmCertPool sync.Map
+
 func init() {
+	mitmCertPool = sync.Map{}
 	if cer, err := tls.X509KeyPair(defaultMITMCertAuthorityPEM,
 		defaultMITMCertAuthorityKeyPEM); err == nil {
 		defaultMITMCertAuthority = &cer
@@ -182,7 +187,7 @@ func MakeMITMCertAuthority(name string, certMaxAge time.Duration) (certPEM, keyP
 }
 
 const (
-	leafCertMaxAge = 24 * time.Hour
+	leafCertMaxAge = 3 * 30 * 24 * time.Hour
 	leafCertUsage  = x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature |
 		x509.KeyUsageContentCommitment | x509.KeyUsageCRLSign | x509.KeyUsageDataEncipherment |
 		x509.KeyUsageKeyEncipherment | x509.KeyUsageKeyAgreement
@@ -191,7 +196,14 @@ const (
 // SignLeafCertUsingCertAuthority signs a leaf certificate for domainNames using provided
 // certificate authority default MITM certificate is used when no cert authority provided
 func SignLeafCertUsingCertAuthority(certAuthority *tls.Certificate,
-	domainNames []string) (*tls.Certificate, error) {
+	domainName string) (*tls.Certificate, error) {
+	if len(domainName) == 0 {
+		return nil, errors.New("invalid domain name")
+	}
+	if cachedCert, exists := mitmCertPool.Load(domainName); exists {
+		return cachedCert.(*tls.Certificate), nil
+	}
+
 	if certAuthority == nil {
 		certAuthority = defaultMITMCertAuthority
 	}
@@ -206,12 +218,12 @@ func SignLeafCertUsingCertAuthority(certAuthority *tls.Certificate,
 	}
 	template := &x509.Certificate{
 		SerialNumber:          serialNumber,
-		Subject:               pkix.Name{CommonName: domainNames[0]},
+		Subject:               pkix.Name{CommonName: domainName},
 		NotBefore:             now,
 		NotAfter:              now.Add(leafCertMaxAge),
 		KeyUsage:              leafCertUsage,
 		BasicConstraintsValid: true,
-		DNSNames:              domainNames,
+		DNSNames:              []string{domainName},
 		SignatureAlgorithm:    x509.SHA512WithRSA,
 	}
 	key, err := genECDSAKeyPair()
@@ -227,5 +239,6 @@ func SignLeafCertUsingCertAuthority(certAuthority *tls.Certificate,
 	cert.Certificate = append(cert.Certificate, x)
 	cert.PrivateKey = key
 	cert.Leaf, _ = x509.ParseCertificate(x)
-	return cert, nil
+	cachedCert, _ := mitmCertPool.LoadOrStore(domainName, cert)
+	return cachedCert.(*tls.Certificate), nil
 }
