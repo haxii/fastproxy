@@ -241,7 +241,7 @@ func (p *Proxy) do(c net.Conn, req *Request) error {
 				"Sorry, server can't keep this session.\n"); e != nil {
 				return util.ErrWrapper(e, "fail to response session unavailable")
 			}
-			return nil
+			return io.EOF
 		}
 		newHostWithPort := fmt.Sprintf("%s:%s", newHost, newPort)
 		if newHostWithPort != req.reqLine.HostInfo().HostWithPort() {
