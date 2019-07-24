@@ -97,8 +97,8 @@ func cacheResponseFunc(info *plugin.RequestConnInfo, u *uri.URI,
 	cache.Init("/tmp/hijack-proxy/", logger, cacheKey)
 	if cache.FileCached() {
 		return nil, &plugin.HijackedResponse{
-			ResponseType:  plugin.HijackedResponseTypeOverride,
-			InspectWriter: cache,
+			ResponseType:   plugin.HijackedResponseTypeOverride,
+			OverrideReader: cache,
 		}
 	}
 	return nil, &plugin.HijackedResponse{

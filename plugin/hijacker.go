@@ -158,7 +158,7 @@ func (h *Hijacker) SSLBump() bool {
 func (h *Hijacker) RewriteTLSServerName(serverName string) string {
 	h.connInfo.tlsServerName = serverName
 	if h.handler != nil {
-		if h.handler.SSLBump != nil {
+		if h.handler.RewriteTLSServerName != nil {
 			h.connInfo.tlsServerName = h.handler.RewriteTLSServerName(&h.connInfo)
 		}
 	}
