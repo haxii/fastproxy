@@ -37,6 +37,7 @@ type HijackHandler struct {
 
 	// hijackers
 	RewriteHost          func(connInfo *RequestConnInfo) (newHost, newPort string)
+	ShouldMakeTunnel     func(connInfo *RequestConnInfo, header http.Header, rawHeader []byte) bool
 	SSLBump              func(connInfo *RequestConnInfo) bool
 	RewriteTLSServerName func(connInfo *RequestConnInfo) string
 }
@@ -144,6 +145,15 @@ func (h *Hijacker) RewriteHost() (newHost, newPort string) {
 		}
 	}
 	return h.connInfo.Host(), h.connInfo.Port()
+}
+
+func (h *Hijacker) OnConnect(header http.Header, rawHeader []byte) bool {
+	if h.handler != nil {
+		if h.handler.ShouldMakeTunnel != nil {
+			return h.handler.ShouldMakeTunnel(&h.connInfo, header, rawHeader)
+		}
+	}
+	return true
 }
 
 func (h *Hijacker) SSLBump() bool {

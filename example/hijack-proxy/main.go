@@ -21,7 +21,6 @@ import (
 var logger = &log.DefaultLogger{}
 
 func main() {
-
 	hijackHandler := plugin.HijackHandler{
 		BlockByDefault: false,
 		RewriteHost: func(info *plugin.RequestConnInfo) (newHost, newPort string) {

@@ -69,12 +69,17 @@ func (h *SimpleHijacker) init(clientAddr net.Addr, isHTTPS bool, host, port stri
 	h.clientAddr = clientAddr
 	h.host = host
 	h.port = port
-	h.superProxy = superProxy1
+	//h.superProxy = superProxy1
 }
 
 func (h *SimpleHijacker) RewriteHost() (newHost, newPort string) {
 	fmt.Println("RewriteHost called, returned", h.host, h.port)
 	return h.host, h.port
+}
+
+func (h *SimpleHijacker) OnConnect(header http.Header, rawHeader []byte) bool {
+	fmt.Printf("OnConnect called with raw CONNECT header %s\n", strconv.Quote(string(rawHeader)))
+	return true
 }
 
 func (h *SimpleHijacker) SSLBump() bool {

@@ -163,8 +163,8 @@ func (r *Request) Protocol() []byte {
 // ErrNilRequestReader no valid request reader provided
 var ErrNilRequestReader = errors.New("empty request")
 
-// PrePare pre-process the request header, hijack the request if available
-func (r *Request) PrePare() error {
+// peekRawHeader peeks raw header from connection
+func (r *Request) peekRawHeader() error {
 	if r.reader == nil {
 		return ErrNilRequestReader
 	}
@@ -181,22 +181,35 @@ func (r *Request) PrePare() error {
 		// should NOT have any errors
 		return util.ErrWrapper(err, "fail to read raw headers")
 	}
+	r.rawHeader = rawHeader
+	return nil
+}
 
+// discardRawHeader discard the raw header after using
+func (r *Request) discardRawHeader() error {
+	_, err := r.reader.Discard(r.originalHeaderLength)
+	return err
+}
+
+// PrePare pre-process the request header, hijack the request if available
+func (r *Request) PrePare() error {
+	if err := r.peekRawHeader(); err != nil {
+		return err
+	}
 	// hijack the request URL and header
 	if r.hijacker == nil {
-		r.rawHeader = rawHeader
 		return nil
 	}
 
 	// modify request header and change super proxy if needed
-	newPath, newHeader := r.hijacker.BeforeRequest(r.Method(), r.reqLine.PathWithQueryFragment(), r.header, rawHeader)
+	newPath, newHeader := r.hijacker.BeforeRequest(r.Method(),
+		r.reqLine.PathWithQueryFragment(), r.header, r.rawHeader)
 
 	// reset new path
 	r.reqLine.ChangePathWithFragment(newPath)
 
 	// header not modified return it
-	if newHeader == nil || bytes.Equal(newHeader, rawHeader) {
-		r.rawHeader = rawHeader
+	if newHeader == nil || bytes.Equal(newHeader, r.rawHeader) {
 		return nil
 	}
 
@@ -239,7 +252,7 @@ func (r *Request) WriteHeaderTo(writer *bufio.Writer) (int, int, error) {
 	}
 
 	// the header only peeks for parsing in `PrePare`, discard it after using
-	defer r.reader.Discard(r.originalHeaderLength)
+	defer r.discardRawHeader()
 
 	copiedHeaderLen, err := parallelWriteHeader(
 		writer,

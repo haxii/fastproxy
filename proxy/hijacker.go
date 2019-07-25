@@ -13,12 +13,15 @@ import (
 // For HTTP Connections, the call chain is:
 // - RewriteHost -> BeforeRequest -> Resolve -> SuperProxy -> Block -> HijackResponse -> Dial/DialTLS -> OnRequest -> OnResponse
 // For HTTPS Tunnels, the call chain is:
-// - RewriteHost -> SSLBump(false) -> Resolve -> SuperProxy -> Block -> Dial/DialTLS
+// - RewriteHost -> BeforeConnect -> SSLBump(false) -> Resolve -> SuperProxy -> Block -> Dial/DialTLS
 // For HTTPS Sniffer, the call chain is:
-// - RewriteHost -> SSLBump(true) -> RewriteTLSServerName -> BeforeRequest -> Resolve -> SuperProxy -> Block -> HijackResponse -> Dial/DialTLS -> OnRequest -> OnResponse
+// - RewriteHost -> BeforeConnect -> SSLBump(true) -> RewriteTLSServerName -> BeforeRequest -> Resolve -> SuperProxy -> Block -> HijackResponse -> Dial/DialTLS -> OnRequest -> OnResponse
 type Hijacker interface {
 	// RewriteHost rewrites the incoming host and port, return a nil newHost or nil newPort to end the request
 	RewriteHost() (newHost, newPort string)
+
+	// OnConnect called when HTTPS connect request received, return false to decline the tunnel request
+	OnConnect(header http.Header, rawHeader []byte) bool
 
 	// SSLBump returns if the https connection should be decrypted
 	SSLBump() bool

@@ -212,7 +212,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			return util.ErrWrapper(err, "proxy error with "+req.reqLine.HostInfo().TargetWithPort())
 		}
 
-		if req.ConnectionClose() {
+		if err == io.EOF || req.ConnectionClose() {
 			break
 		}
 		req.Reset()
@@ -237,8 +237,7 @@ func (p *Proxy) do(c net.Conn, req *Request) error {
 	if hijacker != nil {
 		newHost, newPort := hijacker.RewriteHost()
 		if len(newHost) == 0 || len(newPort) == 0 {
-			if e := writeFastError(c, http.StatusSessionUnavailable,
-				"Sorry, server can't keep this session.\n"); e != nil {
+			if e := writeFastError(c, http.StatusBadGateway, "Bad Gateway.\n"); e != nil {
 				return util.ErrWrapper(e, "fail to response session unavailable")
 			}
 			return io.EOF
@@ -252,6 +251,23 @@ func (p *Proxy) do(c net.Conn, req *Request) error {
 	// make http client requests
 	if !isHTTPS {
 		return p.proxyHTTP(c, req)
+	}
+
+	// peek raw header of the connect request
+	if err := req.peekRawHeader(); err != nil {
+		return err
+	}
+	if hijacker != nil {
+		if !hijacker.OnConnect(req.header, req.rawHeader) {
+			// the hijacker doesn't allow tunnel making request
+			if e := writeFastError(c, http.StatusBadGateway, "Bad Gateway.\n"); e != nil {
+				return util.ErrWrapper(e, "fail to response session unavailable")
+			}
+			return io.EOF
+		}
+	}
+	if err := req.discardRawHeader(); err != nil {
+		return err
 	}
 
 	// setup the SSL bump
