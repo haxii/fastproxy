@@ -69,7 +69,7 @@ func (h *SimpleHijacker) init(clientAddr net.Addr, isHTTPS bool, host, port stri
 	h.clientAddr = clientAddr
 	h.host = host
 	h.port = port
-	//h.superProxy = superProxy1
+	h.superProxy = superProxy1
 }
 
 func (h *SimpleHijacker) RewriteHost() (newHost, newPort string) {

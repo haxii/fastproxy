@@ -67,10 +67,10 @@ func (b *ByteBuffer) CopyWithIdleDuration(dst io.Writer, src io.Reader, idle tim
 
 	b.Reset()
 	b.B = make([]byte, 32*1024)
-	idleChan := make(chan struct{})
 	for {
 		var nr int
 		var er error
+		idleChan := make(chan struct{}, 1)
 		go func() {
 			nr, er = src.Read(b.B)
 			idleChan <- struct{}{}

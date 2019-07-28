@@ -172,7 +172,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		if p.ServerIdleDuration == 0 {
 			rn, err = req.parseStartLine(reader)
 		} else {
-			idleChan := make(chan struct{})
+			idleChan := make(chan struct{}, 1)
 			go func() {
 				rn, err = req.parseStartLine(reader)
 				idleChan <- struct{}{}
