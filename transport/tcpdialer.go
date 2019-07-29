@@ -47,7 +47,7 @@ type DialFunc func(addr string) (net.Conn, error)
 //     * foo.bar:80
 //     * aaa.com:8080
 func dial(addr string, isTLS bool, tlsConfig *tls.Config) (net.Conn, error) {
-	conn, err := getDialer(DefaultDialTimeout, false)(addr)
+	conn, err := getDialer(DefaultDialTimeout)(addr)
 	if err != nil {
 		return nil, err
 	}
@@ -60,24 +60,17 @@ func dial(addr string, isTLS bool, tlsConfig *tls.Config) (net.Conn, error) {
 	return conn, nil
 }
 
-func getDialer(timeout time.Duration, dualStack bool) DialFunc {
+func getDialer(timeout time.Duration) DialFunc {
 	if timeout <= 0 {
 		timeout = DefaultDialTimeout
 	}
 	timeoutRounded := int(timeout.Seconds()*10 + 9)
 
 	m := dialMap
-	if dualStack {
-		m = dialDualStackMap
-	}
-
 	dialMapLock.Lock()
 	d := m[timeoutRounded]
 	if d == nil {
 		dialer := dialerStd
-		if dualStack {
-			dialer = dialerDualStack
-		}
 		d = dialer.newDial(timeout)
 		m[timeoutRounded] = d
 	}
@@ -86,17 +79,12 @@ func getDialer(timeout time.Duration, dualStack bool) DialFunc {
 }
 
 var (
-	dialerStd       = &tcpDialer{}
-	dialerDualStack = &tcpDialer{DualStack: true}
-
-	dialMap          = make(map[int]DialFunc)
-	dialDualStackMap = make(map[int]DialFunc)
-	dialMapLock      sync.Mutex
+	dialerStd   = &tcpDialer{}
+	dialMap     = make(map[int]DialFunc)
+	dialMapLock sync.Mutex
 )
 
 type tcpDialer struct {
-	DualStack bool
-
 	tcpAddrsLock sync.Mutex
 	tcpAddrsMap  map[string]*tcpAddrEntry
 
@@ -110,8 +98,7 @@ const maxDialConcurrency = 1000
 // ErrDialTimeout is returned when TCP dialing is timed out.
 var ErrDialTimeout = errors.New("dialing to the given TCP address timed out")
 
-// DefaultDialTimeout is timeout used by Dial and DialDualStack
-// for establishing TCP connections.
+// DefaultDialTimeout is timeout used by Dial for establishing TCP connections.
 const DefaultDialTimeout = 5 * time.Second
 
 func (d *tcpDialer) newDial(timeout time.Duration) DialFunc {
@@ -126,16 +113,12 @@ func (d *tcpDialer) newDial(timeout time.Duration) DialFunc {
 		if err != nil {
 			return nil, err
 		}
-		network := "tcp4"
-		if d.DualStack {
-			network = "tcp"
-		}
 
 		var conn net.Conn
 		n := uint32(len(addrs))
 		deadline := time.Now().Add(timeout)
 		for n > 0 {
-			conn, err = tryDial(network, &addrs[idx%n], deadline, d.concurrencyCh)
+			conn, err = tryDial("tcp", &addrs[idx%n], deadline, d.concurrencyCh)
 			if err == nil {
 				return conn, nil
 			}
@@ -253,7 +236,7 @@ func (d *tcpDialer) getTCPAddrs(addr string) ([]net.TCPAddr, uint32, error) {
 	d.tcpAddrsLock.Unlock()
 
 	if e == nil {
-		addrs, err := resolveTCPAddrs(addr, d.DualStack)
+		addrs, err := resolveTCPAddrs(addr)
 		if err != nil {
 			d.tcpAddrsLock.Lock()
 			e = d.tcpAddrsMap[addr]
@@ -278,7 +261,7 @@ func (d *tcpDialer) getTCPAddrs(addr string) ([]net.TCPAddr, uint32, error) {
 	return e.addrs, idx, nil
 }
 
-func resolveTCPAddrs(addr string, dualStack bool) ([]net.TCPAddr, error) {
+func resolveTCPAddrs(addr string) ([]net.TCPAddr, error) {
 	host, portS, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
@@ -297,9 +280,6 @@ func resolveTCPAddrs(addr string, dualStack bool) ([]net.TCPAddr, error) {
 	addrs := make([]net.TCPAddr, 0, n)
 	for i := 0; i < n; i++ {
 		ip := ips[i]
-		if !dualStack && ip.To4() == nil {
-			continue
-		}
 		addrs = append(addrs, net.TCPAddr{
 			IP:   ip,
 			Port: port,
