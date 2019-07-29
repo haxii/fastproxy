@@ -10,14 +10,16 @@ import (
 	"github.com/haxii/fastproxy/bytebufferpool"
 )
 
+var defaultDialer Dialer
+
 //DialTLS dial tls without pool
 func DialTLS(addr string, tlsConfig *tls.Config) (net.Conn, error) {
-	return dial(addr, true, tlsConfig)
+	return defaultDialer.Dial(addr, -1, true, tlsConfig)
 }
 
 //Dial dial without pool
 func Dial(addr string) (net.Conn, error) {
-	return dial(addr, false, nil)
+	return defaultDialer.Dial(addr, -1, false, nil)
 }
 
 // Forward forward remote and local connection

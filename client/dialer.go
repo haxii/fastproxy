@@ -50,7 +50,7 @@ func parseRequestType(superProxy *superproxy.SuperProxy, isHTTPS bool) requestTy
 }
 
 func (c *HostClient) makeDialer(superProxy *superproxy.SuperProxy,
-	targetWithPort string, isTargetHTTPS bool, targetTLSServerName string) transport.Dialer {
+	targetWithPort string, isTargetHTTPS bool, targetTLSServerName string) transport.NewConn {
 	reqType := parseRequestType(superProxy, isTargetHTTPS)
 	// setup dial functions
 	dialFunc := c.Dial
@@ -95,7 +95,7 @@ func (c *HostClient) makeDialer(superProxy *superproxy.SuperProxy,
 }
 
 // wrap a connection and error into a transport Dialer
-func dialerWrapper(c net.Conn, e error) transport.Dialer {
+func dialerWrapper(c net.Conn, e error) transport.NewConn {
 	return func() (net.Conn, error) {
 		return c, e
 	}

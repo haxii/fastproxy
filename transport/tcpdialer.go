@@ -23,6 +23,25 @@ import (
 //   - foobar.com:8080
 type DialFunc func(addr string) (net.Conn, error)
 
+// DefaultDialTimeout is timeout used by Dial for establishing TCP connections.
+const DefaultDialTimeout = 5 * time.Second
+
+// DefaultMaxDialConcurrency max dial concurrency
+const DefaultMaxDialConcurrency = 1000
+
+type Dialer struct {
+	MaxDialConcurrency int
+
+	DialTCP  func(addr *net.TCPAddr) (net.Conn, error)
+	LookupIP func(host string) ([]net.IP, error)
+
+	dialer      *tcpDialer
+	dialMap     map[int]DialFunc
+	dialMapLock sync.Mutex
+
+	once sync.Once
+}
+
 // dial dials the given TCP addr using tcp4.
 //
 // This function has the following additional features comparing to net.Dial:
@@ -46,13 +65,21 @@ type DialFunc func(addr string) (net.Conn, error)
 //     * foobar.baz:443
 //     * foo.bar:80
 //     * aaa.com:8080
-func dial(addr string, isTLS bool, tlsConfig *tls.Config) (net.Conn, error) {
-	conn, err := getDialer(DefaultDialTimeout)(addr)
+func (d *Dialer) Dial(addr string, timeout time.Duration, isTLS bool, tlsConfig *tls.Config) (net.Conn, error) {
+	d.once.Do(func() {
+		d.dialer = &tcpDialer{
+			maxDialConcurrency: d.MaxDialConcurrency,
+			dialTCP:            d.DialTCP,
+			lookupIP:           d.LookupIP,
+		}
+		d.dialMap = make(map[int]DialFunc)
+	})
+	conn, err := d.getDialer(timeout)(addr)
 	if err != nil {
 		return nil, err
 	}
 	if conn == nil {
-		panic("BUG: DialFunc returned (nil, nil)")
+		return nil, errors.New("BUG: DialFunc returned (nil, nil)")
 	}
 	if isTLS {
 		conn = tls.Client(conn, tlsConfig)
@@ -60,31 +87,29 @@ func dial(addr string, isTLS bool, tlsConfig *tls.Config) (net.Conn, error) {
 	return conn, nil
 }
 
-func getDialer(timeout time.Duration) DialFunc {
+func (d *Dialer) getDialer(timeout time.Duration) DialFunc {
 	if timeout <= 0 {
 		timeout = DefaultDialTimeout
 	}
 	timeoutRounded := int(timeout.Seconds()*10 + 9)
 
-	m := dialMap
-	dialMapLock.Lock()
-	d := m[timeoutRounded]
-	if d == nil {
-		dialer := dialerStd
-		d = dialer.newDial(timeout)
-		m[timeoutRounded] = d
+	d.dialMapLock.Lock()
+	dialer := d.dialMap[timeoutRounded]
+	if dialer == nil {
+		_dialer := d.dialer
+		dialer = _dialer.newDial(timeout)
+		d.dialMap[timeoutRounded] = dialer
 	}
-	dialMapLock.Unlock()
-	return d
+	d.dialMapLock.Unlock()
+	return dialer
 }
 
-var (
-	dialerStd   = &tcpDialer{}
-	dialMap     = make(map[int]DialFunc)
-	dialMapLock sync.Mutex
-)
-
 type tcpDialer struct {
+	dialTCP  func(addr *net.TCPAddr) (net.Conn, error)
+	lookupIP func(host string) ([]net.IP, error)
+
+	maxDialConcurrency int
+
 	tcpAddrsLock sync.Mutex
 	tcpAddrsMap  map[string]*tcpAddrEntry
 
@@ -93,17 +118,23 @@ type tcpDialer struct {
 	once sync.Once
 }
 
-const maxDialConcurrency = 1000
-
 // ErrDialTimeout is returned when TCP dialing is timed out.
 var ErrDialTimeout = errors.New("dialing to the given TCP address timed out")
 
-// DefaultDialTimeout is timeout used by Dial for establishing TCP connections.
-const DefaultDialTimeout = 5 * time.Second
-
 func (d *tcpDialer) newDial(timeout time.Duration) DialFunc {
 	d.once.Do(func() {
-		d.concurrencyCh = make(chan struct{}, maxDialConcurrency)
+		if d.dialTCP == nil {
+			d.dialTCP = func(addr *net.TCPAddr) (net.Conn, error) {
+				return net.DialTCP("tcp", nil, addr)
+			}
+		}
+		if d.lookupIP == nil {
+			d.lookupIP = net.LookupIP
+		}
+		if d.maxDialConcurrency <= 0 {
+			d.maxDialConcurrency = DefaultMaxDialConcurrency
+		}
+		d.concurrencyCh = make(chan struct{}, d.maxDialConcurrency)
 		d.tcpAddrsMap = make(map[string]*tcpAddrEntry)
 		go d.tcpAddrsClean()
 	})
@@ -118,7 +149,7 @@ func (d *tcpDialer) newDial(timeout time.Duration) DialFunc {
 		n := uint32(len(addrs))
 		deadline := time.Now().Add(timeout)
 		for n > 0 {
-			conn, err = tryDial("tcp", &addrs[idx%n], deadline, d.concurrencyCh)
+			conn, err = d.tryDial(&addrs[idx%n], deadline, d.concurrencyCh)
 			if err == nil {
 				return conn, nil
 			}
@@ -132,7 +163,7 @@ func (d *tcpDialer) newDial(timeout time.Duration) DialFunc {
 	}
 }
 
-func tryDial(network string, addr *net.TCPAddr, deadline time.Time, concurrencyCh chan struct{}) (net.Conn, error) {
+func (d *tcpDialer) tryDial(addr *net.TCPAddr, deadline time.Time, concurrencyCh chan struct{}) (net.Conn, error) {
 	timeout := -time.Since(deadline)
 	if timeout <= 0 {
 		return nil, ErrDialTimeout
@@ -167,7 +198,7 @@ func tryDial(network string, addr *net.TCPAddr, deadline time.Time, concurrencyC
 	ch := chv.(chan dialResult)
 	go func() {
 		var dr dialResult
-		dr.conn, dr.err = net.DialTCP(network, nil, addr)
+		dr.conn, dr.err = d.dialTCP(addr)
 		ch <- dr
 		<-concurrencyCh
 	}()
@@ -236,7 +267,7 @@ func (d *tcpDialer) getTCPAddrs(addr string) ([]net.TCPAddr, uint32, error) {
 	d.tcpAddrsLock.Unlock()
 
 	if e == nil {
-		addrs, err := resolveTCPAddrs(addr)
+		addrs, err := d.resolveTCPAddrs(addr)
 		if err != nil {
 			d.tcpAddrsLock.Lock()
 			e = d.tcpAddrsMap[addr]
@@ -261,7 +292,7 @@ func (d *tcpDialer) getTCPAddrs(addr string) ([]net.TCPAddr, uint32, error) {
 	return e.addrs, idx, nil
 }
 
-func resolveTCPAddrs(addr string) ([]net.TCPAddr, error) {
+func (d *tcpDialer) resolveTCPAddrs(addr string) ([]net.TCPAddr, error) {
 	host, portS, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
@@ -271,7 +302,7 @@ func resolveTCPAddrs(addr string) ([]net.TCPAddr, error) {
 		return nil, err
 	}
 
-	ips, err := net.LookupIP(host)
+	ips, err := d.lookupIP(host)
 	if err != nil {
 		return nil, err
 	}
@@ -291,4 +322,4 @@ func resolveTCPAddrs(addr string) ([]net.TCPAddr, error) {
 	return addrs, nil
 }
 
-var errNoDNSEntries = errors.New("couldn't find DNS entries for the given domain. Try using DialDualStack")
+var errNoDNSEntries = errors.New("couldn't find DNS entries for the given domain")
