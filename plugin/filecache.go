@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -79,7 +80,7 @@ func (c *FileCache) Init(basedir string, logger log.Logger, cacheKey string) {
 			"cannot create file %s", c.fileDownloadPath)
 	}
 
-	c.logger.Info("FileCache", "%s, not in cache, downloading to %s", cacheKey, c.fileDownloadPath)
+	c.logger.Debug("FileCache", "%s, not in cache, downloading to %s", cacheKey, c.fileDownloadPath)
 }
 
 func (c *FileCache) FileCached() bool {
@@ -89,27 +90,9 @@ func (c *FileCache) FileCached() bool {
 var errUnexpectedStatusCode = errors.New("unexpected status code, expecting 200 or 3xx")
 
 func (c *FileCache) WriteHeader(statusLine http.ResponseLine, header http.Header, rawHeader []byte) error {
-	if c.fileDownloadFile == nil {
-		return errNothingToWrite
-	}
-	//do NOT save error to cache
-	if code := statusLine.GetStatusCode(); !c.isRespCodeValid(code) {
-		return errUnexpectedStatusCode
-	}
-	if _, err := util.WriteWithValidation(c.fileDownloadFile,
-		statusLine.GetResponseLine()); err != nil {
-		return err
-	}
-	if _, err := util.WriteWithValidation(c.fileDownloadFile, rawHeader); err != nil {
-		return err
-	}
-	c.fileDownloadFileSize = int64(len(statusLine.GetResponseLine()) + len(rawHeader))
-	if header.ContentLength() > 0 {
-		c.fileDownloadFileSize += header.ContentLength()
-	} else {
-		c.fileDownloadFileSize = 0
-	}
-	return nil
+	var err error
+	c.fileDownloadFileSize, err = writeHeaderTo(c.fileDownloadFile, statusLine, header, rawHeader)
+	return err
 }
 
 var errNothingToWrite = errors.New("noting to write")
@@ -187,7 +170,32 @@ func (c *FileCache) checkDownloadedFile() error {
 	return nil
 }
 
-func (c *FileCache) isRespCodeValid(code int) bool {
+func writeHeaderTo(w io.Writer, statusLine http.ResponseLine,
+	header http.Header, rawHeader []byte) (expectRespSize int64, err error) {
+	if w == nil {
+		return -1, errNothingToWrite
+	}
+	//do NOT save error to cache
+	if code := statusLine.GetStatusCode(); !isRespCodeValid(code) {
+		return -1, errUnexpectedStatusCode
+	}
+	if _, err := util.WriteWithValidation(w,
+		statusLine.GetResponseLine()); err != nil {
+		return -1, err
+	}
+	if _, err := util.WriteWithValidation(w, rawHeader); err != nil {
+		return -1, err
+	}
+	expectRespSize = int64(len(statusLine.GetResponseLine()) + len(rawHeader))
+	if header.ContentLength() > 0 {
+		expectRespSize += header.ContentLength()
+	} else {
+		expectRespSize = -1
+	}
+	return expectRespSize, nil
+}
+
+func isRespCodeValid(code int) bool {
 	if code == 200 {
 		return true
 	}

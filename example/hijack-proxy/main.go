@@ -18,9 +18,13 @@ import (
 	"github.com/haxii/log"
 )
 
-var logger = &log.DefaultLogger{}
+var (
+	logger          = &log.DefaultLogger{}
+	memoryCachePool *plugin.MemoryCachePool
+)
 
 func main() {
+	memoryCachePool = plugin.NewMemoryCachePool(time.Minute, time.Minute)
 	hijackHandler := plugin.HijackHandler{
 		BlockByDefault: false,
 		RewriteHost: func(info *plugin.RequestConnInfo) (newHost, newPort string) {
@@ -54,7 +58,10 @@ func main() {
 	hijackHandler.Add("GET", "httpbin*", "/get", printResponseFunc)
 
 	// matches curl -k -v -x 0.0.0.0:8082  https://httpbin.org/html
-	hijackHandler.Add("GET", "httpbin*", "/html", cacheResponseFunc)
+	hijackHandler.Add("GET", "httpbin*", "/html", fileCacheResponseFunc)
+
+	// matches curl -k -v -x 0.0.0.0:8082  https://httpbin.org/cache/20
+	hijackHandler.Add("GET", "httpbin*", "/cache/*filepath", memoryCacheResponseFunc)
 
 	// hijacks www.baidu.com requests
 	hijackHandler.Add("*", "www.baidu.com", "/*filepath", hijackEvilFunc)
@@ -87,9 +94,28 @@ func printResponseFunc(info *plugin.RequestConnInfo, u *uri.URI,
 	}
 }
 
-func cacheResponseFunc(info *plugin.RequestConnInfo, u *uri.URI,
+func memoryCacheResponseFunc(info *plugin.RequestConnInfo, u *uri.URI,
 	h *plugin.RequestHeader) (*plugin.HijackedRequest, *plugin.HijackedResponse) {
-	fmt.Printf("cacheResponseFunc called, with Scheme %s Host %s, URL %s, User-Agent %s\n\n",
+	fmt.Printf("memoryCacheResponseFunc called, with Scheme %s Host %s, URL %s, User-Agent %s\n\n",
+		u.Scheme(), u.HostInfo().HostWithPort(), u.PathWithQueryFragment(), h.Get("User-Agent"))
+	cache := &plugin.MemoryCache{}
+	cacheKey := info.Host() + string(u.Path())
+	cache.Init(memoryCachePool, logger, cacheKey)
+	if cache.Cached() {
+		return nil, &plugin.HijackedResponse{
+			ResponseType:   plugin.HijackedResponseTypeOverride,
+			OverrideReader: cache,
+		}
+	}
+	return nil, &plugin.HijackedResponse{
+		ResponseType:  plugin.HijackedResponseTypeInspect,
+		InspectWriter: cache,
+	}
+}
+
+func fileCacheResponseFunc(info *plugin.RequestConnInfo, u *uri.URI,
+	h *plugin.RequestHeader) (*plugin.HijackedRequest, *plugin.HijackedResponse) {
+	fmt.Printf("fileCacheResponseFunc called, with Scheme %s Host %s, URL %s, User-Agent %s\n\n",
 		u.Scheme(), u.HostInfo().HostWithPort(), u.PathWithQueryFragment(), h.Get("User-Agent"))
 	cache := &plugin.FileCache{}
 	cacheKey := info.Host() + string(u.Path())
