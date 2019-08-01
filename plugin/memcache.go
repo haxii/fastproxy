@@ -214,6 +214,9 @@ func (c *MemoryCache) Close() error {
 	if c.cached || c.cacheWriter == nil {
 		return nil
 	}
+	if c.cacheWriter.Len() < 1 {
+		return errIncompleteDownload
+	}
 	if c.expectCacheSize > 0 && int64(c.cacheWriter.Len()) != c.expectCacheSize {
 		c.logger.Error("MemoryCache", errIncompleteDownload,
 			"expected cache length %d, got %d", c.expectCacheSize, c.cacheWriter.Len())
