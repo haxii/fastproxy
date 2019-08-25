@@ -177,6 +177,7 @@ func (h *Hijacker) RewriteTLSServerName(serverName string) string {
 
 func (h *Hijacker) BeforeRequest(method, path []byte, httpHeader http.Header,
 	rawHeader []byte) (newPath, newRawHeader []byte) {
+	h.connInfo.method = string(method)
 	if h.handler != nil {
 		h.uri.ChangePathWithFragment(path)
 		pathOnly := h.uri.Path()
@@ -298,6 +299,8 @@ type RequestConnInfo struct {
 	sslBump       bool
 	tlsServerName string
 
+	method string
+
 	Context context.Context
 }
 
@@ -308,6 +311,7 @@ func (i *RequestConnInfo) reset() {
 	i.port = ""
 	i.sslBump = false
 	i.tlsServerName = ""
+	i.method = ""
 	i.Context = nil
 }
 
@@ -329,6 +333,10 @@ func (i *RequestConnInfo) SSLBump() bool {
 
 func (i *RequestConnInfo) TLSServerName() string {
 	return i.tlsServerName
+}
+
+func (i *RequestConnInfo) Method() string {
+	return i.method
 }
 
 func (i *RequestConnInfo) Port() string {
