@@ -93,6 +93,8 @@ type HijackedRequest struct {
 	SuperProxy     *superproxy.SuperProxy
 	Dial           func(addr string) (net.Conn, error)
 	DialTLS        func(addr string, tlsConfig *tls.Config) (net.Conn, error)
+
+	BodyInspectWriter io.WriteCloser // used by request body writer
 }
 
 type HijackedResponse struct {
@@ -262,7 +264,10 @@ func (h *Hijacker) DialTLS() func(addr string, tlsConfig *tls.Config) (net.Conn,
 	return nil
 }
 
-func (Hijacker) OnRequest(path []byte, header http.Header, rawHeader []byte) io.WriteCloser {
+func (h *Hijacker) OnRequest(path []byte, header http.Header, rawHeader []byte) io.WriteCloser {
+	if h.hijackedReq != nil {
+		return h.hijackedReq.BodyInspectWriter
+	}
 	return nil
 }
 
