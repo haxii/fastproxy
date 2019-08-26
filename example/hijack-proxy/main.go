@@ -57,6 +57,9 @@ func main() {
 	// doesn't match  http[s]://www.httpbin.org/get
 	hijackHandler.Add("GET", "httpbin*", "/get", printResponseFunc)
 
+	// matches curl -x 0.0.0.0:8082 -X POST "http://httpbin.org/anything" -H "accept: application/json" -d "x=123"
+	hijackHandler.Add("POST", "httpbin*", "/anything", printRequestFunc)
+
 	// matches curl -k -v -x 0.0.0.0:8082  https://httpbin.org/html
 	hijackHandler.Add("GET", "httpbin*", "/html", fileCacheResponseFunc)
 
@@ -82,6 +85,15 @@ func main() {
 		HijackerPool:       &plugin.HijackerPool{Handler: hijackHandler},
 	}
 	panic(p.Serve("tcp", "0.0.0.0:8082"))
+}
+
+func printRequestFunc(info *plugin.RequestConnInfo, u *uri.URI,
+	h *plugin.RequestHeader) (*plugin.HijackedRequest, *plugin.HijackedResponse) {
+	fmt.Printf("printRequestFunc called, with Scheme %s Host %s, URL %s, User-Agent %s\n\n",
+		u.Scheme(), u.HostInfo().HostWithPort(), u.PathWithQueryFragment(), h.Get("User-Agent"))
+	return &plugin.HijackedRequest{
+		BodyInspectWriter: &reqStdoutWriter{},
+	}, nil
 }
 
 func printResponseFunc(info *plugin.RequestConnInfo, u *uri.URI,
@@ -185,8 +197,15 @@ func postmanEchoProxy(info *plugin.RequestConnInfo) *superproxy.SuperProxy {
 	return nil
 }
 
-type respStdoutWriter struct {
+type reqStdoutWriter struct{}
+
+func (w *reqStdoutWriter) Write(p []byte) (n int, err error) {
+	return os.Stdout.Write(p)
 }
+
+func (w *reqStdoutWriter) Close() error { return nil }
+
+type respStdoutWriter struct{}
 
 func (w *respStdoutWriter) Close() error { return nil }
 

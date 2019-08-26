@@ -203,7 +203,7 @@ func (h *Hijacker) BeforeRequest(method, path []byte, httpHeader http.Header,
 
 func (h *Hijacker) Resolve() net.IP {
 	// for https tunnel connections, BeforeRequest is not called, call the handler here
-	if !h.connInfo.SSLBump() && h.handler != nil {
+	if h.connInfo.isHTTPS && !h.connInfo.SSLBump() && h.handler != nil {
 		handleSSLFunc := h.handler.sslRouter.GetHandleFunc(h.connInfo.Host())
 		if handleSSLFunc != nil {
 			h.hijackedReq = handleSSLFunc(&h.connInfo)
