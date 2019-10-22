@@ -389,25 +389,21 @@ func (c *HostClient) DoRaw(rw io.ReadWriter, superProxy *superproxy.SuperProxy,
 			cc.LastWriteDeadlineTime = currentTime
 		}
 	}
-
-	var wg sync.WaitGroup
-	var rwWriteErr, rwReadErr error
-	wg.Add(2)
+	// forward incoming connection to destination tunnel
+	errChan := make(chan error, 2)
 	go func() {
-		rwReadNum, rwReadErr = transport.Forward(conn, rw, c.ConnManager.MaxIdleConnDuration)
-		wg.Done()
+		_, readErr := transport.Forward(conn, rw, c.ConnManager.MaxIdleConnDuration)
+		errChan <- readErr
 	}()
 	go func() {
-		rwWriteNum, rwWriteErr = transport.Forward(rw, conn, c.ConnManager.MaxIdleConnDuration)
-		wg.Done()
+		_, writeErr := transport.Forward(rw, conn, c.ConnManager.MaxIdleConnDuration)
+		errChan <- writeErr
 	}()
-	wg.Wait()
-
-	if rwReadErr != nil {
-		err = util.ErrWrapper(rwReadErr, "error occurred when tunneling request")
-	}
-	if rwWriteErr != nil {
-		err = util.ErrWrapper(rwWriteErr, "error occurred when tunneling response")
+	select {
+	case err = <-errChan:
+		if err != nil {
+			err = util.ErrWrapper(err, "error occurred when tunneling")
+		}
 	}
 
 	//TODO: should reuse these connections????? only close socks5 connections? more tests?
