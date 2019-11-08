@@ -116,44 +116,41 @@ var (
 	errNilReq            = errors.New("nil request")
 	errNilResp           = errors.New("nil response")
 	errNilFakeResp       = errors.New("nil fake response")
-	errNilBufiopool      = errors.New("nil buffer io pool")
+	errNilBufioPool      = errors.New("nil buffer io pool")
 	errNilReadWriter     = errors.New("nil read writer provided")
 	errNilTargetHost     = errors.New("nil target host provided")
-	errNilSuperProxyHost = errors.New("nil superproxy proxy host provided")
+	errNilSuperProxyHost = errors.New("nil super proxy host provided")
 )
 
 // DoFake make a client request by giving a faked response
-func (c *Client) DoFake(req Request, resp Response, fakeRespReader io.Reader) (reqReadNum,
-	reqWriteNum, responseNum int, err error) {
-	writeReqToDevNull := func(req Request) (readNum, writeNum int, err error) {
+func (c *Client) DoFake(req Request, resp Response, fakeRespReader io.Reader) error {
+	writeReqToDevNull := func(req Request) error {
 		devNullBufferedWriter := c.BufioPool.AcquireWriter(defaultDevNullWriter)
 		defer c.BufioPool.ReleaseWriter(devNullBufferedWriter)
-		if readNum, writeNum, err = req.WriteHeaderTo(devNullBufferedWriter); err != nil {
-			return readNum, writeNum, err
+		if _, _, err := req.WriteHeaderTo(devNullBufferedWriter); err != nil {
+			return err
 		}
-		n, err := req.WriteBodyTo(devNullBufferedWriter)
-		readNum += n
-		writeNum += n
-		return readNum, writeNum, err
+		_, err := req.WriteBodyTo(devNullBufferedWriter)
+		return err
 	}
 
 	if req == nil {
-		return 0, 0, 0, errNilReq
+		return errNilReq
 	}
 	if resp == nil {
-		return 0, 0, 0, errNilResp
+		return errNilResp
 	}
 	if fakeRespReader == nil {
-		return 0, 0, 0, errNilFakeResp
+		return errNilFakeResp
 	}
 
-	if reqReadNum, reqWriteNum, err = writeReqToDevNull(req); err != nil {
-		return reqReadNum, reqWriteNum, responseNum, err
+	if err := writeReqToDevNull(req); err != nil {
+		return err
 	}
 	bufFakeRespReader := c.BufioPool.AcquireReader(fakeRespReader)
 	defer c.BufioPool.ReleaseReader(bufFakeRespReader)
-	responseNum, err = resp.ReadFrom(false, bufFakeRespReader)
-	return reqReadNum, reqWriteNum, responseNum, err
+	_, err := resp.ReadFrom(false, bufFakeRespReader)
+	return err
 }
 
 // DoRaw make simple raw traffic forwarding
@@ -170,7 +167,7 @@ func (c *Client) DoRaw(rw io.ReadWriter, sProxy *superproxy.SuperProxy,
 		if len(connectHostWithPort) == 0 {
 			return 0, 0, onTunnelMade(errNilSuperProxyHost)
 		}
-		isConnectHostTLS = (sProxy.GetProxyType() == superproxy.ProxyTypeHTTPS)
+		isConnectHostTLS = sProxy.GetProxyType() == superproxy.ProxyTypeHTTPS
 	}
 	return c.getHostClient(connectHostWithPort,
 		isConnectHostTLS).DoRaw(rw, sProxy, targetWithPort, onTunnelMade)
@@ -182,15 +179,15 @@ func (c *Client) DoRaw(rw io.ReadWriter, sProxy *superproxy.SuperProxy,
 //
 // ErrNoFreeConns is returned if all Client.MaxConnsPerHost connections
 // to the requested host are busy.
-func (c *Client) Do(req Request, resp Response) (reqReadNum, reqWriteNum, respNum int, err error) {
+func (c *Client) Do(req Request, resp Response) error {
 	if req == nil {
-		return 0, 0, 0, errNilReq
+		return errNilReq
 	}
 	if resp == nil {
-		return 0, 0, 0, errNilResp
+		return errNilResp
 	}
 	if c.BufioPool == nil {
-		return 0, 0, 0, errNilBufiopool
+		return errNilBufioPool
 	}
 
 	connectHostWithPort := ""
@@ -198,13 +195,13 @@ func (c *Client) Do(req Request, resp Response) (reqReadNum, reqWriteNum, respNu
 	if sProxy := req.GetProxy(); sProxy != nil {
 		connectHostWithPort = req.GetProxy().HostWithPort()
 		if len(connectHostWithPort) == 0 {
-			return 0, 0, 0, errNilSuperProxyHost
+			return errNilSuperProxyHost
 		}
 		isConnectHostTLS = (sProxy.GetProxyType() == superproxy.ProxyTypeHTTPS)
 	} else {
 		connectHostWithPort = req.TargetWithPort()
 		if len(connectHostWithPort) == 0 {
-			return 0, 0, 0, errNilTargetHost
+			return errNilTargetHost
 		}
 		isConnectHostTLS = req.IsTLS()
 	}
@@ -417,15 +414,15 @@ func (c *HostClient) DoRaw(rw io.ReadWriter, superProxy *superproxy.SuperProxy,
 //
 // ErrNoFreeConns is returned if all HostClient.MaxConns connections
 // to the host are busy.
-func (c *HostClient) Do(req Request, resp Response) (reqReadNum, reqWriteNum, respNum int, err error) {
+func (c *HostClient) Do(req Request, resp Response) (err error) {
 	if req == nil {
-		return reqReadNum, reqWriteNum, respNum, errors.New("nil request")
+		return errors.New("nil request")
 	}
 	if resp == nil {
-		return reqReadNum, reqWriteNum, respNum, errors.New("nil response")
+		return errors.New("nil response")
 	}
 	if c.BufioPool == nil {
-		return reqReadNum, reqWriteNum, respNum, errors.New("nil buffer io pool")
+		return errors.New("nil buffer io pool")
 	}
 	const maxAttempts = 5
 	attempts := 0
@@ -433,14 +430,8 @@ func (c *HostClient) Do(req Request, resp Response) (reqReadNum, reqWriteNum, re
 	atomic.AddUint64(&c.pendingRequests, 1)
 	buffer := bytebufferpool.Get()
 	var retry bool
-	var currentReqReadNum int
-	var currentReqWriteNum int
-	var currentRespNum int
 	for {
-		retry, currentReqReadNum, currentReqWriteNum, currentRespNum, err = c.do(req, resp, buffer)
-		reqReadNum += currentReqReadNum
-		reqWriteNum += currentReqWriteNum
-		respNum += currentRespNum
+		retry, err = c.do(req, resp, buffer)
 		if err == nil || !retry {
 			break
 		}
@@ -468,7 +459,7 @@ func (c *HostClient) Do(req Request, resp Response) (reqReadNum, reqWriteNum, re
 	if err == io.EOF {
 		err = ErrConnectionClosed
 	}
-	return reqReadNum, reqWriteNum, respNum, err
+	return err
 }
 
 // PendingRequests returns the current number of requests the client
@@ -483,12 +474,12 @@ func (c *HostClient) PendingRequests() int {
 var errDialEOF = errors.New("dial EOF")
 
 func (c *HostClient) do(req Request, resp Response,
-	reqCacheForRetry *bytebufferpool.ByteBuffer) (retry bool, reqReadNum, reqWriteNum, respNum int, e error) {
+	reqCacheForRetry *bytebufferpool.ByteBuffer) (retry bool, e error) {
 	// set hostClient's last used time
 	atomic.StoreUint32(&c.lastUseTime, uint32(servertime.CoarseTimeNow().Unix()-startTimeUnix))
 
 	// analysis request type
-	viaProxy := (req.GetProxy() != nil)
+	viaProxy := req.GetProxy() != nil
 
 	// get the connection
 	var cc *transport.Conn
@@ -508,7 +499,7 @@ func (c *HostClient) do(req Request, resp Response,
 		if err == io.EOF {
 			err = errDialEOF
 		}
-		return false, reqReadNum, reqWriteNum, respNum, err
+		return false, err
 	}
 	conn := cc.Get()
 
@@ -521,7 +512,7 @@ func (c *HostClient) do(req Request, resp Response,
 		if currentTime.Sub(cc.LastWriteDeadlineTime) > (c.WriteTimeout >> 2) {
 			if err = conn.SetWriteDeadline(currentTime.Add(c.WriteTimeout)); err != nil {
 				c.ConnManager.CloseConn(cc)
-				return true, reqReadNum, reqWriteNum, respNum, err
+				return true, err
 			}
 			cc.LastWriteDeadlineTime = currentTime
 		}
@@ -544,32 +535,21 @@ func (c *HostClient) do(req Request, resp Response,
 		} else {
 			reqWriteToTarget = conn
 		}
-		rn, wn, err := c.readFromReqAndWriteToIOWriter(req, reqWriteToTarget)
-		if err != nil {
+		if err = c.readFromReqAndWriteToIOWriter(req, reqWriteToTarget); err != nil {
 			if shouldCacheReqForRetry {
 				reqCacheForRetry.Reset()
 			}
 			c.ConnManager.CloseConn(cc)
 			// cannot even read a complete request, do NOT retry
-			return false, reqReadNum, reqWriteNum, respNum, err
-		}
-		if shouldCacheReqForRetry {
-			reqReadNum += rn
-		} else {
-			reqReadNum += rn
-			reqWriteNum += wn
+			return false, err
 		}
 	}
 	if isCachedReqAvailable() {
 		// write the cached http requests to conn
-		n, err := c.writeData(reqCacheForRetry.Bytes(), conn)
-		if err != nil {
-			if err != nil {
-				c.ConnManager.CloseConn(cc)
-				return true, reqReadNum, reqWriteNum, respNum, err
-			}
+		if _, err = c.writeData(reqCacheForRetry.Bytes(), conn); err != nil {
+			c.ConnManager.CloseConn(cc)
+			return true, err
 		}
-		reqWriteNum += n
 	}
 
 	// get response
@@ -581,7 +561,7 @@ func (c *HostClient) do(req Request, resp Response,
 		if currentTime.Sub(cc.LastReadDeadlineTime) > (c.ReadTimeout >> 2) {
 			if err = conn.SetReadDeadline(currentTime.Add(c.ReadTimeout)); err != nil {
 				c.ConnManager.CloseConn(cc)
-				return true, reqReadNum, reqWriteNum, respNum, err
+				return true, err
 			}
 			cc.LastReadDeadlineTime = currentTime
 		}
@@ -590,20 +570,18 @@ func (c *HostClient) do(req Request, resp Response,
 	// read a byte from response to test if the connection has been closed by remote
 	if b, err := br.Peek(1); err != nil {
 		if err == io.EOF {
-			return true, reqReadNum, reqWriteNum, respNum, io.EOF
+			return true, io.EOF
 		}
-		return false, reqReadNum, reqWriteNum, respNum, err
+		return false, err
 	} else if len(b) == 0 {
-		return true, reqReadNum, reqWriteNum, respNum, io.EOF
+		return true, io.EOF
 	}
 
-	n, err := resp.ReadFrom(isHead(req.Method()), br)
-	if err != nil {
+	if _, err = resp.ReadFrom(isHead(req.Method()), br); err != nil {
 		c.BufioPool.ReleaseReader(br)
 		c.ConnManager.CloseConn(cc)
-		return false, reqReadNum, reqWriteNum, respNum, err
+		return false, err
 	}
-	respNum += n
 	c.BufioPool.ReleaseReader(br)
 
 	// release or close connection
@@ -614,7 +592,7 @@ func (c *HostClient) do(req Request, resp Response,
 		c.ConnManager.ReleaseConn(cc)
 	}
 
-	return false, reqReadNum, reqWriteNum, respNum, err
+	return false, err
 }
 
 func (c *HostClient) writeData(data []byte, w io.Writer) (int, error) {
@@ -629,51 +607,45 @@ func (c *HostClient) writeData(data []byte, w io.Writer) (int, error) {
 	return wn, bw.Flush()
 }
 
-func (c *HostClient) readFromReqAndWriteToIOWriter(req Request, w io.Writer) (readNum, writeNum int, err error) {
+func (c *HostClient) readFromReqAndWriteToIOWriter(req Request, w io.Writer) (err error) {
 	bw := c.BufioPool.AcquireWriter(w)
 	defer c.BufioPool.ReleaseWriter(bw)
-	isReqProxyHTTP := (parseRequestType(req.GetProxy(), req.IsTLS()) == requestProxyHTTP)
+	isReqProxyHTTP := parseRequestType(req.GetProxy(), req.IsTLS()) == requestProxyHTTP
 	// start line
 	if isReqProxyHTTP {
-		wn, _ := writeRequestLine(bw, true, req.Method(),
+		_, err = writeRequestLine(bw, true, req.Method(),
 			req.TargetWithPort(), req.PathWithQueryFragment(), req.Protocol())
-		writeNum += wn
 	} else {
-		wn, _ := writeRequestLine(bw, false, req.Method(),
+		_, err = writeRequestLine(bw, false, req.Method(),
 			"", req.PathWithQueryFragment(), req.Protocol())
-		writeNum += wn
+	}
+	if err != nil {
+		return
 	}
 
 	// auth header if needed
 	if isReqProxyHTTP {
 		if authHeader := req.GetProxy().HTTPProxyAuthHeaderWithCRLF(); authHeader != nil {
 			if nw, err := bw.Write(authHeader); err != nil {
-				return 0, 0, err
+				return err
 			} else if nw != len(authHeader) {
-				return 0, 0, io.ErrShortWrite
+				return io.ErrShortWrite
 			}
-			writeNum += len(authHeader)
 		}
 	}
 	// other request headers
-	rn, wn, err := req.WriteHeaderTo(bw)
-	if err != nil {
-		return readNum, writeNum, err
+	if _, _, err := req.WriteHeaderTo(bw); err != nil {
+		return err
 	}
-	readNum += rn
-	writeNum += wn
 
 	// do not read contents for get and head
 	if isHeadOrGet(req.Method()) {
-		return readNum, writeNum, bw.Flush()
+		return bw.Flush()
 	}
 	// request body
-	n, err := req.WriteBodyTo(bw)
-	if err != nil {
-		return readNum, writeNum, err
+	if _, err := req.WriteBodyTo(bw); err != nil {
+		return err
 	}
-	readNum += n
-	writeNum += n
 
-	return readNum, writeNum, bw.Flush()
+	return bw.Flush()
 }

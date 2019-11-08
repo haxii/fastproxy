@@ -235,7 +235,7 @@ func testClientDoWithErrorParameters(t *testing.T) {
 	req := &SimpleRequest{}
 	resp := &SimpleResponse{}
 
-	testClientDoWithErrorParamter(t, nil, req, resp, errNilBufiopool)
+	testClientDoWithErrorParamter(t, nil, req, resp, errNilBufioPool)
 	testClientDoWithErrorParamter(t, bPool, req, resp, errNilTargetHost)
 
 }

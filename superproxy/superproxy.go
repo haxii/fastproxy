@@ -10,7 +10,6 @@ import (
 
 	"github.com/haxii/fastproxy/bufiopool"
 	"github.com/haxii/fastproxy/transport"
-	"github.com/haxii/fastproxy/usage"
 )
 
 // ProxyType type of super proxy
@@ -51,9 +50,6 @@ type SuperProxy struct {
 	// SOCKS5 greetings & auth header
 	socks5Greetings []byte
 	socks5Auth      []byte
-
-	//usage
-	Usage usage.ProxyUsage
 
 	//concurrency chan
 	concurrencyChan chan struct{}

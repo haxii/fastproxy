@@ -15,7 +15,6 @@ import (
 	"github.com/haxii/fastproxy/server"
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
-	"github.com/haxii/fastproxy/usage"
 	"github.com/haxii/fastproxy/util"
 	"github.com/haxii/log"
 )
@@ -98,9 +97,6 @@ type Proxy struct {
 
 	// MITMCertAuthority root certificate authority used for https decryption
 	MITMCertAuthority *tls.Certificate
-
-	// Usage usage
-	Usage usage.ProxyUsage
 }
 
 // Serve serve on the provided ip address
@@ -160,7 +156,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		lastReadDeadlineTime  time.Time
 		lastWriteDeadlineTime time.Time
 	)
-	for {
+	for { // proxy keep-alive loop
 		if p.ServerReadTimeout > 0 {
 			lastReadDeadlineTime, err = p.updateReadDeadline(c, servertime.CoarseTimeNow(), lastReadDeadlineTime)
 			if err != nil {
@@ -190,7 +186,6 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			}
 			return util.ErrWrapper(err, "fail to read http request header")
 		}
-		p.Usage.AddIncomingSize(uint64(rn))
 
 		// discard direct HTTP requests
 		if len(req.reqLine.HostInfo().HostWithPort()) == 0 {
@@ -313,23 +308,13 @@ func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
 		// hijack the response if needed
 		if hijackedRespReader := hijacker.HijackResponse(); hijackedRespReader != nil {
 			defer hijackedRespReader.Close()
-			reqReadN, _, respN, err := p.client.DoFake(req, resp, hijackedRespReader)
-			p.Usage.AddIncomingSize(uint64(reqReadN))
-			p.Usage.AddOutgoingSize(uint64(respN))
-			return err
+			return p.client.DoFake(req, resp, hijackedRespReader)
 		}
 	}
 
 	// make the request
 	p.setClientDialer(req)
-	reqReadN, reqWriteN, respN, err := p.client.Do(req, resp)
-	p.Usage.AddIncomingSize(uint64(reqReadN))
-	p.Usage.AddOutgoingSize(uint64(respN))
-	if req.GetProxy() != nil {
-		req.GetProxy().Usage.AddIncomingSize(uint64(respN))
-		req.GetProxy().Usage.AddOutgoingSize(uint64(reqWriteN))
-	}
-	return err
+	return p.client.Do(req, resp)
 }
 
 func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
@@ -337,8 +322,7 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	hijackedConn, serverName, err := mitm.HijackTLSConnection(
 		p.MITMCertAuthority, c, req.reqLine.HostInfo().Domain(),
 		func(fail error) error { // before handshaking with client, return the tunnel made or failed message
-			wn, err := sendTunnelMessage(c, fail)
-			p.Usage.AddOutgoingSize(uint64(wn))
+			_, err := sendTunnelMessage(c, fail)
 			return err
 		},
 	)
@@ -361,18 +345,23 @@ func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
 	hijackedConnReader := p.bufioPool.AcquireReader(hijackedConn)
 	defer p.bufioPool.ReleaseReader(hijackedConnReader)
 
-	req.reader = nil
-	req.reqLine.Reset()
-	req.reader = nil
-	reqReadNum, err := req.parseStartLine(hijackedConnReader)
-	p.Usage.AddIncomingSize(uint64(reqReadNum))
-	if err != nil {
-		return util.ErrWrapper(err, "fail to read fake tls server request header")
+	for {
+		req.reader = nil
+		req.reqLine.Reset()
+		_, err := req.parseStartLine(hijackedConnReader)
+		if err != nil {
+			if err == io.EOF {
+				return err
+			}
+			return util.ErrWrapper(err, "fail to read fake tls server request header")
+		}
+		req.SetTLS(serverName)
+		req.reqLine.HostInfo().ParseHostWithPort(targetWithPort, true)
+		req.reqLine.HostInfo().SetIP(ip)
+		if err := p.proxyHTTP(hijackedConn, req); err != nil {
+			return err
+		}
 	}
-	req.SetTLS(serverName)
-	req.reqLine.HostInfo().ParseHostWithPort(targetWithPort, true)
-	req.reqLine.HostInfo().SetIP(ip)
-	return p.proxyHTTP(hijackedConn, req)
 }
 
 func (p *Proxy) tunnelHTTPS(c net.Conn, req *Request) error {
@@ -389,7 +378,7 @@ func (p *Proxy) tunnelHTTPS(c net.Conn, req *Request) error {
 	}
 
 	p.setClientDialer(req)
-	rwReadNum, rwWriteNum, err := p.client.DoRaw(
+	_, _, err := p.client.DoRaw(
 		c, req.GetProxy(), req.TargetWithPort(),
 		func(fail error) error { // on tunnel made, return the tunnel made or failed message
 			_, err := sendTunnelMessage(c, fail)
@@ -397,12 +386,6 @@ func (p *Proxy) tunnelHTTPS(c net.Conn, req *Request) error {
 		},
 	)
 
-	p.Usage.AddIncomingSize(uint64(rwReadNum))
-	p.Usage.AddOutgoingSize(uint64(rwWriteNum))
-	if req.GetProxy() != nil {
-		req.GetProxy().Usage.AddIncomingSize(uint64(rwWriteNum))
-		req.GetProxy().Usage.AddOutgoingSize(uint64(rwReadNum))
-	}
 	return err
 }
 
