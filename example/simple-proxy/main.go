@@ -164,6 +164,10 @@ func (h *SimpleHijacker) HijackResponse() io.ReadCloser {
 	return nil
 }
 
+func (h *SimpleHijacker) AfterResponse(err error) {
+	fmt.Println("AfterResponse called with error", err)
+}
+
 func (h *SimpleHijacker) OnFinish() {
 	fmt.Println("OnFinish Called")
 }

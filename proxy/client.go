@@ -72,8 +72,9 @@ type Request struct {
 	body http.Body
 
 	// hijacker, used for recording the http traffic
-	hijacker           Hijacker
-	hijackerBodyWriter io.WriteCloser
+	hijacker              Hijacker
+	hijackerBodyWriter    io.WriteCloser
+	isBeforeRequestCalled bool
 
 	// proxy super proxy used for target connection
 	proxy *superproxy.SuperProxy
@@ -91,6 +92,8 @@ func (r *Request) Reset() {
 	r.rawHeader = nil
 	r.originalHeaderLength = 0
 	r.hijacker = nil
+	r.hijackerBodyWriter = nil
+	r.isBeforeRequestCalled = false
 	r.proxy = nil
 	r.isTLS = false
 	r.tlsServerName = ""
@@ -193,6 +196,7 @@ func (r *Request) discardRawHeader() error {
 
 // PrePare pre-process the request header, hijack the request if available
 func (r *Request) PrePare() error {
+	r.isBeforeRequestCalled = false
 	if err := r.peekRawHeader(); err != nil {
 		return err
 	}
@@ -204,7 +208,7 @@ func (r *Request) PrePare() error {
 	// modify request header and change super proxy if needed
 	newPath, newHeader := r.hijacker.BeforeRequest(r.Method(),
 		r.reqLine.PathWithQueryFragment(), r.header, r.rawHeader)
-
+	r.isBeforeRequestCalled = true
 	// reset new path
 	r.reqLine.ChangePathWithFragment(newPath)
 
@@ -222,6 +226,10 @@ func (r *Request) PrePare() error {
 	}
 	r.rawHeader = newHeader
 	return nil
+}
+
+func (r *Request) IsBeforeRequestCalled() bool {
+	return r.isBeforeRequestCalled
 }
 
 func (r *Request) makeDNSLookUpAndSetSuperProxy(defaultSuperProxy *superproxy.SuperProxy) {

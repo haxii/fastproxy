@@ -24,10 +24,16 @@ type HandleFunc func(*RequestConnInfo, *uri.URI, *RequestHeader) (*HijackedReque
 // HandleSSLFunc for https tunnels
 type HandleSSLFunc func(*RequestConnInfo) *HijackedRequest
 
+// OnHijackFinished defer function for HandleFunc after usage, useful for finally cleanup
+type OnHijackFinished func(*HijackedRequest, *HijackedResponse)
+
 type HijackHandler struct {
 	// routers
 	sslRouter SSLRouters
 	router    Routers
+
+	// callback function after response
+	onHijackFinished OnHijackFinished
 
 	// default handlers
 	BlockByDefault    bool
@@ -45,6 +51,11 @@ type HijackHandler struct {
 // Add add a handler for http and bumped https connections
 func (h *HijackHandler) Add(method, host, path string, handle HandleFunc) {
 	h.router.Set(method, host, path, handle)
+}
+
+// SetCallbackOnHijackFinished set handler's defer function after usage
+func (h *HijackHandler) SetCallbackOnHijackFinished(f OnHijackFinished) {
+	h.onHijackFinished = f
 }
 
 // AddSSL add a handler for https tunnels
@@ -97,10 +108,26 @@ type HijackedRequest struct {
 	BodyInspectWriter io.WriteCloser // used by request body writer
 }
 
+func (h *HijackedRequest) Reset() {
+	h.OverridePath = nil
+	h.OverrideHeader = nil
+	h.ResolvedIP = nil
+	h.SuperProxy = nil
+	h.Dial = nil
+	h.DialTLS = nil
+	h.BodyInspectWriter = nil
+}
+
 type HijackedResponse struct {
 	ResponseType   HijackedResponseType
 	InspectWriter  ResponseWriter // used by HijackedResponseTypeInspect
 	OverrideReader io.ReadCloser  // used by HijackedResponseTypeOverride
+}
+
+func (h *HijackedResponse) Reset() {
+	h.ResponseType = HijackedResponseTypeBlock
+	h.InspectWriter = nil
+	h.OverrideReader = nil
 }
 
 // Hijacker is handler implementation of proxy/hijacker
@@ -286,6 +313,12 @@ func (h *Hijacker) OnResponse(statusLine http.ResponseLine,
 		}
 	}
 	return nil
+}
+
+func (h *Hijacker) AfterResponse(err error) {
+	if h.handler != nil {
+		h.handler.onHijackFinished(h.hijackedReq, h.hijackedResp)
+	}
 }
 
 func (h *Hijacker) OnFinish() {

@@ -129,6 +129,10 @@ func (h *SimpleHijacker) OnResponse(statusLine http.ResponseLine, header http.He
 	return nil
 }
 
+func (h *SimpleHijacker) AfterResponse(err error) {
+}
+
+
 func (h *SimpleHijacker) HijackResponse() io.ReadCloser { return nil }
 
 func (h *SimpleHijacker) OnFinish() {

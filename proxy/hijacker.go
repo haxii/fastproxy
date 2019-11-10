@@ -11,11 +11,12 @@ import (
 
 // Hijacker hijacker of each http connection and decrypted https connection
 // For HTTP Connections, the call chain is:
-// - RewriteHost -> BeforeRequest -> Resolve -> SuperProxy -> Block -> HijackResponse -> Dial/DialTLS -> OnRequest -> OnResponse
+// - RewriteHost -> [BeforeRequest -> Resolve -> SuperProxy -> Block -> HijackResponse -> Dial/DialTLS -> OnRequest -> OnResponse -> AfterResponse]
 // For HTTPS Tunnels, the call chain is:
 // - RewriteHost -> BeforeConnect -> SSLBump(false) -> Resolve -> SuperProxy -> Block -> Dial/DialTLS
 // For HTTPS Sniffer, the call chain is:
-// - RewriteHost -> BeforeConnect -> SSLBump(true) -> RewriteTLSServerName -> BeforeRequest -> Resolve -> SuperProxy -> Block -> HijackResponse -> Dial/DialTLS -> OnRequest -> OnResponse
+// - RewriteHost -> BeforeConnect -> SSLBump(true) -> RewriteTLSServerName -> [BeforeRequest -> Resolve -> SuperProxy -> Block -> HijackResponse -> Dial/DialTLS -> OnRequest -> OnResponse -> AfterResponse]
+// the chain in square brackets `[]` can be called more than one time during one connection due to keep-alive
 type Hijacker interface {
 	// RewriteHost rewrites the incoming host and port, return a nil newHost or nil newPort to end the request
 	RewriteHost() (newHost, newPort string)
@@ -66,6 +67,10 @@ type Hijacker interface {
 	// Which gives the response header in parameters then
 	// write response body in the writer returned
 	OnResponse(statusLine http.ResponseLine, header http.Header, rawHeader []byte) io.WriteCloser
+
+	// AfterResponse is defer handler which always paired with BeforeRequest
+	// passes any error if occurred during the hijacking or forwarding
+	AfterResponse(error)
 }
 
 // HijackerPool pooling hijacker instances

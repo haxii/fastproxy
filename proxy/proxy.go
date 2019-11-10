@@ -276,23 +276,26 @@ func (p *Proxy) do(c net.Conn, req *Request) error {
 	return p.tunnelHTTPS(c, req)
 }
 
-func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
+func (p *Proxy) proxyHTTP(c net.Conn, req *Request) (err error) {
 	// convert connection into a http response
 	writer := p.bufioPool.AcquireWriter(c)
 	defer p.bufioPool.ReleaseWriter(writer)
 	defer writer.Flush()
 	resp := p.respPool.Acquire()
 	defer p.respPool.Release(resp)
-	if err := resp.WriteTo(writer); err != nil {
-		return err
+	if err = resp.WriteTo(writer); err != nil {
+		return
 	}
 	// set hijacker
 	hijacker := req.hijacker
 	resp.SetHijacker(hijacker)
 
 	// pre-processing of the request, hijack request if available
-	if err := req.PrePare(); err != nil {
-		return err
+	if err = req.PrePare(); err != nil {
+		if hijacker != nil && req.isBeforeRequestCalled {
+			hijacker.AfterResponse(err)
+		}
+		return
 	}
 	req.makeDNSLookUpAndSetSuperProxy(p.SuperProxy)
 	if p := req.proxy; p != nil {
@@ -301,20 +304,24 @@ func (p *Proxy) proxyHTTP(c net.Conn, req *Request) error {
 	}
 
 	if hijacker != nil {
+		defer hijacker.AfterResponse(err)
 		// block the request if needed
 		if hijacker.Block() {
-			return writeFastError(c, http.StatusBadGateway, "")
+			err = writeFastError(c, http.StatusBadGateway, "")
+			return
 		}
 		// hijack the response if needed
 		if hijackedRespReader := hijacker.HijackResponse(); hijackedRespReader != nil {
 			defer hijackedRespReader.Close()
-			return p.client.DoFake(req, resp, hijackedRespReader)
+			err = p.client.DoFake(req, resp, hijackedRespReader)
+			return
 		}
 	}
 
 	// make the request
 	p.setClientDialer(req)
-	return p.client.Do(req, resp)
+	err = p.client.Do(req, resp)
+	return
 }
 
 func (p *Proxy) decryptHTTPS(c net.Conn, req *Request) error {
