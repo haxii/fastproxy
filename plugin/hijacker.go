@@ -317,7 +317,9 @@ func (h *Hijacker) OnResponse(statusLine http.ResponseLine,
 
 func (h *Hijacker) AfterResponse(err error) {
 	if h.handler != nil {
-		h.handler.onHijackFinished(h.hijackedReq, h.hijackedResp)
+		if h.handler.onHijackFinished != nil {
+			h.handler.onHijackFinished(h.hijackedReq, h.hijackedResp)
+		}
 	}
 }
 
