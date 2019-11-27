@@ -76,7 +76,7 @@ func (p *HijackerPool) Get(clientAddr net.Addr, isHTTPS bool, host, port string)
 	} else {
 		h = v.(*Hijacker)
 	}
-	h.init(clientAddr, isHTTPS, host, port, &p.Handler)
+	h.Init(clientAddr, isHTTPS, host, port, &p.Handler)
 	return h
 }
 
@@ -144,7 +144,8 @@ type Hijacker struct {
 	hijackedResp *HijackedResponse
 }
 
-func (h *Hijacker) init(clientAddr net.Addr, isHTTPS bool, host, port string, handler *HijackHandler) {
+// Init initialize hijacker
+func (h *Hijacker) Init(clientAddr net.Addr, isHTTPS bool, host, port string, handler *HijackHandler) {
 	h.connInfo.reset()
 	h.requestHeader.reset()
 
