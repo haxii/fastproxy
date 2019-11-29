@@ -151,7 +151,6 @@ func (p *Proxy) serveConn(c net.Conn) error {
 	}
 	defer releaseReqAndReader()
 	var (
-		rn                    int
 		err                   error
 		lastReadDeadlineTime  time.Time
 		lastWriteDeadlineTime time.Time
@@ -166,11 +165,11 @@ func (p *Proxy) serveConn(c net.Conn) error {
 
 		// parse start line of the request: a.k.a. request line
 		if p.ServerIdleDuration == 0 {
-			rn, err = req.parseStartLine(reader)
+			_, err = req.parseStartLine(reader)
 		} else {
 			idleChan := make(chan struct{}, 1)
 			go func() {
-				rn, err = req.parseStartLine(reader)
+				_, err = req.parseStartLine(reader)
 				idleChan <- struct{}{}
 			}()
 			select {
