@@ -58,7 +58,10 @@ func (r *Routers) GetHandleFunc(method, host, path string) (HandleFunc, Params) 
 	for _, hostGlob := range r.globList {
 		if glob(hostGlob, host) {
 			if _router := r.routers[hostGlob]; _router != nil {
-				return _router.Get(method, path)
+				// re-validate this handle function's existence
+				if h, p := _router.Get(method, path); h != nil {
+					return h, p
+				}
 			}
 		}
 	}
