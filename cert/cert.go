@@ -31,12 +31,10 @@ func MakeClientTLSConfig(host, serverName string) *tls.Config {
 	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(0)
 
 	if len(serverName) == 0 {
-		hostName := tlsServerName(host)
-		if hostName == "*" {
-			tlsConfig.InsecureSkipVerify = true
-		} else {
-			tlsConfig.ServerName = hostName
-		}
+		serverName = tlsServerName(host)
+	}
+	if serverName == "*" {
+		tlsConfig.InsecureSkipVerify = true
 	} else {
 		tlsConfig.ServerName = serverName
 	}
