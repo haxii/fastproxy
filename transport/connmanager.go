@@ -96,7 +96,7 @@ func (c *ConnManager) AcquireConn(dialer NewConn) (*Conn, error) {
 		//return cc, nil
 	}
 	if !createConn {
-		return nil, ErrNoFreeConns
+		//return nil, ErrNoFreeConns
 	}
 
 	if startCleaner {
