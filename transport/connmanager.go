@@ -93,7 +93,7 @@ func (c *ConnManager) AcquireConn(dialer NewConn) (*Conn, error) {
 	c.connsLock.Unlock()
 
 	if cc != nil {
-		return cc, nil
+		//return cc, nil
 	}
 	if !createConn {
 		return nil, ErrNoFreeConns
