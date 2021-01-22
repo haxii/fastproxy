@@ -478,8 +478,9 @@ func parallelWriteHeader(dst1 io.Writer, dst2 additionalDst, header []byte) (int
 
 func copyBody(header *http.Header, body *http.Body,
 	src *bufio.Reader, dst1 io.Writer, dst2 additionalDst) (int, error) {
+	fmt.Println("isChunkHeader", header.BodyType())
+
 	w := func(isChunkHeader bool, data []byte) (int, error) {
-		fmt.Println("isChunkHeader", isChunkHeader)
 		return parallelWriteBody(dst1, dst2, data)
 	}
 	return body.Parse(src, header.BodyType(), header.ContentLength(), w)
