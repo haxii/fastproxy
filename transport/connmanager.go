@@ -169,7 +169,8 @@ func (c *ConnManager) connsCleaner() {
 func (c *ConnManager) CloseConn(cc *Conn) {
 	c.decConnsCount()
 	cc.c.Close()
-	releaseClientConn(cc)
+	cc.c = nil
+	connPool.Put(cc)
 }
 
 func (c *ConnManager) decConnsCount() {
@@ -208,17 +209,13 @@ var connPool sync.Pool
 func acquireClientConn(conn net.Conn) *Conn {
 	v := connPool.Get()
 	if v == nil {
-		v = &Conn{id: rand.Uint64()}
+		v = &Conn{}
 	}
 	cc := v.(*Conn)
 	cc.c = conn
+	cc.id = rand.Uint64()
 	cc.createdTime = servertime.CoarseTimeNow()
 	return cc
-}
-
-func releaseClientConn(cc *Conn) {
-	cc.c = nil
-	connPool.Put(cc)
 }
 
 // Conn wrapper of net.conn as a manager
