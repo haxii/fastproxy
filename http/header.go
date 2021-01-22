@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -22,7 +21,6 @@ type Header struct {
 
 // Reset reset header info into default val
 func (header *Header) Reset() {
-	fmt.Println("header reset called")
 	header.isConnectionClose = false
 	header.contentLength = 0
 	header.contentType = ""
@@ -125,6 +123,7 @@ func (header *Header) tryRead(reader *bufio.Reader, n int) (int, error) {
 
 // Parse parse the header fields using given raw header bytes
 func (header *Header) Parse(buf []byte) (headerLength int, err error) {
+	header.contentLength = 0
 	parseBuffer := func(rawHeaderLine []byte) error {
 		// Connection, Authenticate and Authorization are single hop Header:
 		// http:// www.w3.org/Protocols/rfc2616/rfc2616.txt
