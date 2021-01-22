@@ -626,6 +626,8 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request, w io.Writer) (er
 		return
 	}
 
+	fmt.Println("method", req.Method())
+
 	// auth header if needed
 	if isReqProxyHTTP {
 		if authHeader := req.GetProxy().HTTPProxyAuthHeaderWithCRLF(); authHeader != nil {
