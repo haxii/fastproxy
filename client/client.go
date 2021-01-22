@@ -622,6 +622,7 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request, w io.Writer) (er
 			"", req.PathWithQueryFragment(), req.Protocol())
 	}
 	if err != nil {
+		err = fmt.Errorf("fail to write request line to remote with error %w", err)
 		return
 	}
 
@@ -637,7 +638,7 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request, w io.Writer) (er
 	}
 	// other request headers
 	if _, _, err := req.WriteHeaderTo(bw); err != nil {
-		return err
+		return fmt.Errorf("fail to proxy http header to remote with error %w", err)
 	}
 
 	// do not read contents for get and head
@@ -646,8 +647,12 @@ func (c *HostClient) readFromReqAndWriteToIOWriter(req Request, w io.Writer) (er
 	}
 	// request body
 	if _, err := req.WriteBodyTo(bw); err != nil {
-		return err
+		return fmt.Errorf("fail to proxy http body to remote with error %w", err)
 	}
 
-	return bw.Flush()
+	if err := bw.Flush(); err != nil {
+		return fmt.Errorf("fail to proxy then flush http body to remote with error %w", err)
+	}
+	return err
+
 }
