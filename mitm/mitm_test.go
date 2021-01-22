@@ -2,12 +2,16 @@ package mitm
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"sync"
 	"testing"
 )
@@ -22,6 +26,47 @@ var (
 	fakeServerListener net.Listener
 	fakeServerMessage  = []byte("hello MITM!")
 )
+
+func publicKey(priv interface{}) interface{} {
+	switch k := priv.(type) {
+	case *rsa.PrivateKey:
+		return &k.PublicKey
+	case *ecdsa.PrivateKey:
+		return &k.PublicKey
+	default:
+		return nil
+	}
+}
+func pemBlockForKey(priv interface{}) *pem.Block {
+	switch k := priv.(type) {
+	case *rsa.PrivateKey:
+		return &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(k)}
+	case *ecdsa.PrivateKey:
+		b, err := x509.MarshalECPrivateKey(k)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Unable to marshal ECDSA private key: %v", err)
+			os.Exit(2)
+		}
+		return &pem.Block{Type: "EC PRIVATE KEY", Bytes: b}
+	default:
+		return nil
+	}
+}
+
+func TestMakeCert(t *testing.T) {
+	cert, err := SignLeafCertUsingCertAuthority(defaultMITMCertAuthority, "*.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	derBytes:=cert.Certificate[0]
+	out := &bytes.Buffer{}
+	pem.Encode(out, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	fmt.Println(out.String())
+	out.Reset()
+	pem.Encode(out, pemBlockForKey(cert.PrivateKey))
+	fmt.Println(out.String())
+}
 
 func init() {
 	// make real server certificate and config from cert and key PEM block
