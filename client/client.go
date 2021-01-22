@@ -589,7 +589,7 @@ func (c *HostClient) do(req Request, resp Response,
 		//TODO: reuse super proxy connections
 		c.ConnManager.CloseConn(cc)
 	} else {
-		c.ConnManager.ReleaseConn(cc)
+		c.ConnManager.CloseConn(cc)
 	}
 
 	return false, err
