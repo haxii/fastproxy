@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -541,14 +542,14 @@ func (c *HostClient) do(req Request, resp Response,
 			}
 			c.ConnManager.CloseConn(cc)
 			// cannot even read a complete request, do NOT retry
-			return false, err
+			return false, fmt.Errorf("fail to write proxy request to remote with error %w", err)
 		}
 	}
 	if isCachedReqAvailable() {
 		// write the cached http requests to conn
 		if _, err = c.writeData(reqCacheForRetry.Bytes(), conn); err != nil {
 			c.ConnManager.CloseConn(cc)
-			return true, err
+			return true, fmt.Errorf("fail to write proxy request to remote with error %w", err)
 		}
 	}
 
@@ -570,17 +571,17 @@ func (c *HostClient) do(req Request, resp Response,
 	// read a byte from response to test if the connection has been closed by remote
 	if b, err := br.Peek(1); err != nil {
 		if err == io.EOF {
-			return true, io.EOF
+			return true, fmt.Errorf("remote closed connection before sending any data")
 		}
 		return false, err
 	} else if len(b) == 0 {
-		return true, io.EOF
+		return true, fmt.Errorf("remote closed connection before sending any data")
 	}
 
 	if _, err = resp.ReadFrom(isHead(req.Method()), br); err != nil {
 		c.BufioPool.ReleaseReader(br)
 		c.ConnManager.CloseConn(cc)
-		return false, err
+		return false, fmt.Errorf("fail to read response from remote with error %w", err)
 	}
 	c.BufioPool.ReleaseReader(br)
 
@@ -589,7 +590,7 @@ func (c *HostClient) do(req Request, resp Response,
 		//TODO: reuse super proxy connections
 		c.ConnManager.CloseConn(cc)
 	} else {
-		c.ConnManager.CloseConn(cc)
+		c.ConnManager.ReleaseConn(cc)
 	}
 
 	return false, err
