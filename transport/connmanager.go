@@ -3,6 +3,7 @@ package transport
 import (
 	"errors"
 	"io"
+	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -207,7 +208,7 @@ var connPool sync.Pool
 func acquireClientConn(conn net.Conn) *Conn {
 	v := connPool.Get()
 	if v == nil {
-		v = &Conn{}
+		v = &Conn{id: rand.Uint64()}
 	}
 	cc := v.(*Conn)
 	cc.c = conn
@@ -222,7 +223,8 @@ func releaseClientConn(cc *Conn) {
 
 // Conn wrapper of net.conn as a manager
 type Conn struct {
-	c net.Conn
+	c  net.Conn
+	id uint64
 
 	createdTime time.Time
 	lastUseTime time.Time
@@ -235,6 +237,11 @@ type Conn struct {
 // Get get the net conn in cc
 func (cc *Conn) Get() net.Conn {
 	return cc.c
+}
+
+// ID returns the id for this connection
+func (cc *Conn) ID() uint64 {
+	return cc.id
 }
 
 // CreatedTime get the net conn created time

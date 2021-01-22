@@ -503,6 +503,7 @@ func (c *HostClient) do(req Request, resp Response,
 		return false, err
 	}
 	conn := cc.Get()
+	fmt.Println("using connection", cc.ID())
 
 	// pre-setup
 	if c.WriteTimeout > 0 {
