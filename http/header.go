@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -21,6 +22,7 @@ type Header struct {
 
 // Reset reset header info into default val
 func (header *Header) Reset() {
+	fmt.Println("header reset called")
 	header.isConnectionClose = false
 	header.contentLength = 0
 	header.contentType = ""
