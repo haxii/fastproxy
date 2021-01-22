@@ -218,7 +218,6 @@ func (r *Request) PrePare() error {
 	}
 
 	// re-generate the header
-	r.header.Reset()
 	if newHeaderLen, err := r.header.Parse(newHeader); err != nil {
 		return util.ErrWrapper(err, "fail to parse hijacked request http headers")
 	} else {
