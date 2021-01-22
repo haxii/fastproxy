@@ -155,7 +155,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 		lastReadDeadlineTime  time.Time
 		lastWriteDeadlineTime time.Time
 	)
-	for i := 0; i < 1; i++ { // proxy keep-alive loop
+	for { // proxy keep-alive loop
 		if p.ServerReadTimeout > 0 {
 			lastReadDeadlineTime, err = p.updateReadDeadline(c, servertime.CoarseTimeNow(), lastReadDeadlineTime)
 			if err != nil {
