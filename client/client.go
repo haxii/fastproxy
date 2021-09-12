@@ -289,6 +289,9 @@ func (c *Client) mCleaner(m map[string]*HostClient) {
 //
 // It is safe calling HostClient methods from concurrently running go routines.
 type HostClient struct {
+	lastUseTime     uint64
+	pendingRequests uint64
+
 	// Dialer
 	Dial    func(addr string) (net.Conn, error)
 	DialTLS func(addr string, tlsConfig *tls.Config) (net.Conn, error)
@@ -312,17 +315,13 @@ type HostClient struct {
 
 	// ConnManager manager of the connections
 	ConnManager transport.ConnManager
-
-	lastUseTime uint32
-
-	pendingRequests uint64
 }
 
 var startTimeUnix = time.Now().Unix()
 
 // LastUseTime returns time the client was last used
 func (c *HostClient) LastUseTime() time.Time {
-	n := atomic.LoadUint32(&c.lastUseTime)
+	n := atomic.LoadUint64(&c.lastUseTime)
 	return time.Unix(startTimeUnix+int64(n), 0)
 }
 
@@ -330,7 +329,7 @@ func (c *HostClient) LastUseTime() time.Time {
 func (c *HostClient) DoRaw(rw io.ReadWriter, superProxy *superproxy.SuperProxy,
 	targetWithPort string, onTunnelMade func(error) error) (rwReadNum, rwWriteNum int64, err error) {
 	// set hostClient's last used time
-	atomic.StoreUint32(&c.lastUseTime, uint32(servertime.CoarseTimeNow().Unix()-startTimeUnix))
+	atomic.StoreUint64(&c.lastUseTime, uint64(servertime.CoarseTimeNow().Unix()-startTimeUnix))
 
 	// retrieve a connection from pool
 	var cc *transport.Conn
@@ -476,7 +475,7 @@ var errDialEOF = errors.New("dial EOF")
 func (c *HostClient) do(req Request, resp Response,
 	reqCacheForRetry *bytebufferpool.ByteBuffer) (retry bool, e error) {
 	// set hostClient's last used time
-	atomic.StoreUint32(&c.lastUseTime, uint32(servertime.CoarseTimeNow().Unix()-startTimeUnix))
+	atomic.StoreUint64(&c.lastUseTime, uint64(servertime.CoarseTimeNow().Unix()-startTimeUnix))
 
 	// analysis request type
 	viaProxy := req.GetProxy() != nil

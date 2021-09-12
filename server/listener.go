@@ -9,6 +9,12 @@ import (
 
 // GracefulNetListener is a graceful shutdown listener
 type GracefulNetListener struct {
+	// the number of open connections
+	connsCount uint64
+
+	// becomes non-zero when graceful shutdown starts
+	shutdown uint64
+
 	// inner listener
 	ln net.Listener
 
@@ -17,12 +23,6 @@ type GracefulNetListener struct {
 
 	// this channel is closed during graceful shutdown on zero open connections.
 	done chan struct{}
-
-	// the number of open connections
-	connsCount uint64
-
-	// becomes non-zero when graceful shutdown starts
-	shutdown uint64
 }
 
 // NewGracefulListener wraps the given listener into 'graceful shutdown' listener.
