@@ -28,6 +28,6 @@ script:
   - diff -u <(echo -n) <(sudo go vet ./...)
   - diff -u <(echo -n) <(sudo golint)
   - go get github.com/haxii/socks5
-  - go get github.com/haxii/log
+  - go get github.com/haxii/log/v2
   - go get github.com/fangdingjun/socks-go
   - go test -v ./...
