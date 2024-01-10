@@ -1,15 +1,15 @@
 package server
 
 import (
+	"github.com/haxii/fastproxy/servertime"
+	"github.com/haxii/log/v2"
+
 	"errors"
 	"io"
 	"net"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/haxii/fastproxy/servertime"
-	"github.com/haxii/log"
 )
 
 // Server a simple connection server
@@ -25,8 +25,6 @@ type Server struct {
 	// connections handler
 	ConnHandler ConnHandler
 
-	// Logger server's logger
-	Logger log.Logger
 	// ServiceName, server's service name, used for logging
 	ServiceName string
 
@@ -65,7 +63,6 @@ func (s *Server) ListenAndServe() error {
 		WorkerFunc:      s.ConnHandler,
 		Tracker:         s.trackConn,
 		MaxWorkersCount: s.Concurrency,
-		Logger:          s.Logger,
 	}
 	wp.Start()
 
@@ -83,7 +80,7 @@ func (s *Server) ListenAndServe() error {
 			}
 			c.Close()
 			if time.Since(lastOverflowErrorTime) > time.Minute {
-				s.Logger.Error(s.ServiceName, nil, "The incoming connection cannot be served, "+
+				log.Errorf(errors.New("concurrency exceeded"), "The incoming connection cannot be served, "+
 					"because %d concurrent connections are served. Try increasing server's concurrency",
 					s.Concurrency)
 				lastOverflowErrorTime = servertime.CoarseTimeNow()
@@ -102,12 +99,12 @@ func (s *Server) acceptConn(ln net.Listener, lastPerIPErrorTime *time.Time) (net
 				panic("BUG: net.Listener returned non-nil conn and non-nil error")
 			}
 			if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
-				s.Logger.Error(s.ServiceName, netErr, "Temporary error when accepting new connections")
+				log.Errorf(netErr, "temporary error when accepting new connections")
 				time.Sleep(time.Second)
 				continue
 			}
 			if err != io.EOF && !strings.Contains(err.Error(), "use of closed network connection") {
-				s.Logger.Error(s.ServiceName, err, "Permanent error when accepting new connections")
+				log.Errorf(err, "permanent error when accepting new connections")
 				return nil, err
 			}
 			return nil, io.EOF

@@ -1,14 +1,14 @@
 package server
 
 import (
+	"github.com/haxii/fastproxy/servertime"
+	"github.com/haxii/log/v2"
+
 	"net"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/haxii/fastproxy/servertime"
-	"github.com/haxii/log"
 )
 
 // ConnHandler connection handler
@@ -36,8 +36,6 @@ type WorkerPool struct {
 
 	MaxIdleWorkerDuration time.Duration
 
-	Logger log.Logger
-
 	lock         sync.Mutex
 	workersCount int
 	mustStop     bool
@@ -54,7 +52,7 @@ type workerChan struct {
 	ch          chan net.Conn
 }
 
-//Start ...
+// Start ...
 func (wp *WorkerPool) Start() {
 	if wp.stopCh != nil {
 		panic("BUG: workerPool already started")
@@ -75,7 +73,7 @@ func (wp *WorkerPool) Start() {
 	}()
 }
 
-//Stop stop..
+// Stop stop..
 func (wp *WorkerPool) Stop() {
 	if wp.stopCh == nil {
 		panic("BUG: workerPool wasn't started")
@@ -139,7 +137,7 @@ func (wp *WorkerPool) clean(scratch *[]*workerChan) {
 	}
 }
 
-//Serve server connection
+// Serve server connection
 func (wp *WorkerPool) Serve(c net.Conn) bool {
 	ch := wp.getCh()
 	if ch == nil {
@@ -229,7 +227,7 @@ func (wp *WorkerPool) workerFunc(ch *workerChan) {
 				strings.Contains(errStr, "reset by peer") ||
 				strings.Contains(errStr, "i/o timeout") ||
 				strings.Contains(errStr, "use of closed network connection")) {
-				wp.Logger.Error(c.RemoteAddr().String(), err, "error when serving connection")
+				log.Errorf(err, "error when serving connection with %s", c.RemoteAddr().String())
 			}
 		}
 		wp.Tracker(c, false)

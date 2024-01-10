@@ -20,7 +20,6 @@ import (
 
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/superproxy"
-	"github.com/haxii/log"
 	"github.com/haxii/socks5"
 )
 
@@ -70,21 +69,6 @@ func testInit(t *testing.T) {
 	simpleProxy = func() {
 		proxy := Proxy{
 			ServerIdleDuration: 30 * time.Second,
-			Logger:             &log.DefaultLogger{},
-			Handler: Handler{
-				ShouldAllowConnection: func(conn net.Addr) bool {
-					return true
-				},
-				ShouldDecryptHost: func(userData *Context, hostWithPort string) bool {
-					return false
-				},
-				URLProxy: func(userData *Context, hostWithPort string, uri []byte) *superproxy.SuperProxy {
-					return nil
-				},
-				RewriteHost: func(userdata *Context, hostWithPort string) string {
-					return hostWithPort
-				},
-			},
 		}
 		if err := proxy.Serve("tcp4", fmt.Sprintf("0.0.0.0:%d", simpleProxyPort)); err != nil {
 			panic(err)
@@ -206,24 +190,8 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	}
 
 	socks5Proxy = func() {
-		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", 9099, superproxy.ProxyTypeSOCKS5, "", "", "")
 		proxy := Proxy{
 			ServerIdleDuration: 30 * time.Second,
-			Logger:             &log.DefaultLogger{},
-			Handler: Handler{
-				ShouldAllowConnection: func(conn net.Addr) bool {
-					return true
-				},
-				ShouldDecryptHost: func(userData *Context, hostWithPort string) bool {
-					return false
-				},
-				URLProxy: func(userData *Context, hostWithPort string, uri []byte) *superproxy.SuperProxy {
-					return superProxy
-				},
-				RewriteHost: func(userdata *Context, hostWithPort string) string {
-					return hostWithPort
-				},
-			},
 		}
 		if err := proxy.Serve("tcp4", "0.0.0.0:5030"); err != nil {
 			panic(err)
@@ -231,24 +199,8 @@ PAnrpRqdDz9eQITxrUgW8vJKxBH6hNNGcMz9VHUgnsSE
 	}
 
 	httpProxy = func() {
-		superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", uint16(simpleProxyPort), superproxy.ProxyTypeHTTP, "", "", "")
 		proxy := Proxy{
 			ServerIdleDuration: 30 * time.Second,
-			Logger:             &log.DefaultLogger{},
-			Handler: Handler{
-				ShouldAllowConnection: func(conn net.Addr) bool {
-					return true
-				},
-				ShouldDecryptHost: func(userData *Context, hostWithPort string) bool {
-					return false
-				},
-				URLProxy: func(userData *Context, hostWithPort string, uri []byte) *superproxy.SuperProxy {
-					return superProxy
-				},
-				RewriteHost: func(userdata *Context, hostWithPort string) string {
-					return hostWithPort
-				},
-			},
 		}
 		if err := proxy.Serve("tcp4", "0.0.0.0:5040"); err != nil {
 			panic(err)
@@ -307,7 +259,7 @@ func testProxyServe(t *testing.T, simpleFunc func(), reqString, expResult string
 	}
 }
 
-//test send http request with fastproxy
+// test send http request with fastproxy
 func testHTTPRequest(t *testing.T, req *nethttp.Request, proxyAddr, expString string, isSSL bool) {
 	simpleProxy := func(r *nethttp.Request) (*url.URL, error) {
 		proxyURL, err := url.Parse(proxyAddr)
@@ -571,21 +523,6 @@ func testProxyKeepConnectionAndClose(t *testing.T) {
 func testGracefulShutDown(t *testing.T) {
 	proxy := Proxy{
 		ServerShutdownWaitTime: 10 * time.Second,
-		Logger:                 &log.DefaultLogger{},
-		Handler: Handler{
-			ShouldAllowConnection: func(conn net.Addr) bool {
-				return true
-			},
-			ShouldDecryptHost: func(userData *Context, hostWithPort string) bool {
-				return true
-			},
-			URLProxy: func(userData *Context, hostWithPort string, uri []byte) *superproxy.SuperProxy {
-				return nil
-			},
-			RewriteHost: func(userdata *Context, hostWithPort string) string {
-				return hostWithPort
-			},
-		},
 	}
 	go func() {
 		proxy.Serve("tcp4", "0.0.0.0:7078")
@@ -624,29 +561,8 @@ func testGracefulShutDown(t *testing.T) {
 
 // test using proxy hijack and url send to different proxy
 func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
-	superProxy, _ := superproxy.NewSuperProxy("127.0.0.1", uint16(simpleProxyPort), superproxy.ProxyTypeHTTP, "", "", "")
 	dataForSigning := ""
-	proxy := Proxy{
-		Logger: &log.DefaultLogger{},
-		Handler: Handler{
-			ShouldAllowConnection: func(conn net.Addr) bool {
-				return true
-			},
-			ShouldDecryptHost: func(userdata *Context, hostWithPort string) bool {
-				return false
-			},
-			URLProxy: func(userdata *Context, hostWithPort string, uri []byte) *superproxy.SuperProxy {
-				if strings.Contains(hostWithPort, "127.0.0.1:9333") {
-					dataForSigning = "No super proxy can use for fast proxy"
-					return nil
-				}
-				return superProxy
-			},
-			RewriteHost: func(userdata *Context, hostWithPort string) string {
-				return hostWithPort
-			},
-		},
-	}
+	proxy := Proxy{}
 	go func() {
 		if err := proxy.Serve("tcp4", "0.0.0.0:7555"); err != nil {
 			panic(err)
@@ -708,26 +624,7 @@ func testUsingProxyHijackAndURLSendToDifferProxy(t *testing.T) {
 }
 
 func testHostsRewrite(t *testing.T) {
-	proxy := Proxy{
-		Logger: &log.DefaultLogger{},
-		Handler: Handler{
-			ShouldAllowConnection: func(conn net.Addr) bool {
-				return true
-			},
-			ShouldDecryptHost: func(userdata *Context, hostWithPort string) bool {
-				return false
-			},
-			URLProxy: func(userdata *Context, hostWithPort string, uri []byte) *superproxy.SuperProxy {
-				return nil
-			},
-			RewriteHost: func(userdata *Context, hostWithPort string) string {
-				if hostWithPort == "127.0.0.1:9991" {
-					return "127.0.0.1:5050"
-				}
-				return hostWithPort
-			},
-		},
-	}
+	proxy := Proxy{}
 	go func() {
 		if err := proxy.Serve("tcp4", "0.0.0.0:7666"); err != nil {
 			panic(err)
@@ -782,12 +679,12 @@ func testHostsRewrite(t *testing.T) {
 
 }
 
-//SimpleHijackerPool implements the HijackerPool based on simpleHijacker & sync.Pool
+// SimpleHijackerPool implements the HijackerPool based on simpleHijacker & sync.Pool
 type SimpleHijackerPool struct {
 	pool sync.Pool
 }
 
-//Get get a simple hijacker from pool
+// Get get a simple hijacker from pool
 func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
 	targetHost string, method, path []byte) Hijacker {
 	v := p.pool.Get()
@@ -800,7 +697,7 @@ func (p *SimpleHijackerPool) Get(clientAddr net.Addr,
 	return h
 }
 
-//Put puts a simple hijacker back to pool
+// Put puts a simple hijacker back to pool
 func (p *SimpleHijackerPool) Put(s Hijacker) {
 	p.pool.Put(s)
 }
@@ -809,7 +706,7 @@ type CompleteHijackerPool struct {
 	pool sync.Pool
 }
 
-//Get get a simple hijacker from pool
+// Get get a simple hijacker from pool
 func (p *CompleteHijackerPool) Get(clientAddr net.Addr,
 	targetHost string, method, path []byte) Hijacker {
 	v := p.pool.Get()
@@ -823,7 +720,7 @@ func (p *CompleteHijackerPool) Get(clientAddr net.Addr,
 	return h
 }
 
-//Put puts a simple hijacker back to pool
+// Put puts a simple hijacker back to pool
 func (p *CompleteHijackerPool) Put(s Hijacker) {
 	p.pool.Put(s)
 }

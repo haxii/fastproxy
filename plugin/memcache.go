@@ -9,7 +9,7 @@ import (
 
 	"github.com/haxii/fastproxy/http"
 	"github.com/haxii/fastproxy/servertime"
-	"github.com/haxii/log"
+	"github.com/haxii/log/v2"
 )
 
 // MemoryCachePool stores the response cache in concurrent map and delete the Expired ones periodically
@@ -125,7 +125,6 @@ func (i *MemoryCacheItem) Value() []byte {
 type MemoryCache struct {
 	pool *MemoryCachePool
 
-	logger log.Logger
 	cached bool
 
 	key         string
@@ -136,9 +135,8 @@ type MemoryCache struct {
 	expectTTL       int
 }
 
-func (c *MemoryCache) Init(pool *MemoryCachePool, logger log.Logger, cacheKey string) {
+func (c *MemoryCache) Init(pool *MemoryCachePool, cacheKey string) {
 	c.pool = pool
-	c.logger = logger
 	c.key = cacheKey
 	c.expectCacheSize = -1
 	c.expectTTL = -1
@@ -147,13 +145,13 @@ func (c *MemoryCache) Init(pool *MemoryCachePool, logger log.Logger, cacheKey st
 		c.cached = true
 		c.cacheReader = bytes.NewReader(item.rawResp)
 		c.cacheWriter = nil
-		c.logger.Debug("MemoryCache", "%s, hit cache", cacheKey)
+		log.Debugf("mem-cache %s, hit cache", cacheKey)
 		return
 	}
 	c.cached = false
 	c.cacheReader = nil
 	c.cacheWriter = &bytes.Buffer{}
-	c.logger.Debug("MemoryCache", "%s, not in cache, try to download", cacheKey)
+	log.Debugf("mem-cache %s, not in cache, try to download", cacheKey)
 }
 
 func (c *MemoryCache) Cached() bool {
@@ -218,8 +216,8 @@ func (c *MemoryCache) Close() error {
 		return errIncompleteDownload
 	}
 	if c.expectCacheSize > 0 && int64(c.cacheWriter.Len()) != c.expectCacheSize {
-		c.logger.Error("MemoryCache", errIncompleteDownload,
-			"expected cache length %d, got %d", c.expectCacheSize, c.cacheWriter.Len())
+		log.Errorf(errIncompleteDownload,
+			"mem-cache expected cache length %d, got %d", c.expectCacheSize, c.cacheWriter.Len())
 		return errIncompleteDownload
 	}
 	c.pool.set(c.key, time.Duration(c.expectTTL)*time.Second, c.cacheWriter.Bytes())

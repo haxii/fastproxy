@@ -54,7 +54,7 @@ func pemBlockForKey(priv interface{}) *pem.Block {
 }
 
 func TestMakeCert(t *testing.T) {
-	cert, err := SignLeafCertUsingCertAuthority(defaultMITMCertAuthority, "*.example.com")
+	cert, err := SignLeafCertUsingCertAuthority(defaultMITMCertAuthority, "*.jd.com")
 	if err != nil {
 		t.Fatal(err)
 	}

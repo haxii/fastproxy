@@ -14,7 +14,6 @@ import (
 	"github.com/haxii/fastproxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
-	"github.com/haxii/log"
 )
 
 // this example generates a Pintrest proxy and cracks the images request
@@ -23,7 +22,6 @@ import (
 
 func main() {
 	p := proxy.Proxy{
-		Logger:             &log.DefaultLogger{},
 		ServerIdleDuration: time.Second * 30,
 		HijackerPool:       &mitmHijackerPool{},
 	}
@@ -131,7 +129,6 @@ func (h *SimpleHijacker) OnResponse(statusLine http.ResponseLine, header http.He
 
 func (h *SimpleHijacker) AfterResponse(err error) {
 }
-
 
 func (h *SimpleHijacker) HijackResponse() io.ReadCloser { return nil }
 

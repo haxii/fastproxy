@@ -3,11 +3,10 @@ package http
 import (
 	"bufio"
 	"fmt"
-	"io"
-	"math"
-
 	"github.com/haxii/fastproxy/bytebufferpool"
 	"github.com/haxii/fastproxy/util"
+	"io"
+	"math"
 )
 
 // Body http body

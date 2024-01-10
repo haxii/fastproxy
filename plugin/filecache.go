@@ -1,21 +1,20 @@
 package plugin
 
 import (
+	"github.com/haxii/fastproxy/http"
+	"github.com/haxii/fastproxy/util"
+	"github.com/haxii/log/v2"
+
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
-
-	"github.com/haxii/fastproxy/http"
-	"github.com/haxii/fastproxy/util"
-	"github.com/haxii/log"
 )
 
 type FileCache struct {
 	basedir string
-	logger  log.Logger
 
 	fileCached     bool
 	fileCachedPath string
@@ -26,10 +25,9 @@ type FileCache struct {
 	fileDownloadFile     *os.File
 }
 
-func (c *FileCache) Init(basedir string, logger log.Logger, cacheKey string) {
+func (c *FileCache) Init(basedir string, cacheKey string) {
 	// init fields
 	c.basedir = basedir
-	c.logger = logger
 
 	// reset fields
 	c.fileCached = false
@@ -45,17 +43,15 @@ func (c *FileCache) Init(basedir string, logger log.Logger, cacheKey string) {
 		var fileStoreFileErr error
 		c.fileCachedFile, fileStoreFileErr = os.Open(c.fileCachedPath)
 		if fileStoreFileErr != nil {
-			c.logger.Error("FileCache",
-				fileStoreFileErr, "cannot open cached file %s", c.fileCachedPath)
+			log.Errorf(fileStoreFileErr, "cannot open cached file %s", c.fileCachedPath)
 			if e := os.Remove(c.fileCachedPath); e != nil {
-				c.logger.Error("FileCache",
-					e, "cannot remove file %s", c.fileCachedPath)
+				log.Errorf(e, "cannot remove file %s", c.fileCachedPath)
 			}
 		} else {
 			c.fileDownloadPath = ""
 			c.fileDownloadFile = nil
 			c.fileCached = true
-			c.logger.Debug("FileCache", "%s, hit cache %s", cacheKey, c.fileCachedPath)
+			log.Debugf("file-cache %s, hit cache %s", cacheKey, c.fileCachedPath)
 			return
 		}
 	}
@@ -67,20 +63,18 @@ func (c *FileCache) Init(basedir string, logger log.Logger, cacheKey string) {
 		return
 	}
 	c.fileDownloadPath = filepath.Join(c.basedir, "downloading", hex.EncodeToString(downloadingKey))
-	if err := makeParentDir(c.fileDownloadPath); err != nil {
-		c.logger.Error("FileCache",
-			err, "cannot make parent dir of download path %s", c.fileDownloadPath)
+	if err = makeParentDir(c.fileDownloadPath); err != nil {
+		log.Errorf(err, "file-cache cannot make parent dir of download path %s", c.fileDownloadPath)
 		return
 	}
 	var fileDownloadFileCreateErr error
 	c.fileDownloadFile, fileDownloadFileCreateErr = os.OpenFile(c.fileDownloadPath,
 		os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if fileDownloadFileCreateErr != nil {
-		c.logger.Error("FileCache", fileDownloadFileCreateErr,
-			"cannot create file %s", c.fileDownloadPath)
+		log.Errorf(fileDownloadFileCreateErr, "file-cache cannot create file %s", c.fileDownloadPath)
 	}
 
-	c.logger.Debug("FileCache", "%s, not in cache, downloading to %s", cacheKey, c.fileDownloadPath)
+	log.Debugf("file-cache %s, not in cache, downloading to %s", cacheKey, c.fileDownloadPath)
 }
 
 func (c *FileCache) FileCached() bool {
@@ -116,8 +110,7 @@ func (c *FileCache) Read(b []byte) (n int, err error) {
 func (c *FileCache) Close() error {
 	// move the downloaded file to cache destination
 	if err := c.moveDownloadedFileToCache(); err != nil {
-		c.logger.Error("FileCache", err,
-			"fail to move downloaded file to cache %s", c.fileCachedPath)
+		log.Errorf(err, "file-cache fail to move downloaded file to cache %s", c.fileCachedPath)
 	}
 	// close file
 	var errClose error
@@ -132,8 +125,7 @@ func (c *FileCache) Close() error {
 	// delete unnamed cached file
 	if exist, _ := exists(c.fileDownloadPath); exist {
 		if err := os.Remove(c.fileDownloadPath); err != nil {
-			c.logger.Error("FileCache", err,
-				"fail to remove downloaded tmp file %s", c.fileDownloadPath)
+			log.Errorf(err, "file-cache fail to remove downloaded tmp file %s", c.fileDownloadPath)
 		}
 	}
 	return errClose

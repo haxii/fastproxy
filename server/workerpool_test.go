@@ -5,15 +5,12 @@ import (
 	"net"
 	"testing"
 	"time"
-
-	"github.com/haxii/log"
 )
 
 func TestWorkerPoolStartStop(t *testing.T) {
 	wp := &WorkerPool{
 		WorkerFunc:      func(conn net.Conn) error { return nil },
 		MaxWorkersCount: 10,
-		Logger:          &log.DefaultLogger{},
 	}
 	for i := 0; i < 10; i++ {
 		wp.Start()
@@ -53,7 +50,6 @@ func testWorkerPoolMaxWorkersCount(t *testing.T) {
 			return nil
 		},
 		MaxWorkersCount: 10,
-		Logger:          &log.DefaultLogger{},
 	}
 	wp.Start()
 

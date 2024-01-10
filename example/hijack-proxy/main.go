@@ -15,11 +15,9 @@ import (
 	"github.com/haxii/fastproxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/uri"
-	"github.com/haxii/log"
 )
 
 var (
-	logger          = &log.DefaultLogger{}
 	memoryCachePool *plugin.MemoryCachePool
 )
 
@@ -80,7 +78,6 @@ func main() {
 	hijackHandler.AddSSL("*postman-echo*", hijackPostmanEchoSSLFunc)
 
 	p := proxy.Proxy{
-		Logger:             logger,
 		ServerIdleDuration: time.Second * 30,
 		HijackerPool:       &plugin.HijackerPool{Handler: hijackHandler},
 	}
@@ -112,7 +109,7 @@ func memoryCacheResponseFunc(info *plugin.RequestConnInfo, u *uri.URI,
 		u.Scheme(), u.HostInfo().HostWithPort(), u.PathWithQueryFragment(), h.Get("User-Agent"))
 	cache := &plugin.MemoryCache{}
 	cacheKey := info.Host() + string(u.Path())
-	cache.Init(memoryCachePool, logger, cacheKey)
+	cache.Init(memoryCachePool, cacheKey)
 	if cache.Cached() {
 		return nil, &plugin.HijackedResponse{
 			ResponseType:   plugin.HijackedResponseTypeOverride,
@@ -131,7 +128,7 @@ func fileCacheResponseFunc(info *plugin.RequestConnInfo, u *uri.URI,
 		u.Scheme(), u.HostInfo().HostWithPort(), u.PathWithQueryFragment(), h.Get("User-Agent"))
 	cache := &plugin.FileCache{}
 	cacheKey := info.Host() + string(u.Path())
-	cache.Init("/tmp/hijack-proxy/", logger, cacheKey)
+	cache.Init("/tmp/hijack-proxy/", cacheKey)
 	if cache.FileCached() {
 		return nil, &plugin.HijackedResponse{
 			ResponseType:   plugin.HijackedResponseTypeOverride,

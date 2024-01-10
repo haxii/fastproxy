@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,7 +15,6 @@ import (
 	"github.com/haxii/fastproxy/servertime"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/util"
-	"github.com/haxii/log"
 )
 
 // DefaultServerShutdownWaitTime used when ServerShutdownWaitTime not set
@@ -25,9 +23,6 @@ var DefaultServerShutdownWaitTime = time.Second * 30
 // Proxy is a HTTP / HTTPS forward proxy with the ability to
 // sniff or modify the forwarding traffic
 type Proxy struct {
-	// ProxyLogger proxy error logger
-	Logger log.Logger
-
 	// Per-connection buffer size for requests' reading.
 	// This also limits the maximum header size.
 	//
@@ -101,9 +96,6 @@ type Proxy struct {
 
 // Serve serve on the provided ip address
 func (p *Proxy) Serve(network, addr string) error {
-	if p.Logger == nil {
-		return errors.New("no logger provided")
-	}
 	p.bufioPool = bufiopool.New(p.ReadBufferSize, p.WriteBufferSize)
 
 	// setup server
@@ -117,7 +109,6 @@ func (p *Proxy) Serve(network, addr string) error {
 	p.server.Listener = server.NewGracefulListener(ln, p.ServerShutdownWaitTime)
 	p.server.Concurrency = p.ServerConcurrency
 	p.server.ServiceName = "ProxyMNG"
-	p.server.Logger = p.Logger
 	p.server.ConnHandler = p.serveConn
 	p.server.OnConcurrencyLimitExceeded = p.serveConnOnLimitExceeded
 

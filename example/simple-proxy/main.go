@@ -15,19 +15,10 @@ import (
 	"github.com/haxii/fastproxy/proxy"
 	"github.com/haxii/fastproxy/superproxy"
 	"github.com/haxii/fastproxy/transport"
-	"github.com/haxii/log"
 )
 
-var superProxy1, superProxy2 *superproxy.SuperProxy
-
 func main() {
-	superProxy1, _ = superproxy.NewSuperProxy("10.1.3.1", 1080, superproxy.ProxyTypeHTTP,
-		"", "", "")
-	superProxy2, _ = superproxy.NewSuperProxy("127.0.0.1", 1080, superproxy.ProxyTypeSOCKS5,
-		"", "", "")
-
 	p := proxy.Proxy{
-		Logger:             &log.DefaultLogger{},
 		ServerIdleDuration: time.Second * 30,
 		HijackerPool:       &SimpleHijackerPool{},
 	}
@@ -69,7 +60,6 @@ func (h *SimpleHijacker) init(clientAddr net.Addr, isHTTPS bool, host, port stri
 	h.clientAddr = clientAddr
 	h.host = host
 	h.port = port
-	h.superProxy = superProxy1
 }
 
 func (h *SimpleHijacker) RewriteHost() (newHost, newPort string) {
@@ -97,10 +87,7 @@ func (h *SimpleHijacker) RewriteTLSServerName(serverName string) string {
 func (h *SimpleHijacker) BeforeRequest(method, path []byte, header http.Header, rawHeader []byte) (newPath, newRawHeader []byte) {
 	newPath = path
 	newRawHeader = rawHeader
-	if bytes.Contains(rawHeader, []byte("change-proxy")) {
-		// curl -H 'X-Fast-Proxy:change-proxy' -x 0.0.0.0:8081 http://httpbin.org/get
-		h.superProxy = superProxy2
-	} else if bytes.Contains(rawHeader, []byte("no-proxy")) {
+	if bytes.Contains(rawHeader, []byte("no-proxy")) {
 		// curl -H 'X-Fast-Proxy:no-proxy' -x 0.0.0.0:8081 http://httpbin.org/get
 		h.superProxy = nil
 	}
