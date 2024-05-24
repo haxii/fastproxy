@@ -92,6 +92,8 @@ type Proxy struct {
 
 	// MITMCertAuthority root certificate authority used for https decryption
 	MITMCertAuthority *tls.Certificate
+
+	DisableProxyKeepAlive bool
 }
 
 // Serve serve on the provided ip address
@@ -197,7 +199,7 @@ func (p *Proxy) serveConn(c net.Conn) error {
 			return util.ErrWrapper(err, "proxy error with "+req.reqLine.HostInfo().TargetWithPort())
 		}
 
-		if err == io.EOF || req.ConnectionClose() {
+		if err == io.EOF || req.ConnectionClose() || p.DisableProxyKeepAlive {
 			break
 		}
 		req.Reset()
